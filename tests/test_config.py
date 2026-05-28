@@ -1,7 +1,5 @@
 """Tests for nukiblinker.config — validation, defaults, load, save."""
 
-from pathlib import Path
-
 import pytest
 import yaml
 

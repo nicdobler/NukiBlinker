@@ -1,7 +1,6 @@
 """Tests for nukiblinker.notifier — channel dispatch and failure isolation."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
 
 import pytest
 

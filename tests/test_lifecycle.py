@@ -1,6 +1,6 @@
 """Tests for lifecycle — startup registration, shutdown deregistration, build_clients."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 

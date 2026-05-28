@@ -3,9 +3,7 @@
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
-
-from nukiblinker.audio import render_message, get_audio, _SOUNDS_DIR
+from nukiblinker.audio import render_message, get_audio
 from nukiblinker.config import AudioConfig
 
 

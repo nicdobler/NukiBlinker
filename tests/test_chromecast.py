@@ -1,6 +1,6 @@
 """Tests for nukiblinker.chromecast_client — mock pychromecast."""
 
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
