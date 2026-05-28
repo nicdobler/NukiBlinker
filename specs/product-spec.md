@@ -20,7 +20,7 @@ Individual homeowner running a Nuki Opener and/or Nuki Smart Lock, plus one or m
 4. Nuki Bridge sends an HTTP callback to NukiBlinker.
 5. NukiBlinker identifies the event type and fires the matching rule:
    - **Ring (unknown visitor)**: Hue lights blink with a warning pattern.
-   - **Ring to open (authorized person)**: Different blink + voice announcement ("Nico ha llegado a casa").
+   - **Ring to open (authorized person)**: Different blink + personalized announcement ("{name} llegó a casa").
    - **Door opened (Smart Lock)**: Chime sound on speakers.
 6. Lights return to their previous state after the blink sequence.
 
@@ -61,13 +61,22 @@ Nuki devices produce different events. NukiBlinker maps each to a configurable s
 | Event | Nuki device | Meaning | Default actions |
 |---|---|---|---|
 | **Ring (no open)** | Opener (deviceType=2) | Unknown visitor rang the doorbell | Hue lights blink (warning pattern) |
-| **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + voice announcement |
-| **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime sound on speakers |
+| **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + personalized announcement |
+| **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime or personalized announcement |
+
+### Person Identification
+
+For **ring to open** and **door opened** events, NukiBlinker queries the Nuki Bridge activity log (`GET /log`) to identify which user triggered the action. The user's registered name (as set in the Nuki app) is available as a `{name}` template variable in the TTS message.
+
+Examples:
+- Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
+- Template: `"{name} ha abierto la puerta"` → Announcement: "Ele ha abierto la puerta"
+- If the name cannot be resolved (log unavailable, unknown trigger), falls back to a default: "Alguien llegó a casa".
 
 Each event rule configures:
 - Which **notification channels** to fire (checkboxes).
 - Which **blink pattern** to use (alert, custom, or none).
-- Which **audio** to play: chime (bundled sound), TTS (custom message), or none.
+- Which **audio** to play: chime (bundled sound), TTS (template message with `{name}`), or none.
 - Whether to send a **HomeKit** notification.
 
 Example configuration:
@@ -75,7 +84,7 @@ Example configuration:
 | | Ring (no open) | Ring to open | Door opened |
 |---|---|---|---|
 | Hue Lights | ✅ Red flash, 5x | ✅ Green flash, 2x | ❌ |
-| Audio | ❌ | ✅ TTS "Nico ha llegado a casa" | ✅ Chime |
+| Audio | ❌ | ✅ TTS "{name} llegó a casa" | ✅ Chime |
 | HomeKit Notification | ✅ | ✅ | ❌ |
 
 ## Blink Modes
@@ -105,7 +114,7 @@ All enabled channels fire in parallel. Each event rule selects which channels to
 Plays sounds on **Google Nest** and/or **Apple HomePod** speakers. Two audio modes:
 
 - **Chime** (`mode: chime`): Plays a bundled chime sound (pleasant doorbell tone). No internet required.
-- **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet. Message is configurable per event rule.
+- **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet. Message is configurable per event rule and supports `{name}` template variable for personalized announcements.
 
 Speaker support:
 - **Google Nest / Home**: Uses Chromecast protocol via `pychromecast`. Speakers auto-discovered on LAN.
@@ -195,19 +204,20 @@ Key settings:
 3. **Light blink** — Configured Hue lights blink with the per-event pattern within 1 second of receiving the callback.
 4. **State restore** — After a custom blink sequence, lights return to their exact previous state (on/off, brightness, color).
 5. **Audio** — Chime or TTS plays on selected Google Nest and/or HomePod speakers within 2 seconds.
-6. **HomeKit** — Doorbell notification appears on all paired Apple devices within 2 seconds.
-7. **Per-event rules** — Each event type has independently configurable channels, blink pattern, and audio mode/message.
-8. **Resilience** — If a channel target is unreachable, NukiBlinker logs a warning but does not crash.
-9. **Channel independence** — Each notification channel works independently; a failure in one does not block others.
-10. **Idempotent startup** — Multiple restarts do not create duplicate callbacks on the Nuki Bridge.
-11. **Config validation** — Invalid config is rejected at startup with a clear error message.
-12. **Web UI** — Config page is accessible only from `localhost`. All settings are editable and persist to `config.yaml`.
-13. **Auto-discovery** — Nuki Bridge, Hue Bridge, Chromecast speakers, and AirPlay speakers are auto-discovered when available.
-14. **Test buttons** — Per-event "Test" button fires all enabled channels for that rule without a real doorbell event.
-15. **Graceful shutdown** — `docker compose down` deregisters the Nuki callback before exiting.
-16. **Pause/Resume** — Web UI pause button deregisters callback without stopping the service; resume re-registers it.
-17. **Tests** — Unit tests cover event classification, all notification channels, event rules, config validation, web UI access control, and shutdown hook.
-18. **Lint** — `make lint` passes with zero errors.
+6. **Person identification** — For ring-to-open and door-opened events, the user's name is resolved from the Nuki activity log and used in TTS templates.
+7. **HomeKit** — Doorbell notification appears on all paired Apple devices within 2 seconds.
+8. **Per-event rules** — Each event type has independently configurable channels, blink pattern, and audio mode/message.
+9. **Resilience** — If a channel target is unreachable, NukiBlinker logs a warning but does not crash.
+10. **Channel independence** — Each notification channel works independently; a failure in one does not block others.
+11. **Idempotent startup** — Multiple restarts do not create duplicate callbacks on the Nuki Bridge.
+12. **Config validation** — Invalid config is rejected at startup with a clear error message.
+13. **Web UI** — Config page is accessible only from `localhost`. All settings are editable and persist to `config.yaml`.
+14. **Auto-discovery** — Nuki Bridge, Hue Bridge, Chromecast speakers, and AirPlay speakers are auto-discovered when available.
+15. **Test buttons** — Per-event "Test" button fires all enabled channels for that rule without a real doorbell event.
+16. **Graceful shutdown** — `docker compose down` deregisters the Nuki callback before exiting.
+17. **Pause/Resume** — Web UI pause button deregisters callback without stopping the service; resume re-registers it.
+18. **Tests** — Unit tests cover event classification, person identification, all notification channels, event rules, config validation, web UI access control, and shutdown hook.
+19. **Lint** — `make lint` passes with zero errors.
 
 ## Non-Goals (Current)
 
@@ -215,7 +225,6 @@ Key settings:
 - No Alexa support (no public local API for announcements).
 - No multi-bridge support (single Nuki Bridge + single Hue Bridge).
 - No door-opening automation — NukiBlinker is notification only, it never opens or locks doors.
-- No visitor identification — the system knows event types, not who triggered them.
 - No remote access to the web UI — localhost only.
 
 ## Future Considerations

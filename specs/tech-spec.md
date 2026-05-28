@@ -157,8 +157,9 @@ class SpeakersConfig(BaseModel):
 class AudioConfig(BaseModel):
     enabled: bool = False
     mode: str = "tts"              # "tts", "chime", or "none"
-    message: str = "Someone is at the door"  # used when mode="tts"
+    message: str = "{name} llegó a casa"  # template, supports {name}
     chime: str = "chime.mp3"       # filename in sounds/ (when mode="chime")
+    fallback_name: str = "Alguien" # used when {name} can't be resolved
 
 class EventRuleConfig(BaseModel):
     blink: BlinkConfig = BlinkConfig()
@@ -250,7 +251,8 @@ Manages the Nuki Bridge HTTP API:
   - Lists existing callbacks first to avoid duplicates.
 - **`list_callbacks()`** — Returns current registered callbacks.
 - **`remove_callback(callback_id)`** — Removes a callback by ID.
-- **`list_openers()`** — Returns paired Openers (for the web UI picker).
+- **`list_devices()`** — Returns paired devices (Openers + Smart Locks, for the web UI picker).
+- **`get_last_log(nuki_id, count=1)`** — `GET /log?nukiId=<id>&count=1&token=<token>`. Returns the latest activity log entry, including the `name` of the user who triggered the action.
 
 ### Hue Client (`hue_client.py`)
 
@@ -270,10 +272,11 @@ Uses `httpx.AsyncClient` for non-blocking HTTP calls.
 
 Generates or selects audio files for playback:
 
-- **`get_audio(audio_config: AudioConfig) -> Path`** — Returns path to an `.mp3` file:
-  - `mode="tts"`: generates via `gTTS`, caches by message hash.
+- **`render_message(template, context)`** — Replaces `{name}` (and future variables) in the template. Falls back to `fallback_name` if `name` is not available.
+- **`get_audio(audio_config: AudioConfig, context: dict) -> Path`** — Returns path to an `.mp3` file:
+  - `mode="tts"`: renders template → generates via `gTTS`, caches by rendered message hash.
   - `mode="chime"`: returns `sounds/{chime_filename}`.
-- TTS cache is in-memory (same message doesn’t regenerate).
+- TTS cache is in-memory (same rendered message doesn’t regenerate).
 - Bundled chimes ship in `nukiblinker/sounds/` (included in Docker image).
 
 ### Chromecast Client (`chromecast_client.py`)
@@ -345,10 +348,23 @@ def classify(payload: dict) -> str | None:
         ...
     return None              # unknown device type
 
-async def dispatch(event_type: str, config: AppConfig, clients: Clients):
-    """Looks up config.events[event_type] and fires matching channels."""
+async def resolve_person(payload: dict, nuki_client) -> dict:
+    """Query Nuki Bridge /log to get the user name for the event.
+    Returns context dict: {"name": "Nico"} or {"name": fallback}."""
+    nuki_id = payload.get("nukiId")
+    try:
+        log = await nuki_client.get_last_log(nuki_id)
+        return {"name": log.get("name", config.fallback_name)}
+    except Exception:
+        return {"name": config.fallback_name}
+
+async def dispatch(event_type: str, payload: dict, config: AppConfig, clients: Clients):
+    """Looks up config.events[event_type], resolves person, fires channels."""
     rule = getattr(config.events, event_type)
-    await notifier.notify(rule, config, clients)
+    context = {}
+    if event_type in ("ring_to_open", "door_opened"):
+        context = await resolve_person(payload, clients.nuki)
+    await notifier.notify(rule, config, clients, context)
 ```
 
 ### Notifier (`notifier.py`)
@@ -356,16 +372,16 @@ async def dispatch(event_type: str, config: AppConfig, clients: Clients):
 Orchestrates notification channels for a given event rule:
 
 ```python
-async def notify(rule: EventRuleConfig, config: AppConfig, clients: Clients):
+async def notify(rule: EventRuleConfig, config: AppConfig, clients: Clients, context: dict = None):
     tasks = []
 
     # Hue lights (per-event blink pattern)
     if rule.blink.mode != "none" and (config.hue.lights or config.hue.groups):
         tasks.append(trigger_hue(clients.hue, config.hue, rule.blink))
 
-    # Audio (chime or TTS, per-event)
+    # Audio (chime or TTS, per-event, with {name} template)
     if rule.audio.enabled and rule.audio.mode != "none":
-        audio_path = audio.get_audio(rule.audio)
+        audio_path = audio.get_audio(rule.audio, context or {})
         if config.speakers.chromecast:
             tasks.append(trigger_chromecast(
                 clients.chromecast, config.speakers.chromecast,
@@ -501,6 +517,7 @@ Note: The exact state values will be confirmed during implementation against the
 | GET | `/callback/list` | List registered callbacks |
 | GET | `/callback/add?url=&token=` | Register callback |
 | GET | `/callback/remove?id=` | Remove callback |
+| GET | `/log?nukiId=&count=&token=` | Activity log (includes user name) |
 
 ### Chromecast Protocol
 
@@ -565,8 +582,8 @@ All tests run via `make test` on the Mac. Real-device testing via `make runLocal
 |---|---|
 | `tests/test_config.py` | Config validation, load, save, defaults |
 | `tests/test_server.py` | Callback endpoint (valid events, wrong device, unknown state) |
-| `tests/test_event_router.py` | Event classification (ring vs ring_to_open vs door_opened) + rule dispatch |
-| `tests/test_audio.py` | TTS generation + chime file resolution |
+| `tests/test_event_router.py` | Event classification, person resolution (mock /log), rule dispatch |
+| `tests/test_audio.py` | TTS generation, {name} template rendering, chime file resolution |
 | `tests/test_web_ui.py` | Web UI API routes + localhost access control (403) |
 | `tests/test_hue_client.py` | Hue API calls (mock httpx) |
 | `tests/test_nuki_client.py` | Callback registration (mock httpx) |
