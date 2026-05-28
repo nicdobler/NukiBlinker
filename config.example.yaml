@@ -1,0 +1,24 @@
+nuki:
+  bridge_ip: "192.168.1.100"
+  bridge_port: 8080
+  api_token: "your-nuki-bridge-api-token"
+  # opener_id: 12345              # optional: filter to a specific Opener
+
+hue:
+  bridge_ip: "192.168.1.101"
+  api_key: "your-hue-bridge-api-key"
+  lights: [1, 2, 3]               # light IDs to blink
+  groups: []                       # or group IDs (e.g. [1] for "Living room")
+
+blink:
+  mode: "alert"                    # "alert" (Hue built-in 15s) or "custom"
+  custom:
+    hue: 0                         # 0 = red, 25500 = green, 46920 = blue
+    saturation: 254                # 0-254
+    brightness: 254                # 1-254
+    flashes: 3                     # number of on/off cycles
+    interval_ms: 500               # ms between each flash
+
+server:
+  host: "0.0.0.0"
+  port: 8080

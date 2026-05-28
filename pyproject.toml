@@ -1,0 +1,52 @@
+[tool.poetry]
+name = "nukiblinker"
+version = "0.1.0"
+description = "Blinks Philips Hue lights when someone rings the Nuki Opener doorbell"
+authors = ["Nicolas Dobler"]
+license = "none"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {version = "^0.34.0", extras = ["standard"]}
+httpx = "^0.28.0"
+pyyaml = "^6.0"
+pydantic = "^2.10.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^26.5.1"
+flake8 = "^7.3.0"
+pytest = "^9.0.3"
+pytest-cov = "^7.1.0"
+pytest-asyncio = "^1.0.0"
+
+[tool.black]
+line-length = 120
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+addopts = "--cov=nukiblinker --cov-report=term-missing"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+omit = [
+    "nukiblinker/__main__.py",
+]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
+]
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = "E203,W503"
+exclude = ".git,__pycache__,.venv,build,dist"
