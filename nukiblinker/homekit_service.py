@@ -19,7 +19,11 @@ try:
     from pyhap import loader as service_loader
 
     _HAP_AVAILABLE = True
-except ImportError:  # pragma: no cover
+except ImportError:
+    Accessory = None  # type: ignore[assignment,misc]
+    AccessoryDriver = None  # type: ignore[assignment,misc]
+    CATEGORY_DOORBELL = None  # type: ignore[assignment]
+    service_loader = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 

@@ -29,6 +29,8 @@ def app(tmp_path):
     application = create_app(config, clients)
     config_path = str(tmp_path / "config.yaml")
     mount_web_ui(application, config_path)
+    # Allow TestClient's "testclient" host through the localhost guard
+    application.state.allowed_hosts = {"127.0.0.1", "::1", "localhost", "testclient"}
     return application
 
 
@@ -101,25 +103,25 @@ class TestTestEvent:
 
 
 class TestLocalhostGuard:
-    """Verify non-localhost requests to /api/ are blocked.
+    """Verify non-localhost requests to /api/ are blocked."""
 
-    Note: TestClient always uses 'testclient' as client host,
-    which is NOT in the localhost set, so all /api/ requests
-    from TestClient actually get 403 by default. We override
-    the middleware check in the other tests implicitly (since
-    TestClient resolves to 127.0.0.1 in some setups).
-    We test the explicit block here.
-    """
+    def test_blocked_when_not_localhost(self, tmp_path):
+        """Create an app WITHOUT testclient in allowed_hosts."""
+        config = AppConfig()
+        clients = _make_clients()
+        strict_app = create_app(config, clients)
+        mount_web_ui(strict_app, str(tmp_path / "config.yaml"))
+        # Do NOT add "testclient" to allowed_hosts
+        strict_client = TestClient(strict_app)
+        r = strict_client.get("/api/status")
+        assert r.status_code == 403
 
-    def test_api_accessible_from_localhost(self, client):
-        # TestClient in recent versions sends from testclient host.
-        # This may pass or fail depending on Starlette version.
-        # The key test is that non-localhost gets 403.
-        r = client.get("/api/status")
-        # Accept either 200 (localhost) or 403 (testclient)
-        assert r.status_code in (200, 403)
-
-    def test_health_accessible_from_anywhere(self, client):
-        # /health is NOT under /api/ so it should always pass
-        r = client.get("/health")
+    def test_health_accessible_from_anywhere(self, tmp_path):
+        """Health endpoint is NOT under /api/ so it bypasses the guard."""
+        config = AppConfig()
+        clients = _make_clients()
+        strict_app = create_app(config, clients)
+        mount_web_ui(strict_app, str(tmp_path / "config.yaml"))
+        strict_client = TestClient(strict_app)
+        r = strict_client.get("/health")
         assert r.status_code == 200

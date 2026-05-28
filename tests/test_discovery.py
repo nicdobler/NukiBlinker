@@ -65,7 +65,7 @@ class TestDiscoverHueBridges:
 class TestDiscoverChromecast:
     @pytest.mark.asyncio
     async def test_delegates_to_client(self):
-        with patch("nukiblinker.discovery.ChromecastClient") as mock_cls:
+        with patch("nukiblinker.chromecast_client.ChromecastClient") as mock_cls:
             mock_cls.return_value.list_speakers = AsyncMock(
                 return_value=[{"name": "Nest", "ip": "10.0.0.5", "port": 8009, "type": "chromecast"}]
             )
@@ -77,7 +77,7 @@ class TestDiscoverChromecast:
 class TestDiscoverAirPlay:
     @pytest.mark.asyncio
     async def test_delegates_to_client(self):
-        with patch("nukiblinker.discovery.AirPlayClient") as mock_cls:
+        with patch("nukiblinker.airplay_client.AirPlayClient") as mock_cls:
             mock_cls.return_value.list_speakers = AsyncMock(
                 return_value=[{"name": "HomePod", "ip": "10.0.0.10", "port": 7000, "type": "airplay"}]
             )

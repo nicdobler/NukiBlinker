@@ -34,8 +34,9 @@ class LocalhostOnlyMiddleware(BaseHTTPMiddleware):
         # Allow health and callback endpoints from anywhere
         path = request.url.path
         if path.startswith("/api/") or path == "/":
+            allowed = getattr(request.app.state, "allowed_hosts", _LOCALHOST)
             client_ip = request.client.host if request.client else ""
-            if client_ip not in _LOCALHOST:
+            if client_ip not in allowed:
                 logger.warning("Blocked request from %s to %s", client_ip, path)
                 return JSONResponse({"error": "forbidden"}, status_code=403)
         return await call_next(request)
