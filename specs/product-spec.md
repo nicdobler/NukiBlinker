@@ -24,6 +24,24 @@ Individual homeowner running a Nuki Opener and one or more of: Philips Hue Bridg
    - Apple HomeKit devices receive a doorbell notification.
 6. Lights return to their previous state after the blink sequence.
 
+## Lifecycle
+
+| Action | How | What happens |
+|---|---|---|
+| **Start** | `docker compose up -d` or `make runLocal` | Registers callback on Nuki Bridge, starts HomeKit accessory, begins listening. |
+| **Stop** | `docker compose down` or Ctrl+C | Deregisters callback from Nuki Bridge, stops HomeKit, clean exit. |
+| **Pause** | Web UI "Pause" button | Deregisters Nuki callback but keeps the service running. Web UI stays accessible. |
+| **Resume** | Web UI "Resume" button | Re-registers the Nuki callback. Notifications resume. |
+
+### Graceful shutdown
+
+On `SIGTERM` or `SIGINT` (sent by Docker on stop), NukiBlinker:
+1. Deregisters the callback from the Nuki Bridge.
+2. Stops the HomeKit accessory driver.
+3. Exits cleanly.
+
+The Nuki Bridge does not retry or error when a callback URL is unreachable — it silently skips. So even on an ungraceful crash, there is no user-visible impact. On next startup, the stale callback is detected and reused (idempotent).
+
 ## Devices & APIs
 
 | Device | Role | API / Protocol |
@@ -148,8 +166,10 @@ Key settings:
 10. **Google Home** — TTS announcement plays on selected speakers within 2 seconds of a ring event.
 11. **HomeKit** — Doorbell notification appears on all paired Apple devices within 2 seconds of a ring event.
 12. **Channel independence** — Each notification channel works independently; a failure in one does not block others.
-13. **Tests** — Unit tests cover the event pipeline, all notification channels, config validation, and web UI access control.
-14. **Lint** — `make lint` passes with zero errors.
+13. **Graceful shutdown** — `docker compose down` deregisters the Nuki callback before exiting. No stale callbacks left.
+14. **Pause/Resume** — Web UI pause button deregisters callback without stopping the service; resume re-registers it.
+15. **Tests** — Unit tests cover the event pipeline, all notification channels, config validation, web UI access control, and shutdown hook.
+16. **Lint** — `make lint` passes with zero errors.
 
 ## Non-Goals (Current)
 

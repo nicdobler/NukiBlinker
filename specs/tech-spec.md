@@ -182,6 +182,8 @@ Serves the configuration page and provides API endpoints for it.
 | POST | `/api/test/homekit` | Trigger test HomeKit doorbell notification |
 | GET | `/api/status` | Bridge connectivity, last ring, uptime |
 | GET | `/api/homekit/setup-code` | Return HomeKit pairing code + QR data |
+| POST | `/api/pause` | Deregister Nuki callback (keep service running) |
+| POST | `/api/resume` | Re-register Nuki callback |
 
 **Static files**: `index.html` — single-page app (vanilla JS or lightweight framework). Served at `/`.
 
@@ -298,7 +300,26 @@ flowchart TD
 3. Configure logging.
 4. If HomeKit enabled: start HAP accessory driver in a background thread.
 5. Register callback on Nuki Bridge (idempotent). Skip if Nuki not configured yet.
-6. Start FastAPI/uvicorn server (callback endpoint + web UI).
+6. Register shutdown hook (`SIGTERM` / `SIGINT`).
+7. Start FastAPI/uvicorn server (callback endpoint + web UI).
+
+### Shutdown Hook
+
+Registered via FastAPI's `@app.on_event("shutdown")` or `signal.signal(SIGTERM, ...)`:
+
+```python
+async def shutdown():
+    logger.info("Shutting down — deregistering Nuki callback")
+    try:
+        await nuki_client.remove_callback(registered_callback_id)
+    except Exception as e:
+        logger.warning("Failed to deregister callback: %s", e)
+    if homekit_service:
+        homekit_service.stop()
+    logger.info("Clean shutdown complete")
+```
+
+If the Nuki Bridge is unreachable at shutdown time, the deregistration is logged as a warning but does not block exit. The stale callback is harmless (Bridge silently skips unreachable URLs) and will be reused on next startup.
 
 ## Nuki Bridge Callback Payload
 
@@ -401,6 +422,7 @@ All tests run via `make test` on the Mac. Real-device testing via `make runLocal
 | `tests/test_homekit.py` | HAP accessory lifecycle (mock HAP-python) |
 | `tests/test_notifier.py` | Parallel channel dispatch, failure isolation |
 | `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf) |
+| `tests/test_lifecycle.py` | Startup registration, graceful shutdown deregistration, pause/resume |
 
 ## Docker
 
