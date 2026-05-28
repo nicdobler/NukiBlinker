@@ -8,12 +8,14 @@ nukiblinker/
 ├── config.py                # YAML config loading + Pydantic validation + save
 ├── server.py                # FastAPI app — callback endpoint + web UI API
 ├── web_ui.py                # Web configuration UI (serves static + API routes)
+├── event_router.py          # Classifies Nuki events and dispatches to matching rule
 ├── nuki_client.py           # Nuki Bridge HTTP API client (callback registration)
 ├── hue_client.py            # Philips Hue Bridge API client (light control)
-├── google_home_client.py    # Google Home / Chromecast TTS announcements
+├── chromecast_client.py     # Google Nest / Chromecast TTS announcements
+├── airplay_client.py        # Apple HomePod AirPlay 2 TTS announcements
 ├── homekit_service.py       # Apple HomeKit doorbell accessory (HAP-python)
-├── discovery.py             # Auto-discovery for Nuki, Hue, and Chromecast
-├── notifier.py              # Orchestrates all notification channels in parallel
+├── discovery.py             # Auto-discovery for Nuki, Hue, Chromecast, AirPlay
+├── notifier.py              # Orchestrates notification channels per event rule
 ├── logging_config.py        # Structured logging setup
 └── static/                  # Web UI frontend (HTML, CSS, JS)
     └── index.html
@@ -34,7 +36,8 @@ nukiblinker/
 | `httpx` | Async HTTP client (Nuki + Hue bridge APIs) |
 | `pyyaml` | Config file parsing |
 | `pydantic` | Config validation |
-| `pychromecast` | Google Home / Chromecast discovery + casting |
+| `pychromecast` | Google Nest / Chromecast discovery + casting |
+| `pyatv` | Apple HomePod / AirPlay 2 discovery + streaming |
 | `gTTS` | Text-to-speech audio generation |
 | `HAP-python[QRCode]` | HomeKit accessory protocol |
 | `zeroconf` | mDNS for bridge/speaker auto-discovery |
@@ -70,23 +73,37 @@ sequenceDiagram
     participant NO as Nuki Opener
     participant NB as Nuki Bridge
     participant NK as NukiBlinker
+    participant ER as EventRouter
     participant HB as Hue Bridge
-    participant GH as Google Home
+    participant GN as Google Nest
+    participant HP as HomePod
     participant HK as HomeKit
 
     V->>NO: Presses doorbell
-    NO->>NB: Ring detected (state=7)
+    NO->>NB: State change
     NB->>NK: HTTP POST /nuki/callback
     NK-->>NB: 200 OK (immediate)
+    NK->>ER: Classify event
 
-    par Notification channels (parallel)
-        NK->>HB: PUT /lights/{id}/state (blink)
-        HB-->>NK: 200
-    and
-        NK->>GH: Cast TTS audio
-    and
-        NK->>HK: Doorbell press event
-        HK-->>HK: Push to all Apple devices
+    alt Ring (no open)
+        ER->>ER: Match "ring" rule
+        par
+            ER->>HB: Blink (warning pattern)
+        and
+            ER->>HK: Doorbell notification
+        end
+
+    else Ring to open
+        ER->>ER: Match "ring_to_open" rule
+        par
+            ER->>HB: Blink (welcome pattern)
+        and
+            ER->>GN: TTS "Nico ha llegado a casa"
+        and
+            ER->>HP: TTS "Nico ha llegado a casa"
+        and
+            ER->>HK: Doorbell notification
+        end
     end
 ```
 
@@ -117,14 +134,34 @@ class CustomBlinkConfig(BaseModel):
     interval_ms: int = 500
 
 class BlinkConfig(BaseModel):
-    mode: str = "alert"           # "alert" or "custom"
+    mode: str = "alert"           # "alert", "custom", or "none"
     custom: CustomBlinkConfig = CustomBlinkConfig()
 
-class GoogleHomeConfig(BaseModel):
-    enabled: bool = False
-    speakers: list[str] = []      # speaker names or IPs
-    message: str = "Someone is at the door"
+class SpeakersConfig(BaseModel):
+    chromecast: list[str] = []    # Google Nest / Chromecast speaker names
+    airplay: list[str] = []       # HomePod / AirPlay speaker names
     volume: float = 0.5           # 0.0-1.0
+
+class VoiceConfig(BaseModel):
+    enabled: bool = False
+    message: str = "Someone is at the door"
+
+class EventRuleConfig(BaseModel):
+    blink: BlinkConfig = BlinkConfig()
+    voice: VoiceConfig = VoiceConfig()
+    homekit: bool = True
+
+class EventRulesConfig(BaseModel):
+    ring: EventRuleConfig = EventRuleConfig(
+        blink=BlinkConfig(mode="alert"),
+        voice=VoiceConfig(enabled=False),
+        homekit=True,
+    )
+    ring_to_open: EventRuleConfig = EventRuleConfig(
+        blink=BlinkConfig(mode="custom"),
+        voice=VoiceConfig(enabled=True, message="Nico ha llegado a casa"),
+        homekit=True,
+    )
 
 class HomeKitConfig(BaseModel):
     enabled: bool = False
@@ -138,9 +175,9 @@ class ServerConfig(BaseModel):
 class AppConfig(BaseModel):
     nuki: NukiConfig = NukiConfig()
     hue: HueConfig = HueConfig()
-    blink: BlinkConfig = BlinkConfig()
-    google_home: GoogleHomeConfig = GoogleHomeConfig()
+    speakers: SpeakersConfig = SpeakersConfig()
     homekit: HomeKitConfig = HomeKitConfig()
+    events: EventRulesConfig = EventRulesConfig()
     server: ServerConfig = ServerConfig()
 ```
 
@@ -151,9 +188,10 @@ All fields have defaults → the service can start with an empty/missing `config
 FastAPI app:
 
 - **`POST /nuki/callback`** — Receives Nuki Bridge callback payloads.
-  - Validates `deviceType == 2` (Opener) and `state == 7` (ring detected).
+  - Validates `deviceType == 2` (Opener).
   - Optionally filters by `nukiId` if `opener_id` is configured.
-  - On valid ring: triggers notifier asynchronously.
+  - Passes payload to `event_router.classify()` to determine event type.
+  - Dispatches to the matching event rule's notification channels.
   - Returns 200 immediately (Nuki Bridge expects fast response).
 
 - **`GET /health`** — Health check endpoint.
@@ -174,12 +212,10 @@ Serves the configuration page and provides API endpoints for it.
 | PUT | `/api/config` | Save updated config → `config.yaml` |
 | GET | `/api/discover/nuki` | Auto-discover Nuki Bridges |
 | GET | `/api/discover/hue` | Auto-discover Hue Bridges |
-| GET | `/api/discover/speakers` | Auto-discover Chromecast speakers |
+| GET | `/api/discover/speakers` | Auto-discover Chromecast + AirPlay speakers |
 | GET | `/api/hue/lights` | List available Hue lights and groups |
 | POST | `/api/hue/pair` | Initiate Hue Bridge pairing (press button flow) |
-| POST | `/api/test/blink` | Trigger test blink |
-| POST | `/api/test/announce` | Trigger test Google Home announcement |
-| POST | `/api/test/homekit` | Trigger test HomeKit doorbell notification |
+| POST | `/api/test/event/{type}` | Fire all channels for a specific event rule (ring or ring_to_open) |
 | GET | `/api/status` | Bridge connectivity, last ring, uptime |
 | GET | `/api/homekit/setup-code` | Return HomeKit pairing code + QR data |
 | POST | `/api/pause` | Deregister Nuki callback (keep service running) |
@@ -211,9 +247,9 @@ Manages the Philips Hue Bridge v1 REST API:
 
 Uses `httpx.AsyncClient` for non-blocking HTTP calls.
 
-### Google Home Client (`google_home_client.py`)
+### Chromecast Client (`chromecast_client.py`)
 
-Manages Chromecast-protocol speakers:
+Manages Google Nest / Chromecast speakers:
 
 - **`announce(speaker_names, message, volume)`** — For each speaker:
   1. Generate TTS audio via `gTTS` → save as temp `.mp3`.
@@ -222,6 +258,18 @@ Manages Chromecast-protocol speakers:
 - **`list_speakers()`** — Discover Chromecast devices on LAN via `pychromecast.get_chromecasts()`.
 
 TTS audio is cached in memory (same message doesn't regenerate).
+
+### AirPlay Client (`airplay_client.py`)
+
+Manages Apple HomePod / AirPlay 2 speakers:
+
+- **`announce(speaker_names, message, volume)`** — For each speaker:
+  1. Generate TTS audio via `gTTS` → save as temp `.mp3`.
+  2. Connect via `pyatv` (AirPlay 2).
+  3. Stream audio → wait for completion.
+- **`list_speakers()`** — Discover AirPlay devices on LAN via `pyatv.scan()`.
+
+Shares the TTS cache with the Chromecast client (same `gTTS` output).
 
 ### HomeKit Service (`homekit_service.py`)
 
@@ -249,32 +297,59 @@ async def discover_hue_bridges() -> list[dict]:
 
 async def discover_chromecast_speakers() -> list[dict]:
     """pychromecast / zeroconf scan."""
+
+async def discover_airplay_speakers() -> list[dict]:
+    """pyatv / zeroconf scan for AirPlay 2 devices."""
 ```
 
-Each returns a list of `{"name": ..., "ip": ..., "port": ...}`.
+Each returns a list of `{"name": ..., "ip": ..., "port": ..., "type": "chromecast"|"airplay"}`.
+
+### Event Router (`event_router.py`)
+
+Classifies Nuki callback payloads into event types and dispatches to the matching rule:
+
+```python
+def classify(payload: dict) -> str:
+    """Returns 'ring' or 'ring_to_open' based on Nuki Opener state."""
+    # state=7 with RTO active → ring_to_open
+    # ring detected without door opening → ring
+
+async def dispatch(event_type: str, config: AppConfig, clients: Clients):
+    """Looks up config.events[event_type] and fires matching channels."""
+    rule = config.events.ring if event_type == "ring" else config.events.ring_to_open
+    await notifier.notify(rule, config, clients)
+```
 
 ### Notifier (`notifier.py`)
 
-Replaces the old `blinker.py`. Orchestrates all notification channels in parallel:
+Orchestrates notification channels for a given event rule:
 
 ```python
-async def notify(config, hue_client, google_home_client, homekit_service):
+async def notify(rule: EventRuleConfig, config: AppConfig, clients: Clients):
     tasks = []
 
-    # Hue lights (always enabled if lights/groups configured)
-    if config.hue.lights or config.hue.groups:
-        tasks.append(trigger_hue(hue_client, config))
+    # Hue lights (per-event blink pattern)
+    if rule.blink.mode != "none" and (config.hue.lights or config.hue.groups):
+        tasks.append(trigger_hue(clients.hue, config.hue, rule.blink))
 
-    # Google Home (opt-in)
-    if config.google_home.enabled and config.google_home.speakers:
-        tasks.append(trigger_google_home(google_home_client, config.google_home))
+    # Voice announcements (per-event message)
+    if rule.voice.enabled:
+        if config.speakers.chromecast:
+            tasks.append(trigger_chromecast(
+                clients.chromecast, config.speakers.chromecast,
+                rule.voice.message, config.speakers.volume
+            ))
+        if config.speakers.airplay:
+            tasks.append(trigger_airplay(
+                clients.airplay, config.speakers.airplay,
+                rule.voice.message, config.speakers.volume
+            ))
 
-    # HomeKit (opt-in)
-    if config.homekit.enabled:
-        tasks.append(trigger_homekit(homekit_service))
+    # HomeKit doorbell notification
+    if rule.homekit and config.homekit.enabled:
+        tasks.append(trigger_homekit(clients.homekit))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    # Log failures but never crash
     for r in results:
         if isinstance(r, Exception):
             logger.warning("Notification channel failed: %s", r)
@@ -329,14 +404,36 @@ If the Nuki Bridge is unreachable at shutdown time, the deregistration is logged
     "deviceType": 2,
     "mode": 2,
     "state": 7,
-    "stateName": "ring to open",
+    "stateName": "opening",
     "batteryCritical": false
 }
 ```
 
 Key fields:
 - `deviceType`: 0=SmartLock, 2=Opener
-- `state`: 7=ring detected on Opener
+- `state`: Opener states relevant to NukiBlinker:
+  - `1` = online (ring detected but door not opened → event type: **ring**)
+  - `3` = rto active (Ring to Open mode enabled)
+  - `5` = open
+  - `7` = opening (door being opened → event type: **ring_to_open**)
+
+### Event Classification Logic
+
+```mermaid
+flowchart TD
+    A[Callback received] --> B{deviceType == 2?}
+    B -->|No| C[Ignore]
+    B -->|Yes| D{opener_id filter?}
+    D -->|Mismatch| C
+    D -->|Match or no filter| E{state}
+    E -->|7 opening| F[Event: ring_to_open]
+    E -->|Ring detected without opening| G[Event: ring]
+    E -->|Other| C
+    F --> H[Dispatch ring_to_open rule]
+    G --> I[Dispatch ring rule]
+```
+
+Note: The exact state values for "ring without opening" will be confirmed during implementation against the Nuki Bridge HTTP API v1.13 documentation.
 
 ## External API Reference
 
@@ -364,6 +461,10 @@ Key fields:
 
 Via `pychromecast` — no direct HTTP. Library handles mDNS discovery, connection, and media casting.
 
+### AirPlay 2 Protocol
+
+Via `pyatv` — no direct HTTP. Library handles mDNS discovery, pairing, and audio streaming to HomePod and AirPlay 2 speakers.
+
 ### HomeKit Accessory Protocol
 
 Via `HAP-python` — no direct HTTP. Library handles mDNS advertising, pairing, and event dispatch.
@@ -378,21 +479,25 @@ flowchart LR
 
     subgraph NukiBlinker
         WUI[web_ui.py - API routes]
+        ER[event_router.py]
         CFG[config.py]
         DISC[discovery.py]
         HC[hue_client.py]
-        GHC[google_home_client.py]
+        CC[chromecast_client.py]
+        AC[airplay_client.py]
         HKS[homekit_service.py]
     end
 
     UI -->|GET /api/config| WUI
     UI -->|PUT /api/config| WUI
     UI -->|GET /api/discover/*| WUI
-    UI -->|POST /api/test/*| WUI
+    UI -->|POST /api/test/event/*| WUI
     WUI --> CFG
+    WUI --> ER
     WUI --> DISC
     WUI --> HC
-    WUI --> GHC
+    WUI --> CC
+    WUI --> AC
     WUI --> HKS
     CFG -->|read/write| YAML[(config.yaml)]
 ```
@@ -414,14 +519,16 @@ All tests run via `make test` on the Mac. Real-device testing via `make runLocal
 | Test file | Covers |
 |---|---|
 | `tests/test_config.py` | Config validation, load, save, defaults |
-| `tests/test_server.py` | Callback endpoint (valid ring, wrong device, wrong state) |
+| `tests/test_server.py` | Callback endpoint (valid events, wrong device, unknown state) |
+| `tests/test_event_router.py` | Event classification (ring vs ring_to_open) + rule dispatch |
 | `tests/test_web_ui.py` | Web UI API routes + localhost access control (403) |
 | `tests/test_hue_client.py` | Hue API calls (mock httpx) |
 | `tests/test_nuki_client.py` | Callback registration (mock httpx) |
-| `tests/test_google_home.py` | TTS generation + Chromecast casting (mock pychromecast) |
+| `tests/test_chromecast.py` | TTS generation + Chromecast casting (mock pychromecast) |
+| `tests/test_airplay.py` | TTS generation + AirPlay streaming (mock pyatv) |
 | `tests/test_homekit.py` | HAP accessory lifecycle (mock HAP-python) |
-| `tests/test_notifier.py` | Parallel channel dispatch, failure isolation |
-| `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf) |
+| `tests/test_notifier.py` | Per-event rule channel dispatch, failure isolation |
+| `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf/pyatv) |
 | `tests/test_lifecycle.py` | Startup registration, graceful shutdown deregistration, pause/resume |
 
 ## Docker
@@ -462,4 +569,4 @@ make build       # verify Docker image builds
 - Structured logging via Python `logging` module.
 - Console output (INFO level by default).
 - Rotating file log (`logs/nukiblinker.log`), configurable retention.
-- Key events logged: startup, callback received, ring detected, channel triggered, channel failure, config saved.
+- Key events logged: startup, callback received, event classified (ring / ring_to_open), rule dispatched, channel triggered, channel failure, config saved.
