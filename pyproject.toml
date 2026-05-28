@@ -8,11 +8,16 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = "^0.115.0"
-uvicorn = {version = "^0.34.0", extras = ["standard"]}
+fastapi = ">=0.115,<0.137"
+uvicorn = {version = ">=0.34,<0.49", extras = ["standard"]}
 httpx = "^0.28.0"
 pyyaml = "^6.0"
 pydantic = "^2.10.0"
+pychromecast = "^14.0.0"
+pyatv = "^0.16.0"
+gTTS = "^2.5.0"
+HAP-python = {version = "^4.9.0", extras = ["QRCode"]}
+zeroconf = "^0.136.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^26.5.1"

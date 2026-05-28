@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NukiBlinker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+        h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: #f1f5f9; }
+        .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; border: 1px solid #334155; }
+        .card h2 { font-size: 1rem; font-weight: 500; margin-bottom: 0.75rem; color: #94a3b8; }
+        .status { display: flex; align-items: center; gap: 0.5rem; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+        .dot.paused { background: #f59e0b; }
+        .dot.error { background: #ef4444; }
+        label { display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 0.25rem; }
+        input, select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.875rem; margin-bottom: 0.75rem; }
+        button { padding: 0.5rem 1rem; border-radius: 6px; border: none; font-size: 0.875rem; cursor: pointer; font-weight: 500; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-secondary { background: #475569; color: #e2e8f0; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+        .event-rule { padding: 0.75rem; background: #0f172a; border-radius: 8px; }
+        .event-rule h3 { font-size: 0.875rem; margin-bottom: 0.5rem; }
+        #msg { padding: 0.5rem; font-size: 0.875rem; border-radius: 6px; margin-top: 0.5rem; display: none; }
+        .msg-ok { background: #166534; color: #bbf7d0; }
+        .msg-err { background: #7f1d1d; color: #fecaca; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>NukiBlinker Configuration</h1>
+
+    <div class="card">
+        <h2>Status</h2>
+        <div class="status">
+            <div class="dot" id="statusDot"></div>
+            <span id="statusText">Loading...</span>
+        </div>
+        <div class="btn-row">
+            <button class="btn-secondary" onclick="togglePause()">Pause / Resume</button>
+            <button class="btn-secondary" onclick="testEvent('ring')">Test Ring</button>
+            <button class="btn-secondary" onclick="testEvent('ring_to_open')">Test RTO</button>
+            <button class="btn-secondary" onclick="testEvent('door_opened')">Test Door</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Nuki Bridge</h2>
+        <div class="grid">
+            <div><label>Bridge IP</label><input id="nukiIp" placeholder="192.168.1.100"></div>
+            <div><label>Port</label><input id="nukiPort" type="number" value="8080"></div>
+        </div>
+        <label>API Token</label><input id="nukiToken" type="password" placeholder="Enter token">
+    </div>
+
+    <div class="card">
+        <h2>Philips Hue</h2>
+        <div class="grid">
+            <div><label>Bridge IP</label><input id="hueIp" placeholder="192.168.1.101"></div>
+            <div><label>API Key</label><input id="hueKey" type="password" placeholder="Enter key"></div>
+        </div>
+        <label>Light IDs (comma-separated)</label><input id="hueLights" placeholder="1,2,3">
+    </div>
+
+    <div class="card">
+        <h2>Event Rules</h2>
+        <div class="event-rule">
+            <h3>Ring (unknown visitor)</h3>
+            <div class="grid">
+                <div><label>Blink mode</label><select id="ringBlink"><option>alert</option><option>custom</option><option>none</option></select></div>
+                <div><label>HomeKit</label><select id="ringHk"><option value="true">Yes</option><option value="false">No</option></select></div>
+            </div>
+        </div>
+        <div class="event-rule" style="margin-top: 0.5rem;">
+            <h3>Ring to Open</h3>
+            <div class="grid">
+                <div><label>Blink mode</label><select id="rtoBlink"><option>custom</option><option>alert</option><option>none</option></select></div>
+                <div><label>TTS message</label><input id="rtoMsg" value="{name} llegó a casa"></div>
+            </div>
+        </div>
+        <div class="event-rule" style="margin-top: 0.5rem;">
+            <h3>Door Opened</h3>
+            <div class="grid">
+                <div><label>Audio mode</label><select id="doorAudio"><option>chime</option><option>tts</option><option>none</option></select></div>
+                <div><label>HomeKit</label><select id="doorHk"><option value="false">No</option><option value="true">Yes</option></select></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn-primary" onclick="saveConfig()">Save Configuration</button>
+        <button class="btn-secondary" onclick="loadConfig()">Reload</button>
+    </div>
+    <div id="msg"></div>
+</div>
+
+<script>
+const API = '/api';
+
+function showMsg(text, ok) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = ok ? 'msg-ok' : 'msg-err';
+    el.style.display = 'block';
+    setTimeout(() => el.style.display = 'none', 3000);
+}
+
+async function loadStatus() {
+    try {
+        const r = await fetch(`${API}/status`);
+        const d = await r.json();
+        const dot = document.getElementById('statusDot');
+        const txt = document.getElementById('statusText');
+        dot.className = d.paused ? 'dot paused' : 'dot';
+        txt.textContent = d.paused ? 'Paused' : 'Running';
+    } catch (e) { console.error(e); }
+}
+
+async function loadConfig() {
+    try {
+        const r = await fetch(`${API}/config`);
+        const d = await r.json();
+        document.getElementById('nukiIp').value = d.nuki?.bridge_ip || '';
+        document.getElementById('nukiPort').value = d.nuki?.bridge_port || 8080;
+        document.getElementById('hueIp').value = d.hue?.bridge_ip || '';
+        document.getElementById('hueLights').value = (d.hue?.lights || []).join(',');
+        if (d.events?.ring_to_open?.audio?.message)
+            document.getElementById('rtoMsg').value = d.events.ring_to_open.audio.message;
+        showMsg('Config loaded', true);
+    } catch (e) { showMsg('Failed to load config', false); }
+}
+
+async function saveConfig() {
+    const lights = document.getElementById('hueLights').value.split(',').filter(Boolean).map(Number);
+    const body = {
+        nuki: {
+            bridge_ip: document.getElementById('nukiIp').value,
+            bridge_port: parseInt(document.getElementById('nukiPort').value) || 8080,
+            api_token: document.getElementById('nukiToken').value,
+        },
+        hue: {
+            bridge_ip: document.getElementById('hueIp').value,
+            api_key: document.getElementById('hueKey').value,
+            lights: lights,
+        },
+        events: {
+            ring: { blink: { mode: document.getElementById('ringBlink').value }, homekit: document.getElementById('ringHk').value === 'true' },
+            ring_to_open: { blink: { mode: document.getElementById('rtoBlink').value }, audio: { enabled: true, mode: 'tts', message: document.getElementById('rtoMsg').value } },
+            door_opened: { audio: { enabled: true, mode: document.getElementById('doorAudio').value }, homekit: document.getElementById('doorHk').value === 'true' },
+        },
+    };
+    try {
+        const r = await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+        const d = await r.json();
+        showMsg(d.status === 'saved' ? 'Saved!' : 'Error: ' + (d.error || 'unknown'), d.status === 'saved');
+    } catch (e) { showMsg('Save failed', false); }
+}
+
+async function togglePause() {
+    try {
+        const statusR = await fetch(`${API}/status`);
+        const statusD = await statusR.json();
+        const endpoint = statusD.paused ? 'resume' : 'pause';
+        await fetch(`${API}/${endpoint}`, { method: 'POST' });
+        loadStatus();
+    } catch (e) { showMsg('Action failed', false); }
+}
+
+async function testEvent(type) {
+    try {
+        const r = await fetch(`${API}/test/event/${type}`, { method: 'POST' });
+        const d = await r.json();
+        showMsg(`Test ${type}: ${d.status || d.error}`, !!d.status);
+    } catch (e) { showMsg('Test failed', false); }
+}
+
+loadStatus();
+loadConfig();
+</script>
+</body>
+</html>

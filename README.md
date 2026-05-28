@@ -1,87 +1,74 @@
 # NukiBlinker
 
-NukiBlinker blinks your Philips Hue lights when someone rings the doorbell on your Nuki Opener. It runs as a lightweight service on your local network, listening for Nuki Bridge callbacks and triggering Hue light alerts.
+Reacts to Nuki doorbell and Smart Lock events with configurable notifications: Hue light blinks, voice announcements on Google Nest and Apple HomePod, and Apple HomeKit doorbell push notifications.
 
-## How It Works
+## Features
 
-1. NukiBlinker starts and registers a webhook callback on your Nuki Bridge.
-2. Visitor presses the doorbell → Nuki Opener detects a ring → Nuki Bridge sends a callback.
-3. NukiBlinker triggers your configured Hue lights to blink.
-4. Lights return to their previous state automatically.
-
-## Blink Modes
-
-- **Alert** (default) — Uses Hue's built-in 15-second blink. Zero-config, reliable.
-- **Custom** — Configurable color, flash count, and interval. Lights are saved/restored.
+- **3 event types**: Ring (unknown visitor), Ring to Open (authorized), Door Opened (Smart Lock)
+- **Per-event rules**: each event gets its own blink pattern, audio, and HomeKit toggle
+- **Personalized announcements**: "{name} llegó a casa" via Nuki activity log
+- **Hue light blinks**: alert mode (built-in 15s) or custom (color, flash count, interval)
+- **Voice announcements**: TTS via gTTS on Google Nest (Chromecast) and Apple HomePod (AirPlay 2)
+- **Chime sounds**: bundled audio files for door-opened events
+- **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices
+- **Web UI**: localhost-only config page at `http://localhost:8080/`
+- **Auto-discovery**: Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers
+- **Graceful lifecycle**: shutdown deregisters Nuki callback, pause/resume via web UI
 
 ## Prerequisites
 
-- **Nuki Opener** connected to a **Nuki Bridge** on your LAN
+- **Nuki Opener** and/or **Smart Lock** connected to a **Nuki Bridge**
 - **Philips Hue Bridge** on the same LAN
 - **Docker** (recommended), or **Python >= 3.11** + [Poetry](https://python-poetry.org/)
+- Optional: Google Nest / Chromecast speakers, Apple HomePod
 
-## Configuration
-
-Copy `config.example.yaml` to `config.yaml` and fill in your bridge IPs and API keys:
+## Quick Start
 
 ```sh
 cp config.example.yaml config.yaml
-```
-
-See `config.example.yaml` for all available options.
-
-### Getting API Keys
-
-- **Nuki Bridge**: Enable the HTTP API in the Nuki app → Settings → Manage Bridge → Enable API. Note the token.
-- **Hue Bridge**: Press the link button on the Hue Bridge, then `POST` to `http://<bridge-ip>/api` with `{"devicetype":"nukiblinker"}`. Use the returned `username` as `api_key`.
-
-## Deployment (Mini PC)
-
-The Docker image is built automatically by GitHub Actions on merge to `main` and pushed to GHCR.
-
-### First-time setup
-
-1. Create a directory on the Mini PC (e.g. `~/nukiblinker/`).
-2. Copy `config.example.yaml` to `config.yaml` and fill in your bridge credentials.
-3. Copy `docker-compose.yml` to the same directory.
-4. Run:
-
-```sh
+# Edit config.yaml with your bridge IPs and tokens
 docker compose up -d
 ```
 
-### Updating
+Open `http://localhost:8080/` on the Mini PC to configure via the web UI.
+
+## Configuration
+
+See `config.example.yaml` for all options. Key sections:
+
+- **nuki** — Bridge IP, port, API token, optional opener/lock ID filters
+- **hue** — Bridge IP, API key, light/group IDs
+- **speakers** — Chromecast and AirPlay speaker names, volume
+- **homekit** — Enable/disable, setup code
+- **events** — Per-event rules (ring, ring_to_open, door_opened)
+- **server** — Host and port
+
+### Getting API Keys
+
+- **Nuki Bridge**: Nuki app → Settings → Manage Bridge → Enable API. Note the token.
+- **Hue Bridge**: Press link button, then `POST http://<bridge-ip>/api {"devicetype":"nukiblinker"}`.
+
+## Deployment (Mini PC)
 
 ```sh
 docker compose pull && docker compose up -d
-```
-
-### Local development (Mac only)
-
-```sh
-pip install poetry
-poetry install
-make test
-make lint
-make runLocal
 ```
 
 ## Development
 
 | Command | Description | Where |
 |---|---|---|
-| `make test` | Run unit tests with pytest | Mac / CI |
-| `make lint` | Run flake8 (line-length 120) | Mac / CI |
+| `make test` | Run pytest with coverage | Mac / CI |
+| `make lint` | Run flake8 | Mac / CI |
 | `make format` | Show Black diff | Mac |
-| `make install` | Install/update dependencies | Mac |
-| `make build` | Build Docker image locally | Mac (optional) |
+| `make install` | Install/update deps | Mac |
+| `make runLocal` | Run locally (real devices) | Mac |
+| `make build` | Build Docker image | Mac |
 
 > **Note**: No testing or building on the work laptop. Code only.
 
 ### Tech Stack
 
-- **Python 3.14** (Docker base `python:3.14.5-slim`)
-- **FastAPI** + **uvicorn** (async HTTP server)
-- **httpx** (async HTTP client for bridge APIs)
-- **pydantic** (config validation)
-- **Black** (formatter, line-length 120) · **flake8** (linter) · **pytest**
+- **Python 3.14** · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
+- **pychromecast** · **pyatv** · **gTTS** · **HAP-python** · **zeroconf**
+- **Black** · **flake8** · **pytest** · **pytest-asyncio**
