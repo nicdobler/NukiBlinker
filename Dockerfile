@@ -2,9 +2,10 @@ FROM python:3.14.5-slim
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock ./
+RUN pip install --no-cache-dir poetry
 
-RUN pip install poetry && poetry lock && poetry install --no-root --only=main
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-root --only=main
 
 COPY nukiblinker ./nukiblinker
 

@@ -1,0 +1,80 @@
+"""Google Nest / Chromecast audio playback via pychromecast."""
+
+from __future__ import annotations
+
+import asyncio
+from functools import partial
+
+from nukiblinker.logging_config import get_logger
+
+logger = get_logger("chromecast")
+
+try:
+    import pychromecast
+except ImportError:  # pragma: no cover
+    pychromecast = None  # type: ignore[assignment]
+
+
+class ChromecastClient:
+    """Plays audio files on Chromecast / Google Nest speakers."""
+
+    async def play(self, speaker_names: list[str], audio_url: str, volume: float = 0.5) -> None:
+        """Cast an audio URL to all named speakers."""
+        if pychromecast is None:
+            logger.error("pychromecast not installed — cannot play audio")
+            return
+
+        loop = asyncio.get_running_loop()
+
+        chromecasts, browser = await loop.run_in_executor(None, pychromecast.get_chromecasts)
+        try:
+            for cc in chromecasts:
+                if cc.cast_info.friendly_name in speaker_names:
+                    await loop.run_in_executor(None, partial(self._play_on_device, cc, audio_url, volume))
+        finally:
+            browser.stop_discovery()
+
+    @staticmethod
+    def _play_on_device(device, audio_url: str, volume: float) -> None:
+        """Blocking helper — runs in executor."""
+        device.wait()
+        mc = device.media_controller
+
+        # Save and set volume
+        original_volume = device.status.volume_level if device.status else volume
+        device.set_volume(volume)
+
+        mc.play_media(audio_url, "audio/mp3")
+        mc.block_until_active(timeout=10)
+
+        # Wait for playback to finish
+        import time
+
+        for _ in range(60):
+            if mc.status.player_is_idle:
+                break
+            time.sleep(0.5)
+
+        # Restore volume
+        device.set_volume(original_volume)
+        logger.info("Played audio on %s", device.cast_info.friendly_name)
+
+    async def list_speakers(self) -> list[dict]:
+        """Discover Chromecast devices on LAN."""
+        if pychromecast is None:
+            return []
+
+        loop = asyncio.get_running_loop()
+        chromecasts, browser = await loop.run_in_executor(None, pychromecast.get_chromecasts)
+        try:
+            return [
+                {
+                    "name": cc.cast_info.friendly_name,
+                    "ip": str(cc.cast_info.host),
+                    "port": cc.cast_info.port,
+                    "type": "chromecast",
+                }
+                for cc in chromecasts
+            ]
+        finally:
+            browser.stop_discovery()
