@@ -11,285 +11,16 @@ tests/test_airplay.py ....                                               [  3%]
 tests/test_audio.py ...........                                          [ 12%]
 tests/test_chromecast.py ...                                             [ 15%]
 tests/test_config.py ..............                                      [ 26%]
-tests/test_discovery.py ...FF                                            [ 31%]
+tests/test_discovery.py .....                                            [ 31%]
 tests/test_event_router.py ..................                            [ 46%]
-tests/test_homekit.py ..F......                                          [ 53%]
+tests/test_homekit.py .........                                          [ 53%]
 tests/test_hue_client.py ......                                          [ 58%]
 tests/test_lifecycle.py ..............                                   [ 70%]
 tests/test_notifier.py .......                                           [ 76%]
 tests/test_nuki_client.py ........                                       [ 83%]
 tests/test_server.py .........                                           [ 90%]
-tests/test_web_ui.py FFFFFFFFF..                                         [100%]
+tests/test_web_ui.py ...........                                         [100%]
 
-=================================== FAILURES ===================================
-_______________ TestDiscoverChromecast.test_delegates_to_client ________________
-
-self = <tests.test_discovery.TestDiscoverChromecast object at 0x109e34d70>
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_client(self):
->       with patch("nukiblinker.discovery.ChromecastClient") as mock_cls:
-
-tests/test_discovery.py:68: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1455: in __enter__
-    original, local = self.get_original()
-                      ^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = <unittest.mock._patch object at 0x10a59c380>
-
-    def get_original(self):
-        target = self.getter()
-        name = self.attribute
-    
-        original = DEFAULT
-        local = False
-    
-        try:
-            original = target.__dict__[name]
-        except (AttributeError, KeyError):
-            original = getattr(target, name, DEFAULT)
-        else:
-            local = True
-    
-        if name in _builtins and isinstance(target, ModuleType):
-            self.create = True
-    
-        if not self.create and original is DEFAULT:
->           raise AttributeError(
-                "%s does not have the attribute %r" % (target, name)
-            )
-E           AttributeError: <module 'nukiblinker.discovery' from '/Users/nico/Library/Mobile Documents/com~apple~CloudDocs/Code/NukiBlinker/nukiblinker/discovery.py'> does not have the attribute 'ChromecastClient'
-
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1428: AttributeError
-_________________ TestDiscoverAirPlay.test_delegates_to_client _________________
-
-self = <tests.test_discovery.TestDiscoverAirPlay object at 0x109e35130>
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_client(self):
->       with patch("nukiblinker.discovery.AirPlayClient") as mock_cls:
-
-tests/test_discovery.py:80: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1455: in __enter__
-    original, local = self.get_original()
-                      ^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = <unittest.mock._patch object at 0x10a5a7d40>
-
-    def get_original(self):
-        target = self.getter()
-        name = self.attribute
-    
-        original = DEFAULT
-        local = False
-    
-        try:
-            original = target.__dict__[name]
-        except (AttributeError, KeyError):
-            original = getattr(target, name, DEFAULT)
-        else:
-            local = True
-    
-        if name in _builtins and isinstance(target, ModuleType):
-            self.create = True
-    
-        if not self.create and original is DEFAULT:
->           raise AttributeError(
-                "%s does not have the attribute %r" % (target, name)
-            )
-E           AttributeError: <module 'nukiblinker.discovery' from '/Users/nico/Library/Mobile Documents/com~apple~CloudDocs/Code/NukiBlinker/nukiblinker/discovery.py'> does not have the attribute 'AirPlayClient'
-
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1428: AttributeError
-____________________ TestStart.test_starts_driver_in_thread ____________________
-
-args = (<tests.test_homekit.TestStart object at 0x109f32a80>,)
-keywargs = {'tmp_path': PosixPath('/private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-2/test_starts_driver_in_thread0')}
-
-    @wraps(func)
-    def patched(*args, **keywargs):
->       with self.decoration_helper(patched,
-                                    args,
-                                    keywargs) as (newargs, newkeywargs):
-
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1384: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:137: in __enter__
-    return next(self.gen)
-           ^^^^^^^^^^^^^^
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1366: in decoration_helper
-    arg = exit_stack.enter_context(patching)
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/contextlib.py:526: in enter_context
-    result = _enter(cm)
-             ^^^^^^^^^^
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1455: in __enter__
-    original, local = self.get_original()
-                      ^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = <unittest.mock._patch object at 0x109ea2000>
-
-    def get_original(self):
-        target = self.getter()
-        name = self.attribute
-    
-        original = DEFAULT
-        local = False
-    
-        try:
-            original = target.__dict__[name]
-        except (AttributeError, KeyError):
-            original = getattr(target, name, DEFAULT)
-        else:
-            local = True
-    
-        if name in _builtins and isinstance(target, ModuleType):
-            self.create = True
-    
-        if not self.create and original is DEFAULT:
->           raise AttributeError(
-                "%s does not have the attribute %r" % (target, name)
-            )
-E           AttributeError: <module 'nukiblinker.homekit_service' from '/Users/nico/Library/Mobile Documents/com~apple~CloudDocs/Code/NukiBlinker/nukiblinker/homekit_service.py'> does not have the attribute 'service_loader'
-
-/opt/homebrew/Cellar/python@3.12/3.12.1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/unittest/mock.py:1428: AttributeError
-___________________ TestGetConfig.test_returns_masked_config ___________________
-
-self = <tests.test_web_ui.TestGetConfig object at 0x10a45b0b0>
-client = <starlette.testclient.TestClient object at 0x10a8b2b40>
-
-    def test_returns_masked_config(self, client):
-        r = client.get("/api/config")
->       assert r.status_code == 200
-E       assert 403 == 200
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:43: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/config
-___________________ TestGetConfig.test_includes_event_rules ____________________
-
-self = <tests.test_web_ui.TestGetConfig object at 0x10a45a960>
-client = <starlette.testclient.TestClient object at 0x10a5a5370>
-
-    def test_includes_event_rules(self, client):
-        r = client.get("/api/config")
-        data = r.json()
->       assert "events" in data
-E       AssertionError: assert 'events' in {'error': 'forbidden'}
-
-tests/test_web_ui.py:51: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/config
-____________________ TestPutConfig.test_saves_valid_config _____________________
-
-self = <tests.test_web_ui.TestPutConfig object at 0x10a45a5d0>
-client = <starlette.testclient.TestClient object at 0x10a578f50>
-
-    def test_saves_valid_config(self, client):
-        new_cfg = AppConfig()
-        new_cfg.server.port = 9090
-        r = client.put("/api/config", json=new_cfg.model_dump(mode="json"))
->       assert r.status_code == 200
-E       assert 403 == 200
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:62: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/config
-__________________ TestPutConfig.test_rejects_invalid_config ___________________
-
-self = <tests.test_web_ui.TestPutConfig object at 0x10a43b3e0>
-client = <starlette.testclient.TestClient object at 0x10a8f8650>
-
-    def test_rejects_invalid_config(self, client):
-        r = client.put("/api/config", json={"server": {"port": "invalid"}})
->       assert r.status_code == 400
-E       assert 403 == 400
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:67: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/config
-________________________ TestStatus.test_returns_status ________________________
-
-self = <tests.test_web_ui.TestStatus object at 0x10a480470>
-client = <starlette.testclient.TestClient object at 0x10a7ff2f0>
-
-    def test_returns_status(self, client):
-        r = client.get("/api/status")
->       assert r.status_code == 200
-E       assert 403 == 200
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:73: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/status
-__________________________ TestPauseResume.test_pause __________________________
-
-self = <tests.test_web_ui.TestPauseResume object at 0x10a480890>
-app = <fastapi.applications.FastAPI object at 0x10a7d20f0>
-client = <starlette.testclient.TestClient object at 0x10a797b30>
-
-    def test_pause(self, app, client):
-        r = client.post("/api/pause")
->       assert r.status_code == 200
-E       assert 403 == 200
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:80: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/pause
-_________________________ TestPauseResume.test_resume __________________________
-
-self = <tests.test_web_ui.TestPauseResume object at 0x10a480c20>
-app = <fastapi.applications.FastAPI object at 0x10a7bea20>
-client = <starlette.testclient.TestClient object at 0x10a721fa0>
-
-    def test_resume(self, app, client):
-        app.state.paused = True
-        r = client.post("/api/resume")
->       assert r.status_code == 200
-E       assert 403 == 200
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:86: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/resume
-_________________________ TestTestEvent.test_fire_ring _________________________
-
-self = <tests.test_web_ui.TestTestEvent object at 0x10a480fb0>
-client = <starlette.testclient.TestClient object at 0x10a7232f0>
-
-    def test_fire_ring(self, client):
-        with patch("nukiblinker.web_ui.event_router") as mock_er:
-            mock_er.dispatch = AsyncMock()
-            r = client.post("/api/test/event/ring")
->           assert r.status_code == 200
-E           assert 403 == 200
-E            +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:95: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/test/event/ring
-____________________ TestTestEvent.test_unknown_event_type _____________________
-
-self = <tests.test_web_ui.TestTestEvent object at 0x10a481370>
-client = <starlette.testclient.TestClient object at 0x10a8b0200>
-
-    def test_unknown_event_type(self, client):
-        r = client.post("/api/test/event/unknown")
->       assert r.status_code == 400
-E       assert 403 == 400
-E        +  where 403 = <Response [403 Forbidden]>.status_code
-
-tests/test_web_ui.py:100: AssertionError
------------------------------- Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/test/event/unknown
 =============================== warnings summary ===============================
 tests/test_server.py::TestNukiCallback::test_ring_to_open_event
 tests/test_server.py::TestNukiCallback::test_door_opened_event
@@ -302,7 +33,7 @@ tests/test_server.py::TestNukiCallback::test_door_opened_event
 ==================================== PASSES ====================================
 __________ TestGetAudioChime.test_chime_missing_falls_back_to_default __________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.audio:audio.py:44 Chime file not found: /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-2/test_chime_missing_falls_back_0/nonexistent.mp3 — falling back to default
+WARNING  nukiblinker.audio:audio.py:44 Chime file not found: /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-3/test_chime_missing_falls_back_0/nonexistent.mp3 — falling back to default
 __________________ TestGetAudioTTS.test_tts_fallback_on_error __________________
 ------------------------------ Captured log call -------------------------------
 ERROR    nukiblinker.audio:audio.py:66 TTS generation failed for: test
@@ -321,13 +52,13 @@ Traceback (most recent call last):
 Exception: network error
 ____________ TestLoadConfig.test_load_missing_file_returns_defaults ____________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.config:config.py:126 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-2/test_load_missing_file_returns0/nonexistent.yaml not found — using defaults
+WARNING  nukiblinker.config:config.py:126 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-3/test_load_missing_file_returns0/nonexistent.yaml not found — using defaults
 _____________ TestLoadConfig.test_load_empty_file_returns_defaults _____________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.config:config.py:130 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-2/test_load_empty_file_returns_d0/empty.yaml is empty — using defaults
+WARNING  nukiblinker.config:config.py:130 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-3/test_load_empty_file_returns_d0/empty.yaml is empty — using defaults
 ___________ TestLoadConfig.test_load_non_dict_yaml_returns_defaults ____________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.config:config.py:134 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-2/test_load_non_dict_yaml_return0/bad.yaml is not a dict — using defaults
+WARNING  nukiblinker.config:config.py:134 Config file /private/var/folders/tb/963xsj155rxg0jsdrsg61gwc0000gn/T/pytest-of-nico/pytest-3/test_load_non_dict_yaml_return0/bad.yaml is not a dict — using defaults
 _____________ TestDiscoverNukiBridges.test_returns_empty_on_error ______________
 ------------------------------ Captured log call -------------------------------
 WARNING  nukiblinker.discovery:discovery.py:26 Nuki Bridge discovery failed
@@ -360,10 +91,10 @@ Traceback (most recent call last):
 Exception: fail
 _________________ TestStart.test_skips_when_hap_not_available __________________
 ------------------------------ Captured log call -------------------------------
-ERROR    nukiblinker.homekit:homekit_service.py:46 HAP-python not installed — HomeKit disabled
+ERROR    nukiblinker.homekit:homekit_service.py:50 HAP-python not installed — HomeKit disabled
 ________________ TestTriggerRing.test_no_crash_when_not_started ________________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.homekit:homekit_service.py:74 HomeKit accessory not started — cannot trigger ring
+WARNING  nukiblinker.homekit:homekit_service.py:78 HomeKit accessory not started — cannot trigger ring
 ___________________ TestPair.test_pairing_error_returns_none ___________________
 ------------------------------ Captured log call -------------------------------
 WARNING  nukiblinker.hue_client:hue_client.py:149 Hue pairing error: link button not pressed
@@ -398,9 +129,15 @@ WARNING  nukiblinker.audio:audio.py:44 Chime file not found: /Users/nico/Library
 ____________________ TestNukiCallback.test_invalid_payload _____________________
 ------------------------------ Captured log call -------------------------------
 WARNING  nukiblinker.server:server.py:37 Invalid callback payload
-____________ TestLocalhostGuard.test_api_accessible_from_localhost _____________
+__________________ TestPutConfig.test_rejects_invalid_config ___________________
 ------------------------------ Captured log call -------------------------------
-WARNING  nukiblinker.web_ui:web_ui.py:39 Blocked request from testclient to /api/status
+WARNING  nukiblinker.web_ui:web_ui.py:77 Config update failed: 1 validation error for AppConfig
+server.port
+  Input should be a valid integer, unable to parse string as an integer [type=int_parsing, input_value='invalid', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/int_parsing
+______________ TestLocalhostGuard.test_blocked_when_not_localhost ______________
+------------------------------ Captured log call -------------------------------
+WARNING  nukiblinker.web_ui:web_ui.py:40 Blocked request from testclient to /api/status
 ================================ tests coverage ================================
 _______________ coverage: platform darwin, python 3.12.1-final-0 _______________
 
@@ -411,16 +148,16 @@ nukiblinker/airplay_client.py         28      2    93%   24-25
 nukiblinker/audio.py                  43      1    98%   13
 nukiblinker/chromecast_client.py      42      4    90%   24-25, 56, 65
 nukiblinker/config.py                 77      0   100%
-nukiblinker/discovery.py              41     17    59%   41-43, 48-55, 60-67
+nukiblinker/discovery.py              41      9    78%   41-43, 53-55, 65-67
 nukiblinker/event_router.py           63      3    95%   10, 85-86
-nukiblinker/homekit_service.py        59     11    81%   19-21, 49-63
+nukiblinker/homekit_service.py        65      2    97%   19-21
 nukiblinker/hue_client.py             90      8    91%   68-69, 86-87, 92-93, 108-109
 nukiblinker/logging_config.py         15      8    47%   13-21
 nukiblinker/notifier.py               44      3    93%   12, 60-61
 nukiblinker/nuki_client.py            55      3    95%   56-57, 72
 nukiblinker/server.py                 36      0   100%
-nukiblinker/web_ui.py                 98     51    48%   17, 58-65, 69-77, 81-82, 86-87, 91-93, 97-98, 105-115, 119-121, 125-134, 141-144
+nukiblinker/web_ui.py                 99     19    81%   17, 82-83, 87-88, 92-94, 111-114, 133-135, 142-145
 ----------------------------------------------------------------
-TOTAL                                691    111    84%
-Required test coverage of 75.0% reached. Total coverage: 83.94%
-================== 12 failed, 107 passed, 2 warnings in 2.98s ==================
+TOTAL                                698     62    91%
+Required test coverage of 75.0% reached. Total coverage: 91.12%
+======================= 119 passed, 2 warnings in 51.77s =======================
