@@ -2,25 +2,26 @@
 
 ## Vision
 
-A lightweight, always-on service that reacts to Nuki Opener doorbell events — blinking Philips Hue lights, announcing on Google Nest and HomePod speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.
+A lightweight, always-on service that reacts to Nuki smart lock events — blinking Philips Hue lights, playing chimes and announcements on Google Nest and HomePod speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.
 
 ## Problem
 
-The Nuki Opener handles intercom/doorbell events but has no built-in way to trigger visual or audio alerts on other smart home devices. In a large house or when wearing headphones, the intercom ring can be missed. NukiBlinker bridges this gap with configurable reactions: different blink patterns, voice announcements, and push notifications depending on the event type.
+Nuki devices (Opener + Smart Lock) handle doorbell and door events but have no built-in way to trigger visual or audio alerts on other smart home devices. In a large house or when wearing headphones, the intercom ring or door opening can be missed. NukiBlinker bridges this gap with configurable reactions: different blink patterns, chimes, voice announcements, and push notifications depending on the event type.
 
 ## Users
 
-Individual homeowner running a Nuki Opener and one or more of: Philips Hue Bridge, Google Nest speakers, Apple HomePod, Apple HomeKit devices — all on the same local network.
+Individual homeowner running a Nuki Opener and/or Nuki Smart Lock, plus one or more of: Philips Hue Bridge, Google Nest speakers, Apple HomePod, Apple HomeKit devices — all on the same local network.
 
 ## How It Works (User Perspective)
 
 1. User configures NukiBlinker via the web UI (bridges, speakers, event rules).
 2. NukiBlinker starts and registers a webhook callback on the Nuki Bridge.
-3. A visitor presses the doorbell → Nuki Opener detects the event.
+3. An event occurs on a Nuki device (doorbell ring, door opened, etc.).
 4. Nuki Bridge sends an HTTP callback to NukiBlinker.
-5. NukiBlinker identifies the event type (ring vs ring-to-open) and fires the matching rule:
+5. NukiBlinker identifies the event type and fires the matching rule:
    - **Ring (unknown visitor)**: Hue lights blink with a warning pattern.
-   - **Ring to open (authorized person)**: Different blink pattern + voice announcement ("Nico ha llegado a casa") on HomePod / Google Nest.
+   - **Ring to open (authorized person)**: Different blink + voice announcement ("Nico ha llegado a casa").
+   - **Door opened (Smart Lock)**: Chime sound on speakers.
 6. Lights return to their previous state after the blink sequence.
 
 ## Lifecycle
@@ -45,34 +46,37 @@ The Nuki Bridge does not retry or error when a callback URL is unreachable — i
 
 | Device | Role | API / Protocol |
 |---|---|---|
-| Nuki Bridge | Pushes ring events via HTTP callback | [Nuki Bridge HTTP API](https://developer.nuki.io/page/nuki-bridge-http-api-1-13/4) |
+| Nuki Bridge | Pushes events via HTTP callback | [Nuki Bridge HTTP API](https://developer.nuki.io/page/nuki-bridge-http-api-1-13/4) |
 | Nuki Opener | Detects doorbell ring (deviceType=2) | Via Nuki Bridge |
+| Nuki Smart Lock | Detects door open/lock/unlock (deviceType=0) | Via Nuki Bridge |
 | Philips Hue Bridge | Controls lights | [Hue CLIP API v2](https://developers.meethue.com/develop/hue-api-v2/) / v1 REST |
-| Google Nest / Home | Voice announcements | Chromecast protocol (`pychromecast`) + TTS (`gTTS`) |
-| Apple HomePod | Voice announcements | AirPlay 2 (`pyatv`) + TTS (`gTTS`) |
+| Google Nest / Home | Chimes and voice announcements | Chromecast protocol (`pychromecast`) + TTS (`gTTS`) |
+| Apple HomePod | Chimes and voice announcements | AirPlay 2 (`pyatv`) + TTS (`gTTS`) |
 | Apple HomeKit | Doorbell notifications on iPhone/iPad/Watch/Mac | HomeKit Accessory Protocol (`HAP-python`) |
 
 ## Event Types
 
-The Nuki Opener produces different events. NukiBlinker maps each to a configurable set of actions via **event rules**.
+Nuki devices produce different events. NukiBlinker maps each to a configurable set of actions via **event rules**.
 
-| Event | Nuki state | Meaning | Default actions |
+| Event | Nuki device | Meaning | Default actions |
 |---|---|---|---|
-| **Ring (no open)** | Ring detected, door stays closed | Unknown visitor rang the doorbell | Hue lights blink (warning pattern) |
-| **Ring to open** | Ring detected, door opened (RTO active) | Authorized person arrived | Different blink + voice announcement |
+| **Ring (no open)** | Opener (deviceType=2) | Unknown visitor rang the doorbell | Hue lights blink (warning pattern) |
+| **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + voice announcement |
+| **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime sound on speakers |
 
 Each event rule configures:
 - Which **notification channels** to fire (checkboxes).
 - Which **blink pattern** to use (alert, custom, or none).
-- Which **announcement message** to speak (per-event text).
+- Which **audio** to play: chime (bundled sound), TTS (custom message), or none.
+- Whether to send a **HomeKit** notification.
 
 Example configuration:
 
-| | Ring (no open) | Ring to open |
-|---|---|---|
-| Hue Lights | ✅ Red flash, 5x | ✅ Green flash, 2x |
-| Voice Announcement | ❌ | ✅ "Nico ha llegado a casa" |
-| HomeKit Notification | ✅ | ✅ |
+| | Ring (no open) | Ring to open | Door opened |
+|---|---|---|---|
+| Hue Lights | ✅ Red flash, 5x | ✅ Green flash, 2x | ❌ |
+| Audio | ❌ | ✅ TTS "Nico ha llegado a casa" | ✅ Chime |
+| HomeKit Notification | ✅ | ✅ | ❌ |
 
 ## Blink Modes
 
@@ -93,19 +97,23 @@ All enabled channels fire in parallel. Each event rule selects which channels to
 | Channel | Type | What happens | Required hardware |
 |---|---|---|---|
 | **Hue Lights** | Visual | Lights blink (per-event pattern) | Hue Bridge |
-| **Voice Announcements** | Audio | TTS message on speakers | Google Nest (Chromecast) and/or HomePod (AirPlay) |
+| **Audio** | Sound | Chime or TTS message on speakers | Google Nest (Chromecast) and/or HomePod (AirPlay) |
 | **Apple HomeKit** | Push notification | Native doorbell alert on all Apple devices | iPhone/iPad/Watch/Mac |
 
-### Voice Announcements
+### Audio (Chimes & Announcements)
 
-TTS announcements on **Google Nest** and/or **Apple HomePod** speakers.
+Plays sounds on **Google Nest** and/or **Apple HomePod** speakers. Two audio modes:
 
+- **Chime** (`mode: chime`): Plays a bundled chime sound (pleasant doorbell tone). No internet required.
+- **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet. Message is configurable per event rule.
+
+Speaker support:
 - **Google Nest / Home**: Uses Chromecast protocol via `pychromecast`. Speakers auto-discovered on LAN.
 - **Apple HomePod**: Uses AirPlay 2 via `pyatv`. Speakers auto-discovered on LAN.
-- TTS audio generated via `gTTS` (Google Text-to-Speech) — requires internet.
-- Announcement message is configurable **per event rule** (e.g., "Someone is at the door" vs "Nico ha llegado a casa").
 - Volume can be set independently of the speaker's current volume.
 - Both speaker types can be active simultaneously.
+
+Bundled chime sounds are stored in `nukiblinker/sounds/`. Future: user-uploadable custom sounds.
 
 ### Apple HomeKit Doorbell
 - NukiBlinker exposes a virtual HomeKit doorbell accessory via `HAP-python`.
@@ -130,7 +138,7 @@ A simple, single-page web interface for configuring NukiBlinker.
 1. **Nuki Bridge**
    - IP and port (auto-discovered if possible; manual fallback).
    - API token.
-   - Opener selection (if multiple Openers are paired, pick which one triggers events).
+   - Device picker — select which Opener and/or Smart Lock to listen to.
 
 2. **Hue Bridge**
    - IP (auto-discovered if possible; manual fallback).
@@ -148,10 +156,10 @@ A simple, single-page web interface for configuring NukiBlinker.
    - "Test notification" button.
 
 5. **Event Rules**
-   - One card per event type (Ring, Ring to open).
+   - One card per event type (Ring, Ring to open, Door opened).
    - Each card configures:
      - Hue: enable + blink pattern (alert/custom with color, flashes, interval).
-     - Voice: enable + announcement message text.
+     - Audio: mode (none / chime / TTS) + message text (for TTS mode).
      - HomeKit: enable/disable.
    - "Test" button per event rule (fires all enabled channels for that rule).
 
@@ -175,19 +183,20 @@ Key settings:
 - **Hue Bridge**: IP, API key, list of light IDs and/or group IDs to blink.
 - **Speakers**: list of speaker names/IPs (Chromecast + AirPlay), volume.
 - **HomeKit**: enabled flag, pairing state/code.
-- **Event rules**: per-event config (channels enabled, blink pattern, announcement message).
+- **Nuki Smart Lock**: optional Smart Lock ID filter.
+- **Event rules**: per-event config (channels enabled, blink pattern, audio mode/message).
 - **Server**: host and port for the callback listener.
 - **Logging**: level, file path.
 
 ## Acceptance Criteria
 
-1. **Event detection** — Doorbell events on the Nuki Opener trigger the callback within 2 seconds.
-2. **Event classification** — Ring (no open) and Ring to open are correctly distinguished and routed to the matching rule.
+1. **Event detection** — Events from the Nuki Opener and Smart Lock trigger the callback within 2 seconds.
+2. **Event classification** — Ring, Ring to open, and Door opened are correctly distinguished and routed to the matching rule.
 3. **Light blink** — Configured Hue lights blink with the per-event pattern within 1 second of receiving the callback.
 4. **State restore** — After a custom blink sequence, lights return to their exact previous state (on/off, brightness, color).
-5. **Voice announcements** — TTS plays on selected Google Nest and/or HomePod speakers within 2 seconds.
+5. **Audio** — Chime or TTS plays on selected Google Nest and/or HomePod speakers within 2 seconds.
 6. **HomeKit** — Doorbell notification appears on all paired Apple devices within 2 seconds.
-7. **Per-event rules** — Each event type has independently configurable channels, blink pattern, and announcement message.
+7. **Per-event rules** — Each event type has independently configurable channels, blink pattern, and audio mode/message.
 8. **Resilience** — If a channel target is unreachable, NukiBlinker logs a warning but does not crash.
 9. **Channel independence** — Each notification channel works independently; a failure in one does not block others.
 10. **Idempotent startup** — Multiple restarts do not create duplicate callbacks on the Nuki Bridge.
@@ -205,15 +214,16 @@ Key settings:
 - No integration with Nuki Cloud API (local bridge only, except for bridge discovery).
 - No Alexa support (no public local API for announcements).
 - No multi-bridge support (single Nuki Bridge + single Hue Bridge).
-- No door-opening automation — NukiBlinker is notification only, it never opens the door.
-- No visitor identification — the system knows "ring" vs "ring to open", not who rang.
+- No door-opening automation — NukiBlinker is notification only, it never opens or locks doors.
+- No visitor identification — the system knows event types, not who triggered them.
 - No remote access to the web UI — localhost only.
 
 ## Future Considerations
 
 - Support for multiple Hue Bridges or light groups with different patterns.
 - Cooldown period to prevent rapid re-triggering.
-- Additional Nuki event types (lock, unlock, door open) as triggers.
+- Additional Nuki event types (lock, unlock, battery low) as triggers.
+- User-uploadable custom chime sounds via the web UI.
 - Push notification fallback (e.g., Pushover, Telegram) when not home.
 - Optional authentication for the web UI (to allow LAN-wide access).
 - Per-person announcements if combined with a camera/face recognition system.
