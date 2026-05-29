@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Enhanced web UI: tabbed configuration interface (Status, Nuki, Hue, Speakers, HomeKit, Events).
+  - Nuki: bridge discovery, callback registration, device listing with click-to-set IDs.
+  - Hue: bridge discovery, guided pairing (press button → pair), light & group listing.
+  - Speakers: Chromecast & AirPlay discovery, volume slider.
+  - HomeKit: enable/disable toggle, setup code, persist directory.
+  - Events: full per-event config — blink mode with custom HSB, audio (TTS/chime), HomeKit toggle.
+  - Fixed save bar, mandatory field indicators, status badge in header.
+- New API endpoints: `/api/nuki/pair`, `/api/nuki/devices`, `/api/nuki/callbacks`,
+  `/api/hue/pair`, `/api/hue/lights`, `/api/hue/groups`.
+
+### Fixed
+- `PUT /api/config` now preserves masked secrets (`***`) instead of overwriting real tokens.
+
+### Changed
 - Project scaffolding: specs, config, Dockerfile, Makefile, CI setup.
 - Core implementation: all modules, tests, and web UI.
   - `config.py` — Pydantic models with full event rules, load/save YAML.
