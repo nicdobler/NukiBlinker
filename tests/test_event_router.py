@@ -1,6 +1,6 @@
 """Tests for nukiblinker.event_router — classification, person resolution, dispatch."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 

@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
-import signal
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import uvicorn
 
