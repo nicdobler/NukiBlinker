@@ -2,7 +2,8 @@ services:
   nukiblinker:
     image: ghcr.io/nicdobler/nukiblinker:latest
     container_name: nukiblinker
-    network_mode: host
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import socket
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import uvicorn
@@ -72,7 +74,16 @@ async def _register_callback(config: AppConfig, clients: Clients) -> int | None:
     if clients.nuki is None:
         logger.warning("Nuki not configured — skipping callback registration")
         return None
-    callback_url = f"http://{config.server.host}:{config.server.port}/nuki/callback"
+    host = config.server.host
+    if host in ("0.0.0.0", "::"):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect((config.nuki.bridge_ip, 80))
+            host = s.getsockname()[0]
+            s.close()
+        except Exception:
+            host = "127.0.0.1"
+    callback_url = f"http://{host}:{config.server.port}/nuki/callback"
     try:
         return await clients.nuki.register_callback(callback_url)
     except Exception:
@@ -113,26 +124,21 @@ def main() -> None:  # pragma: no cover
         clients.homekit.start()
         logger.info("HomeKit doorbell started (code: %s)", clients.homekit.get_setup_code())
 
-    # Create app
-    app = create_app(config, clients)
-    mount_web_ui(app, args.config)
-
-    # Register callback on startup
-    callback_id = None
-
-    @app.on_event("startup")
-    async def on_startup():
-        nonlocal callback_id
+    # Lifespan: startup + shutdown in a single context manager
+    @asynccontextmanager
+    async def lifespan(app):
         callback_id = await _register_callback(config, clients)
         app.state.callback_id = callback_id
-
-    @app.on_event("shutdown")
-    async def on_shutdown():
+        yield
         logger.info("Shutting down — deregistering callback")
         await _deregister_callback(clients, callback_id)
         if clients.homekit is not None:
             clients.homekit.stop()
         logger.info("Clean shutdown complete")
+
+    # Create app
+    app = create_app(config, clients, lifespan=lifespan)
+    mount_web_ui(app, args.config)
 
     # Run
     uvicorn.run(app, host=config.server.host, port=config.server.port)

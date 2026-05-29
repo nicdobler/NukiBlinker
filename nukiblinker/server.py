@@ -13,9 +13,9 @@ from nukiblinker.logging_config import get_logger
 logger = get_logger("server")
 
 
-def create_app(config, clients) -> FastAPI:
+def create_app(config, clients, lifespan=None) -> FastAPI:
     """Create and return the FastAPI application."""
-    app = FastAPI(title="NukiBlinker", version="0.1.0")
+    app = FastAPI(title="NukiBlinker", version="0.1.0", lifespan=lifespan)
 
     # Store references for use in routes
     app.state.config = config
