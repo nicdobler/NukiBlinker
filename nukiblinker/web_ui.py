@@ -69,6 +69,14 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     async def put_config(request: Request) -> JSONResponse:
         try:
             body = await request.json()
+            current = request.app.state.config
+            # Preserve masked secrets — GET returns "***"
+            nuki = body.get("nuki", {})
+            if nuki.get("api_token") in ("***", ""):
+                nuki["api_token"] = current.nuki.api_token
+            hue = body.get("hue", {})
+            if hue.get("api_key") in ("***", ""):
+                hue["api_key"] = current.hue.api_key
             new_config = AppConfig.model_validate(body)
             request.app.state.config = new_config
             save_config(new_config, request.app.state.config_path)
@@ -92,6 +100,155 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         cc = await discovery.discover_chromecast_speakers()
         ap = await discovery.discover_airplay_speakers()
         return JSONResponse(cc + ap)
+
+    # ------------------------------------------------------------------
+    # Nuki pairing & device discovery
+    # ------------------------------------------------------------------
+
+    @router.post("/nuki/pair")
+    async def nuki_pair(request: Request) -> JSONResponse:
+        """Register NukiBlinker callback with the Nuki Bridge."""
+        config = request.app.state.config
+        if not config.nuki.bridge_ip or not config.nuki.api_token:
+            return JSONResponse(
+                {"error": "Configure Nuki Bridge IP and API Token first"},
+                status_code=400,
+            )
+        try:
+            import socket
+
+            from nukiblinker.nuki_client import NukiClient
+
+            client = NukiClient(
+                config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token
+            )
+            host = config.server.host
+            if host in ("0.0.0.0", "::"):
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect((config.nuki.bridge_ip, 80))
+                    host = s.getsockname()[0]
+                    s.close()
+                except Exception:
+                    host = "127.0.0.1"
+            callback_url = f"http://{host}:{config.server.port}/nuki/callback"
+            cb_id = await client.register_callback(callback_url)
+            if cb_id is not None:
+                request.app.state.callback_id = cb_id
+                return JSONResponse({
+                    "status": "paired",
+                    "callback_id": cb_id,
+                    "callback_url": callback_url,
+                })
+            return JSONResponse(
+                {"error": "Registration failed \u2014 check Nuki Bridge logs"},
+                status_code=500,
+            )
+        except Exception as e:
+            logger.error("Nuki pairing failed: %s", e, exc_info=True)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @router.get("/nuki/devices")
+    async def nuki_devices(request: Request) -> JSONResponse:
+        """List Nuki devices visible to the configured bridge."""
+        config = request.app.state.config
+        if not config.nuki.bridge_ip or not config.nuki.api_token:
+            return JSONResponse({"error": "Nuki not configured"}, status_code=400)
+        try:
+            from nukiblinker.nuki_client import NukiClient
+
+            client = NukiClient(
+                config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token
+            )
+            devices = await client.list_devices()
+            return JSONResponse(devices)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @router.get("/nuki/callbacks")
+    async def nuki_callbacks(request: Request) -> JSONResponse:
+        """List registered callbacks on the Nuki Bridge."""
+        config = request.app.state.config
+        if not config.nuki.bridge_ip or not config.nuki.api_token:
+            return JSONResponse({"error": "Nuki not configured"}, status_code=400)
+        try:
+            from nukiblinker.nuki_client import NukiClient
+
+            client = NukiClient(
+                config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token
+            )
+            callbacks = await client.list_callbacks()
+            return JSONResponse(callbacks)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    # ------------------------------------------------------------------
+    # Hue pairing & device discovery
+    # ------------------------------------------------------------------
+
+    @router.post("/hue/pair")
+    async def hue_pair(request: Request) -> JSONResponse:
+        """Pair with Hue Bridge \u2014 press the bridge button first."""
+        body = await request.json()
+        bridge_ip = body.get("bridge_ip") or request.app.state.config.hue.bridge_ip
+        if not bridge_ip:
+            return JSONResponse(
+                {"error": "Hue Bridge IP is required"}, status_code=400
+            )
+        try:
+            from nukiblinker.hue_client import HueClient
+
+            api_key = await HueClient.pair(bridge_ip)
+            if api_key:
+                config = request.app.state.config
+                config.hue.api_key = api_key
+                config.hue.bridge_ip = bridge_ip
+                save_config(config, request.app.state.config_path)
+                return JSONResponse({
+                    "status": "paired",
+                    "api_key_preview": api_key[:8] + "...",
+                })
+            return JSONResponse(
+                {"error": "Pairing failed \u2014 press the button on the Hue Bridge and try again within 30s"},
+                status_code=400,
+            )
+        except Exception as e:
+            logger.error("Hue pairing failed: %s", e, exc_info=True)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @router.get("/hue/lights")
+    async def hue_lights(request: Request) -> JSONResponse:
+        """List lights from the configured Hue Bridge."""
+        config = request.app.state.config
+        if not config.hue.bridge_ip or not config.hue.api_key:
+            return JSONResponse(
+                {"error": "Hue not configured or not paired"}, status_code=400
+            )
+        try:
+            from nukiblinker.hue_client import HueClient
+
+            client = HueClient(config.hue.bridge_ip, config.hue.api_key)
+            lights = await client.list_lights()
+            return JSONResponse(lights)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @router.get("/hue/groups")
+    async def hue_groups(request: Request) -> JSONResponse:
+        """List groups from the configured Hue Bridge."""
+        config = request.app.state.config
+        if not config.hue.bridge_ip or not config.hue.api_key:
+            return JSONResponse(
+                {"error": "Hue not configured or not paired"}, status_code=400
+            )
+        try:
+            from nukiblinker.hue_client import HueClient
+
+            client = HueClient(config.hue.bridge_ip, config.hue.api_key)
+            groups = await client.list_groups()
+            return JSONResponse(groups)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     @router.get("/status")
     async def status(request: Request) -> JSONResponse:

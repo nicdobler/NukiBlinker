@@ -7,94 +7,300 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
-        .container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-        h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: #f1f5f9; }
-        .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; border: 1px solid #334155; }
-        .card h2 { font-size: 1rem; font-weight: 500; margin-bottom: 0.75rem; color: #94a3b8; }
-        .status { display: flex; align-items: center; gap: 0.5rem; }
-        .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
-        .dot.paused { background: #f59e0b; }
-        .dot.error { background: #ef4444; }
-        label { display: block; font-size: 0.875rem; color: #94a3b8; margin-bottom: 0.25rem; }
-        input, select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.875rem; margin-bottom: 0.75rem; }
-        button { padding: 0.5rem 1rem; border-radius: 6px; border: none; font-size: 0.875rem; cursor: pointer; font-weight: 500; }
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-secondary { background: #475569; color: #e2e8f0; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+        .app { max-width: 860px; margin: 0 auto; padding: 1rem 1.5rem 5rem; }
+        header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
+        header h1 { font-size: 1.4rem; font-weight: 600; color: #f1f5f9; }
+        .tabs { display: flex; gap: 0; border-bottom: 1px solid #334155; margin-bottom: 1.5rem; overflow-x: auto; }
+        .tab { padding: 0.6rem 1rem; background: none; border: none; color: #94a3b8; font-size: 0.85rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; font-weight: 500; }
+        .tab:hover { color: #e2e8f0; }
+        .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        .card { background: #1e293b; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; border: 1px solid #334155; }
+        .card h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 1rem; color: #f1f5f9; }
+        .card h3 { font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; color: #94a3b8; }
+        .section { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #334155; }
+        label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.2rem; }
+        label .req { color: #ef4444; }
+        label .opt { color: #64748b; font-size: 0.75rem; }
+        input, select, textarea { width: 100%; padding: 0.45rem 0.6rem; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.85rem; margin-bottom: 0.6rem; font-family: inherit; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; }
+        textarea { resize: vertical; }
+        .help { font-size: 0.75rem; color: #64748b; margin-top: -0.4rem; margin-bottom: 0.6rem; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
-        .event-rule { padding: 0.75rem; background: #0f172a; border-radius: 8px; }
-        .event-rule h3 { font-size: 0.875rem; margin-bottom: 0.5rem; }
-        #msg { padding: 0.5rem; font-size: 0.875rem; border-radius: 6px; margin-top: 0.5rem; display: none; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+        button { padding: 0.45rem 0.9rem; border-radius: 6px; border: none; font-size: 0.8rem; cursor: pointer; font-weight: 500; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #334155; color: #e2e8f0; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-sm { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+        .btn-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+        .inline-btn { display: flex; gap: 0.5rem; align-items: flex-end; }
+        .inline-btn input { margin-bottom: 0; flex: 1; }
+        .inline-btn button { margin-bottom: 0; white-space: nowrap; }
+        .status { display: flex; align-items: center; gap: 0.5rem; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-ok { background: #22c55e; }
+        .dot-warn { background: #f59e0b; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.7rem; font-weight: 600; }
+        .badge-ok { background: #166534; color: #bbf7d0; }
+        .badge-warn { background: #713f12; color: #fef08a; }
+        .badge-err { background: #7f1d1d; color: #fecaca; }
+        .discover-results { margin-top: 0.5rem; }
+        .discover-item { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.6rem; background: #0f172a; border-radius: 6px; margin-bottom: 0.3rem; font-size: 0.8rem; cursor: pointer; border: 1px solid #334155; }
+        .discover-item:hover { border-color: #3b82f6; }
+        .pair-box { background: #0f172a; border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; border: 1px solid #334155; }
+        .pair-box .instructions { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; }
+        .pair-box .instructions strong { color: #f59e0b; }
+        .pair-status { font-size: 0.8rem; margin-top: 0.5rem; }
+        .event-section { margin-top: 0.75rem; }
+        .event-section h4 { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.4rem; font-weight: 500; }
+        .toggle { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.6rem; }
+        .toggle input[type="checkbox"] { width: auto; margin: 0; accent-color: #3b82f6; }
+        .toggle label { margin: 0; cursor: pointer; }
+        #msg { padding: 0.5rem 0.75rem; font-size: 0.8rem; border-radius: 6px; margin-top: 0.5rem; display: none; }
         .msg-ok { background: #166534; color: #bbf7d0; }
         .msg-err { background: #7f1d1d; color: #fecaca; }
+        .save-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b; border-top: 1px solid #334155; padding: 0.75rem 1.5rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center; z-index: 10; }
+        @media (max-width: 600px) { .grid, .grid-3 { grid-template-columns: 1fr; } .app { padding: 0.75rem 1rem 5rem; } }
     </style>
 </head>
 <body>
-<div class="container">
-    <h1>NukiBlinker Configuration</h1>
+<div class="app">
+    <header><h1>NukiBlinker</h1><span class="badge" id="statusBadge">...</span></header>
+    <nav class="tabs">
+        <button class="tab active" onclick="switchTab(this,'status')">Status</button>
+        <button class="tab" onclick="switchTab(this,'nuki')">Nuki</button>
+        <button class="tab" onclick="switchTab(this,'hue')">Hue</button>
+        <button class="tab" onclick="switchTab(this,'speakers')">Speakers</button>
+        <button class="tab" onclick="switchTab(this,'homekit')">HomeKit</button>
+        <button class="tab" onclick="switchTab(this,'events')">Events</button>
+    </nav>
 
-    <div class="card">
-        <h2>Status</h2>
-        <div class="status">
-            <div class="dot" id="statusDot"></div>
-            <span id="statusText">Loading...</span>
-        </div>
-        <div class="btn-row">
-            <button class="btn-secondary" onclick="togglePause()">Pause / Resume</button>
-            <button class="btn-secondary" onclick="testEvent('ring')">Test Ring</button>
-            <button class="btn-secondary" onclick="testEvent('ring_to_open')">Test RTO</button>
-            <button class="btn-secondary" onclick="testEvent('door_opened')">Test Door</button>
-        </div>
-    </div>
-
-    <div class="card">
-        <h2>Nuki Bridge</h2>
-        <div class="grid">
-            <div><label>Bridge IP</label><input id="nukiIp" placeholder="192.168.1.100"></div>
-            <div><label>Port</label><input id="nukiPort" type="number" value="8080"></div>
-        </div>
-        <label>API Token</label><input id="nukiToken" type="password" placeholder="Enter token">
-    </div>
-
-    <div class="card">
-        <h2>Philips Hue</h2>
-        <div class="grid">
-            <div><label>Bridge IP</label><input id="hueIp" placeholder="192.168.1.101"></div>
-            <div><label>API Key</label><input id="hueKey" type="password" placeholder="Enter key"></div>
-        </div>
-        <label>Light IDs (comma-separated)</label><input id="hueLights" placeholder="1,2,3">
-    </div>
-
-    <div class="card">
-        <h2>Event Rules</h2>
-        <div class="event-rule">
-            <h3>Ring (unknown visitor)</h3>
-            <div class="grid">
-                <div><label>Blink mode</label><select id="ringBlink"><option>alert</option><option>custom</option><option>none</option></select></div>
-                <div><label>HomeKit</label><select id="ringHk"><option value="true">Yes</option><option value="false">No</option></select></div>
+    <!-- STATUS -->
+    <div id="panel-status" class="panel active">
+        <div class="card">
+            <h2>Service Status</h2>
+            <div class="status"><div class="dot dot-ok" id="statusDot"></div><span id="statusText">Loading...</span></div>
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="togglePause()">Pause / Resume</button>
+                <button class="btn-secondary" onclick="testEvent('ring')">Test Ring</button>
+                <button class="btn-secondary" onclick="testEvent('ring_to_open')">Test RTO</button>
+                <button class="btn-secondary" onclick="testEvent('door_opened')">Test Door</button>
             </div>
         </div>
-        <div class="event-rule" style="margin-top: 0.5rem;">
-            <h3>Ring to Open</h3>
+        <div class="card">
+            <h2>Server</h2>
             <div class="grid">
-                <div><label>Blink mode</label><select id="rtoBlink"><option>custom</option><option>alert</option><option>none</option></select></div>
-                <div><label>TTS message</label><input id="rtoMsg" value="{name} llegó a casa"></div>
+                <div><label>Host</label><input id="serverHost" value="0.0.0.0"></div>
+                <div><label>Port</label><input id="serverPort" type="number" value="8080"></div>
+            </div>
+            <p class="help">Changes require service restart</p>
+        </div>
+    </div>
+
+    <!-- NUKI -->
+    <div id="panel-nuki" class="panel">
+        <div class="card">
+            <h2>Nuki Bridge Connection</h2>
+            <div class="grid">
+                <div>
+                    <label>Bridge IP <span class="req">*</span></label>
+                    <div class="inline-btn"><input id="nukiIp" placeholder="192.168.1.100"><button class="btn-secondary btn-sm" onclick="discoverNuki()">Discover</button></div>
+                </div>
+                <div><label>Port</label><input id="nukiPort" type="number" value="8080"></div>
+            </div>
+            <label>API Token <span class="req">*</span></label>
+            <input id="nukiToken" type="password" placeholder="Enter Nuki Bridge API token">
+            <p class="help">Find in Nuki App &rarr; Bridge &rarr; Manage Bridge &rarr; API Token</p>
+            <div id="nukiDiscoverResults" class="discover-results"></div>
+            <div class="section">
+                <h3>Callback Registration</h3>
+                <div class="pair-box">
+                    <p class="instructions">Register this server as a callback listener on your Nuki Bridge so it receives events (ring, door open, etc.).</p>
+                    <div class="btn-row">
+                        <button class="btn-primary btn-sm" onclick="nukiPair()">Register Callback</button>
+                        <button class="btn-secondary btn-sm" onclick="nukiCheckCallbacks()">Check Status</button>
+                    </div>
+                    <div id="nukiPairStatus" class="pair-status"></div>
+                </div>
             </div>
         </div>
-        <div class="event-rule" style="margin-top: 0.5rem;">
-            <h3>Door Opened</h3>
+        <div class="card">
+            <h2>Device Filter <span style="color:#64748b;font-size:0.75rem">(optional)</span></h2>
+            <p class="help" style="margin-bottom:0.75rem">Only process events from specific devices. Leave empty to accept all.</p>
             <div class="grid">
-                <div><label>Audio mode</label><select id="doorAudio"><option>chime</option><option>tts</option><option>none</option></select></div>
-                <div><label>HomeKit</label><select id="doorHk"><option value="false">No</option><option value="true">Yes</option></select></div>
+                <div><label>Opener ID</label><input id="nukiOpenerId" type="number" placeholder="e.g. 123456789"></div>
+                <div><label>Lock ID</label><input id="nukiLockId" type="number" placeholder="e.g. 987654321"></div>
+            </div>
+            <button class="btn-secondary btn-sm" onclick="nukiListDevices()">List Devices</button>
+            <div id="nukiDeviceResults" class="discover-results"></div>
+        </div>
+    </div>
+
+    <!-- HUE -->
+    <div id="panel-hue" class="panel">
+        <div class="card">
+            <h2>Philips Hue Bridge</h2>
+            <label>Bridge IP <span class="req">*</span></label>
+            <div class="inline-btn"><input id="hueIp" placeholder="192.168.1.101"><button class="btn-secondary btn-sm" onclick="discoverHue()">Discover</button></div>
+            <div id="hueDiscoverResults" class="discover-results"></div>
+            <div class="section">
+                <h3>API Key / Pairing</h3>
+                <label>API Key</label>
+                <input id="hueKey" type="password" placeholder="Auto-filled after pairing">
+                <div class="pair-box">
+                    <p class="instructions"><strong>Step 1:</strong> Press the physical button on your Hue Bridge.<br><strong>Step 2:</strong> Click "Pair" within 30 seconds.</p>
+                    <div class="btn-row"><button class="btn-primary btn-sm" onclick="huePair()">Pair with Hue Bridge</button></div>
+                    <div id="huePairStatus" class="pair-status"></div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <h2>Lights &amp; Groups</h2>
+            <label>Light IDs <span class="opt">(comma-separated)</span></label>
+            <div class="inline-btn"><input id="hueLights" placeholder="1,2,3"><button class="btn-secondary btn-sm" onclick="hueListLights()">List Lights</button></div>
+            <div id="hueLightResults" class="discover-results"></div>
+            <label style="margin-top:0.5rem">Group IDs <span class="opt">(comma-separated)</span></label>
+            <div class="inline-btn"><input id="hueGroups" placeholder="0,1"><button class="btn-secondary btn-sm" onclick="hueListGroups()">List Groups</button></div>
+            <div id="hueGroupResults" class="discover-results"></div>
+        </div>
+    </div>
+
+    <!-- SPEAKERS -->
+    <div id="panel-speakers" class="panel">
+        <div class="card">
+            <h2>Chromecast / Google Nest</h2>
+            <label>Speaker names <span class="opt">(one per line)</span></label>
+            <textarea id="speakersChromecast" rows="3" placeholder="Living Room&#10;Kitchen Display"></textarea>
+            <button class="btn-secondary btn-sm" onclick="discoverSpeakers('chromecast')">Discover</button>
+            <div id="ccDiscoverResults" class="discover-results"></div>
+        </div>
+        <div class="card">
+            <h2>AirPlay / HomePod</h2>
+            <label>Speaker names <span class="opt">(one per line)</span></label>
+            <textarea id="speakersAirplay" rows="3" placeholder="HomePod mini&#10;Bedroom HomePod"></textarea>
+            <button class="btn-secondary btn-sm" onclick="discoverSpeakers('airplay')">Discover</button>
+            <div id="apDiscoverResults" class="discover-results"></div>
+        </div>
+        <div class="card">
+            <h2>Volume</h2>
+            <label>Playback volume: <span id="volumeValue">50</span>%</label>
+            <input id="speakersVolume" type="range" min="0" max="100" value="50" oninput="document.getElementById('volumeValue').textContent=this.value">
+        </div>
+    </div>
+
+    <!-- HOMEKIT -->
+    <div id="panel-homekit" class="panel">
+        <div class="card">
+            <h2>Apple HomeKit</h2>
+            <div class="toggle"><input type="checkbox" id="hkEnabled" onchange="toggleHkFields()"><label for="hkEnabled">Enable HomeKit doorbell accessory</label></div>
+            <div id="hkFields" style="display:none">
+                <label>Setup Code <span class="opt">(auto-generated if empty)</span></label>
+                <input id="hkSetupCode" placeholder="111-22-333">
+                <p class="help">8-digit code used when pairing with Apple Home app</p>
+                <label>Persist Directory</label>
+                <input id="hkPersistDir" value=".homekit">
+                <p class="help">Directory for HAP-python accessory state</p>
             </div>
         </div>
     </div>
 
-    <div class="btn-row">
-        <button class="btn-primary" onclick="saveConfig()">Save Configuration</button>
-        <button class="btn-secondary" onclick="loadConfig()">Reload</button>
+    <!-- EVENTS -->
+    <div id="panel-events" class="panel">
+        <div class="card">
+            <h2>Ring (unknown visitor)</h2>
+            <div class="event-section"><h4>Blink</h4>
+                <label>Mode</label>
+                <select id="ringBlinkMode" onchange="toggleCustomBlink('ring')"><option value="alert">Alert (built-in)</option><option value="custom">Custom</option><option value="none">None</option></select>
+                <div id="ringCustomBlink" style="display:none" class="grid-3">
+                    <div><label>Hue (0–65535)</label><input id="ringBlinkHue" type="number" min="0" max="65535" value="0"></div>
+                    <div><label>Saturation</label><input id="ringBlinkSat" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Brightness</label><input id="ringBlinkBri" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Flashes</label><input id="ringBlinkFlashes" type="number" min="1" max="20" value="3"></div>
+                    <div><label>Interval (ms)</label><input id="ringBlinkInterval" type="number" min="100" max="5000" value="500"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>Audio</h4>
+                <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable audio</label></div>
+                <div id="ringAudioFields" style="display:none">
+                    <div class="grid">
+                        <div><label>Mode</label><select id="ringAudioMode" onchange="toggleAudioMode('ring')"><option value="tts">TTS</option><option value="chime">Chime</option></select></div>
+                        <div><label>Fallback name</label><input id="ringFallback" value="Alguien"></div>
+                    </div>
+                    <div id="ringTtsFields"><label>TTS Message</label><input id="ringTtsMsg" placeholder="{name} is at the door"><p class="help">Use {name} for visitor name</p></div>
+                    <div id="ringChimeFields" style="display:none"><label>Chime file</label><input id="ringChime" value="chime.mp3"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>HomeKit</h4>
+                <div class="toggle"><input type="checkbox" id="ringHk" checked><label for="ringHk">Send doorbell notification</label></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Ring to Open (known visitor)</h2>
+            <div class="event-section"><h4>Blink</h4>
+                <label>Mode</label>
+                <select id="rtoBlinkMode" onchange="toggleCustomBlink('rto')"><option value="custom">Custom</option><option value="alert">Alert (built-in)</option><option value="none">None</option></select>
+                <div id="rtoCustomBlink" class="grid-3">
+                    <div><label>Hue (0–65535)</label><input id="rtoBlinkHue" type="number" min="0" max="65535" value="0"></div>
+                    <div><label>Saturation</label><input id="rtoBlinkSat" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Brightness</label><input id="rtoBlinkBri" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Flashes</label><input id="rtoBlinkFlashes" type="number" min="1" max="20" value="3"></div>
+                    <div><label>Interval (ms)</label><input id="rtoBlinkInterval" type="number" min="100" max="5000" value="500"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>Audio</h4>
+                <div class="toggle"><input type="checkbox" id="rtoAudioEnabled" checked onchange="toggleAudioFields('rto')"><label for="rtoAudioEnabled">Enable audio</label></div>
+                <div id="rtoAudioFields">
+                    <div class="grid">
+                        <div><label>Mode</label><select id="rtoAudioMode" onchange="toggleAudioMode('rto')"><option value="tts">TTS</option><option value="chime">Chime</option></select></div>
+                        <div><label>Fallback name</label><input id="rtoFallback" value="Alguien"></div>
+                    </div>
+                    <div id="rtoTtsFields"><label>TTS Message</label><input id="rtoTtsMsg" value="{name} llegó a casa"><p class="help">Use {name} for visitor name</p></div>
+                    <div id="rtoChimeFields" style="display:none"><label>Chime file</label><input id="rtoChime" value="chime.mp3"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>HomeKit</h4>
+                <div class="toggle"><input type="checkbox" id="rtoHk" checked><label for="rtoHk">Send doorbell notification</label></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Door Opened</h2>
+            <div class="event-section"><h4>Blink</h4>
+                <label>Mode</label>
+                <select id="doorBlinkMode" onchange="toggleCustomBlink('door')"><option value="none">None</option><option value="alert">Alert (built-in)</option><option value="custom">Custom</option></select>
+                <div id="doorCustomBlink" style="display:none" class="grid-3">
+                    <div><label>Hue (0–65535)</label><input id="doorBlinkHue" type="number" min="0" max="65535" value="0"></div>
+                    <div><label>Saturation</label><input id="doorBlinkSat" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Brightness</label><input id="doorBlinkBri" type="number" min="0" max="254" value="254"></div>
+                    <div><label>Flashes</label><input id="doorBlinkFlashes" type="number" min="1" max="20" value="3"></div>
+                    <div><label>Interval (ms)</label><input id="doorBlinkInterval" type="number" min="100" max="5000" value="500"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>Audio</h4>
+                <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable audio</label></div>
+                <div id="doorAudioFields">
+                    <div class="grid">
+                        <div><label>Mode</label><select id="doorAudioMode" onchange="toggleAudioMode('door')"><option value="chime">Chime</option><option value="tts">TTS</option></select></div>
+                        <div><label>Fallback name</label><input id="doorFallback" value="Alguien"></div>
+                    </div>
+                    <div id="doorTtsFields" style="display:none"><label>TTS Message</label><input id="doorTtsMsg" placeholder="The door was opened"></div>
+                    <div id="doorChimeFields"><label>Chime file</label><input id="doorChime" value="chime.mp3"></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>HomeKit</h4>
+                <div class="toggle"><input type="checkbox" id="doorHk"><label for="doorHk">Send doorbell notification</label></div>
+            </div>
+        </div>
     </div>
+</div>
+
+<div class="save-bar">
+    <button class="btn-primary" onclick="saveConfig()">Save Configuration</button>
+    <button class="btn-secondary" onclick="loadConfig()">Reload</button>
     <div id="msg"></div>
 </div>
 
@@ -106,76 +312,249 @@ function showMsg(text, ok) {
     el.textContent = text;
     el.className = ok ? 'msg-ok' : 'msg-err';
     el.style.display = 'block';
-    setTimeout(() => el.style.display = 'none', 3000);
+    setTimeout(() => el.style.display = 'none', 4000);
+}
+
+function switchTab(btn, name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + name).classList.add('active');
+}
+
+function toggleCustomBlink(prefix) {
+    document.getElementById(prefix + 'CustomBlink').style.display =
+        document.getElementById(prefix + 'BlinkMode').value === 'custom' ? '' : 'none';
+}
+function toggleAudioFields(prefix) {
+    document.getElementById(prefix + 'AudioFields').style.display =
+        document.getElementById(prefix + 'AudioEnabled').checked ? '' : 'none';
+}
+function toggleAudioMode(prefix) {
+    const m = document.getElementById(prefix + 'AudioMode').value;
+    document.getElementById(prefix + 'TtsFields').style.display = m === 'tts' ? '' : 'none';
+    document.getElementById(prefix + 'ChimeFields').style.display = m === 'chime' ? '' : 'none';
+}
+function toggleHkFields() {
+    document.getElementById('hkFields').style.display =
+        document.getElementById('hkEnabled').checked ? '' : 'none';
+}
+
+function setStatusBadge(paused) {
+    const b = document.getElementById('statusBadge');
+    const d = document.getElementById('statusDot');
+    const t = document.getElementById('statusText');
+    b.className = 'badge ' + (paused ? 'badge-warn' : 'badge-ok');
+    b.textContent = paused ? 'Paused' : 'Running';
+    d.className = 'dot ' + (paused ? 'dot-warn' : 'dot-ok');
+    t.textContent = paused ? 'Paused' : 'Running';
 }
 
 async function loadStatus() {
+    try { setStatusBadge((await (await fetch(`${API}/status`)).json()).paused); }
+    catch (e) { console.error(e); }
+}
+async function togglePause() {
     try {
-        const r = await fetch(`${API}/status`);
-        const d = await r.json();
-        const dot = document.getElementById('statusDot');
-        const txt = document.getElementById('statusText');
-        dot.className = d.paused ? 'dot paused' : 'dot';
-        txt.textContent = d.paused ? 'Paused' : 'Running';
-    } catch (e) { console.error(e); }
+        const d = await (await fetch(`${API}/status`)).json();
+        await fetch(`${API}/${d.paused ? 'resume' : 'pause'}`, { method: 'POST' });
+        loadStatus();
+    } catch (e) { showMsg('Action failed', false); }
+}
+async function testEvent(type) {
+    try {
+        const d = await (await fetch(`${API}/test/event/${type}`, { method: 'POST' })).json();
+        showMsg(`Test ${type}: ${d.status || d.error}`, !!d.status);
+    } catch (e) { showMsg('Test failed', false); }
+}
+
+/* --- Config helpers --- */
+function val(id) { return document.getElementById(id).value; }
+function setVal(id, v) { document.getElementById(id).value = v ?? ''; }
+function setChk(id, v) { document.getElementById(id).checked = !!v; }
+function chk(id) { return document.getElementById(id).checked; }
+function numOrNull(id) { const v = val(id); return v ? parseInt(v) : null; }
+function setSelect(id, v) { const el = document.getElementById(id); for (const o of el.options) if (o.value === v) { el.value = v; return; } }
+
+function populateEventRule(prefix, rule) {
+    if (!rule) return;
+    const b = rule.blink || {}, a = rule.audio || {};
+    setSelect(prefix + 'BlinkMode', b.mode || 'none'); toggleCustomBlink(prefix);
+    if (b.custom) {
+        setVal(prefix + 'BlinkHue', b.custom.hue); setVal(prefix + 'BlinkSat', b.custom.saturation);
+        setVal(prefix + 'BlinkBri', b.custom.brightness); setVal(prefix + 'BlinkFlashes', b.custom.flashes);
+        setVal(prefix + 'BlinkInterval', b.custom.interval_ms);
+    }
+    setChk(prefix + 'AudioEnabled', a.enabled); toggleAudioFields(prefix);
+    setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
+    setVal(prefix + 'TtsMsg', a.message); setVal(prefix + 'Chime', a.chime); setVal(prefix + 'Fallback', a.fallback_name);
+    setChk(prefix + 'Hk', rule.homekit);
+}
+
+function collectEventRule(prefix) {
+    return {
+        blink: { mode: val(prefix + 'BlinkMode'), custom: {
+            hue: parseInt(val(prefix + 'BlinkHue')) || 0, saturation: parseInt(val(prefix + 'BlinkSat')) || 254,
+            brightness: parseInt(val(prefix + 'BlinkBri')) || 254, flashes: parseInt(val(prefix + 'BlinkFlashes')) || 3,
+            interval_ms: parseInt(val(prefix + 'BlinkInterval')) || 500 } },
+        audio: { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
+            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime'), fallback_name: val(prefix + 'Fallback') },
+        homekit: chk(prefix + 'Hk'),
+    };
 }
 
 async function loadConfig() {
     try {
-        const r = await fetch(`${API}/config`);
-        const d = await r.json();
-        document.getElementById('nukiIp').value = d.nuki?.bridge_ip || '';
-        document.getElementById('nukiPort').value = d.nuki?.bridge_port || 8080;
-        document.getElementById('hueIp').value = d.hue?.bridge_ip || '';
-        document.getElementById('hueLights').value = (d.hue?.lights || []).join(',');
-        if (d.events?.ring_to_open?.audio?.message)
-            document.getElementById('rtoMsg').value = d.events.ring_to_open.audio.message;
-        showMsg('Config loaded', true);
-    } catch (e) { showMsg('Failed to load config', false); }
+        const d = await (await fetch(`${API}/config`)).json();
+        setVal('nukiIp', d.nuki?.bridge_ip); setVal('nukiPort', d.nuki?.bridge_port || 8080);
+        setVal('nukiToken', d.nuki?.api_token); setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
+        setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
+        setVal('hueLights', (d.hue?.lights || []).join(',')); setVal('hueGroups', (d.hue?.groups || []).join(','));
+        document.getElementById('speakersChromecast').value = (d.speakers?.chromecast || []).join('\n');
+        document.getElementById('speakersAirplay').value = (d.speakers?.airplay || []).join('\n');
+        const vol = Math.round((d.speakers?.volume ?? 0.5) * 100);
+        document.getElementById('speakersVolume').value = vol;
+        document.getElementById('volumeValue').textContent = vol;
+        setChk('hkEnabled', d.homekit?.enabled); setVal('hkSetupCode', d.homekit?.setup_code);
+        setVal('hkPersistDir', d.homekit?.persist_dir || '.homekit'); toggleHkFields();
+        populateEventRule('ring', d.events?.ring);
+        populateEventRule('rto', d.events?.ring_to_open);
+        populateEventRule('door', d.events?.door_opened);
+        setVal('serverHost', d.server?.host || '0.0.0.0'); setVal('serverPort', d.server?.port || 8080);
+        showMsg('Configuration loaded', true);
+    } catch (e) { console.error(e); showMsg('Failed to load config', false); }
 }
 
 async function saveConfig() {
-    const lights = document.getElementById('hueLights').value.split(',').filter(Boolean).map(Number);
     const body = {
-        nuki: {
-            bridge_ip: document.getElementById('nukiIp').value,
-            bridge_port: parseInt(document.getElementById('nukiPort').value) || 8080,
-            api_token: document.getElementById('nukiToken').value,
-        },
-        hue: {
-            bridge_ip: document.getElementById('hueIp').value,
-            api_key: document.getElementById('hueKey').value,
-            lights: lights,
-        },
-        events: {
-            ring: { blink: { mode: document.getElementById('ringBlink').value }, homekit: document.getElementById('ringHk').value === 'true' },
-            ring_to_open: { blink: { mode: document.getElementById('rtoBlink').value }, audio: { enabled: true, mode: 'tts', message: document.getElementById('rtoMsg').value } },
-            door_opened: { audio: { enabled: true, mode: document.getElementById('doorAudio').value }, homekit: document.getElementById('doorHk').value === 'true' },
-        },
+        nuki: { bridge_ip: val('nukiIp'), bridge_port: parseInt(val('nukiPort')) || 8080,
+            api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId') },
+        hue: { bridge_ip: val('hueIp'), api_key: val('hueKey'),
+            lights: val('hueLights').split(',').map(s=>s.trim()).filter(Boolean).map(Number),
+            groups: val('hueGroups').split(',').map(s=>s.trim()).filter(Boolean).map(Number) },
+        speakers: { chromecast: document.getElementById('speakersChromecast').value.split('\n').map(s=>s.trim()).filter(Boolean),
+            airplay: document.getElementById('speakersAirplay').value.split('\n').map(s=>s.trim()).filter(Boolean),
+            volume: parseInt(val('speakersVolume')) / 100 },
+        homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
+        events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door') },
+        server: { host: val('serverHost'), port: parseInt(val('serverPort')) || 8080 },
     };
     try {
-        const r = await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-        const d = await r.json();
-        showMsg(d.status === 'saved' ? 'Saved!' : 'Error: ' + (d.error || 'unknown'), d.status === 'saved');
+        const d = await (await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
+        showMsg(d.status === 'saved' ? 'Configuration saved!' : 'Error: ' + (d.error || 'unknown'), d.status === 'saved');
     } catch (e) { showMsg('Save failed', false); }
 }
 
-async function togglePause() {
+/* --- Nuki Discovery & Pairing --- */
+async function discoverNuki() {
+    const el = document.getElementById('nukiDiscoverResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Searching...</p>';
     try {
-        const statusR = await fetch(`${API}/status`);
-        const statusD = await statusR.json();
-        const endpoint = statusD.paused ? 'resume' : 'pause';
-        await fetch(`${API}/${endpoint}`, { method: 'POST' });
-        loadStatus();
-    } catch (e) { showMsg('Action failed', false); }
+        const bridges = await (await fetch(`${API}/discover/nuki`)).json();
+        if (!bridges.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No bridges found</p>'; return; }
+        el.innerHTML = bridges.map(b => `<div class="discover-item" onclick="setVal('nukiIp','${b.ip}');setVal('nukiPort',${b.port})"><span>${b.name}</span><span style="color:#64748b">${b.ip}:${b.port}</span></div>`).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Discovery failed</p>'; }
+}
+async function nukiPair() {
+    const el = document.getElementById('nukiPairStatus');
+    el.innerHTML = '<span style="color:#94a3b8">Registering callback...</span>';
+    try {
+        const d = await (await fetch(`${API}/nuki/pair`, { method: 'POST' })).json();
+        el.innerHTML = d.status === 'paired'
+            ? `<span class="badge badge-ok">Paired</span> ID: ${d.callback_id} <small style="color:#64748b">${d.callback_url}</small>`
+            : `<span class="badge badge-err">Failed</span> ${d.error}`;
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
+}
+async function nukiCheckCallbacks() {
+    const el = document.getElementById('nukiPairStatus');
+    el.innerHTML = '<span style="color:#94a3b8">Checking...</span>';
+    try {
+        const cbs = await (await fetch(`${API}/nuki/callbacks`)).json();
+        if (cbs.error) { el.innerHTML = `<span class="badge badge-err">Error</span> ${cbs.error}`; return; }
+        if (!cbs.length) { el.innerHTML = '<span class="badge badge-warn">No callbacks registered</span>'; return; }
+        el.innerHTML = cbs.map(cb => `<div style="font-size:0.8rem;margin-top:0.3rem"><span class="badge badge-ok">ID ${cb.id}</span> ${cb.url}</div>`).join('');
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
+}
+async function nukiListDevices() {
+    const el = document.getElementById('nukiDeviceResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
+    try {
+        const devices = await (await fetch(`${API}/nuki/devices`)).json();
+        if (devices.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${devices.error}</p>`; return; }
+        if (!devices.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No devices found</p>'; return; }
+        el.innerHTML = devices.map(d => {
+            const type = d.deviceType === 2 ? 'Opener' : d.deviceType === 0 ? 'Smart Lock' : 'Type ' + d.deviceType;
+            const target = d.deviceType === 2 ? 'nukiOpenerId' : 'nukiLockId';
+            return `<div class="discover-item" onclick="setVal('${target}','${d.nukiId}')"><span>${d.name||'Unknown'} <small style="color:#64748b">(${type})</small></span><span style="color:#64748b">ID: ${d.nukiId}</span></div>`;
+        }).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed to list devices</p>'; }
 }
 
-async function testEvent(type) {
+/* --- Hue Discovery & Pairing --- */
+async function discoverHue() {
+    const el = document.getElementById('hueDiscoverResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Searching...</p>';
     try {
-        const r = await fetch(`${API}/test/event/${type}`, { method: 'POST' });
-        const d = await r.json();
-        showMsg(`Test ${type}: ${d.status || d.error}`, !!d.status);
-    } catch (e) { showMsg('Test failed', false); }
+        const bridges = await (await fetch(`${API}/discover/hue`)).json();
+        if (!bridges.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No bridges found</p>'; return; }
+        el.innerHTML = bridges.map(b => `<div class="discover-item" onclick="setVal('hueIp','${b.ip}')"><span>${b.name}</span><span style="color:#64748b">${b.ip}</span></div>`).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Discovery failed</p>'; }
+}
+async function huePair() {
+    const el = document.getElementById('huePairStatus');
+    const ip = val('hueIp');
+    if (!ip) { el.innerHTML = '<span class="badge badge-err">Enter Bridge IP first</span>'; return; }
+    el.innerHTML = '<span style="color:#f59e0b">Pairing... Make sure you pressed the bridge button!</span>';
+    try {
+        const d = await (await fetch(`${API}/hue/pair`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({bridge_ip: ip}) })).json();
+        if (d.status === 'paired') { el.innerHTML = `<span class="badge badge-ok">Paired!</span> API key saved (${d.api_key_preview})`; loadConfig(); }
+        else { el.innerHTML = `<span class="badge badge-err">Failed</span> ${d.error}`; }
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
+}
+async function hueListLights() {
+    const el = document.getElementById('hueLightResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
+    try {
+        const data = await (await fetch(`${API}/hue/lights`)).json();
+        if (data.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${data.error}</p>`; return; }
+        const entries = Object.entries(data);
+        if (!entries.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No lights found</p>'; return; }
+        el.innerHTML = entries.map(([id, l]) => `<div class="discover-item" onclick="addToList('hueLights','${id}')"><span>${l.state?.on ? '\u25cf' : '\u25cb'} ${l.name||'Light '+id}</span><span style="color:#64748b">ID ${id} \u00b7 ${l.type||''}</span></div>`).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed</p>'; }
+}
+async function hueListGroups() {
+    const el = document.getElementById('hueGroupResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
+    try {
+        const data = await (await fetch(`${API}/hue/groups`)).json();
+        if (data.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${data.error}</p>`; return; }
+        const entries = Object.entries(data);
+        if (!entries.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No groups found</p>'; return; }
+        el.innerHTML = entries.map(([id, g]) => `<div class="discover-item" onclick="addToList('hueGroups','${id}')"><span>${g.name||'Group '+id}</span><span style="color:#64748b">ID ${id} \u00b7 ${(g.lights||[]).length} lights</span></div>`).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed</p>'; }
+}
+function addToList(inputId, value) {
+    const el = document.getElementById(inputId);
+    const existing = el.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!existing.includes(value)) { existing.push(value); el.value = existing.join(','); }
+}
+
+/* --- Speaker Discovery --- */
+async function discoverSpeakers(type) {
+    const el = document.getElementById(type === 'chromecast' ? 'ccDiscoverResults' : 'apDiscoverResults');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Searching network...</p>';
+    try {
+        const speakers = await (await fetch(`${API}/discover/speakers`)).json();
+        const filtered = speakers.filter(s => s.type === type);
+        if (!filtered.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No speakers found</p>'; return; }
+        const tid = type === 'chromecast' ? 'speakersChromecast' : 'speakersAirplay';
+        el.innerHTML = filtered.map(s => `<div class="discover-item" onclick="addSpeaker('${tid}','${s.name.replace(/'/g,"\\'")}')"><span>${s.name}</span><span style="color:#64748b">${s.host||''}</span></div>`).join('');
+    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Discovery failed</p>'; }
+}
+function addSpeaker(tid, name) {
+    const el = document.getElementById(tid);
+    const existing = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!existing.includes(name)) { existing.push(name); el.value = existing.join('\n'); }
 }
 
 loadStatus();

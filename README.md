@@ -11,7 +11,7 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Voice announcements**: TTS via gTTS on Google Nest (Chromecast) and Apple HomePod (AirPlay 2)
 - **Chime sounds**: bundled audio files for door-opened events
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices
-- **Web UI**: localhost-only config page at `http://localhost:8080/`
+- **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules
 - **Auto-discovery**: Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers
 - **Graceful lifecycle**: shutdown deregisters Nuki callback, pause/resume via web UI
 
@@ -32,6 +32,21 @@ docker compose up -d
 
 Open `http://localhost:8080/` on the Mini PC to configure via the web UI.
 
+## Web UI
+
+The web UI provides a tabbed interface covering all configuration:
+
+| Tab | Features |
+|---|---|
+| **Status** | Pause/resume, test events, server host/port |
+| **Nuki** | Bridge connection, network discovery, callback registration, device filter (opener/lock ID) |
+| **Hue** | Bridge connection, network discovery, guided pairing (button press → pair), light & group selection |
+| **Speakers** | Chromecast & AirPlay names, network discovery, volume slider |
+| **HomeKit** | Enable/disable, setup code, persist directory |
+| **Events** | Per-event blink (alert/custom HSB), audio (TTS/chime), HomeKit toggle |
+
+Mandatory fields are marked with a red `*`. Changes are saved to `config.yaml` via the fixed save bar.
+
 ## Configuration
 
 See `config.example.yaml` for all options. Key sections:
@@ -45,8 +60,27 @@ See `config.example.yaml` for all options. Key sections:
 
 ### Getting API Keys
 
-- **Nuki Bridge**: Nuki app → Settings → Manage Bridge → Enable API. Note the token.
-- **Hue Bridge**: Press link button, then `POST http://<bridge-ip>/api {"devicetype":"nukiblinker"}`.
+- **Nuki Bridge**: Nuki app → Settings → Manage Bridge → Enable API. Note the token. Or use the Web UI's Nuki tab.
+- **Hue Bridge**: Use the Web UI's Hue tab (Discover → press bridge button → Pair), or manually: `POST http://<bridge-ip>/api {"devicetype":"nukiblinker"}`.
+
+### API Endpoints (Web UI)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/config` | GET/PUT | Read/write full configuration |
+| `/api/discover/nuki` | GET | Discover Nuki Bridges on LAN |
+| `/api/discover/hue` | GET | Discover Hue Bridges on LAN |
+| `/api/discover/speakers` | GET | Discover Chromecast & AirPlay speakers |
+| `/api/nuki/pair` | POST | Register callback on Nuki Bridge |
+| `/api/nuki/devices` | GET | List Nuki devices |
+| `/api/nuki/callbacks` | GET | List registered callbacks |
+| `/api/hue/pair` | POST | Pair with Hue Bridge (press button first) |
+| `/api/hue/lights` | GET | List Hue lights |
+| `/api/hue/groups` | GET | List Hue groups |
+| `/api/status` | GET | Service status |
+| `/api/pause` | POST | Pause service |
+| `/api/resume` | POST | Resume service |
+| `/api/test/event/{type}` | POST | Fire test event |
 
 ## Deployment (Mini PC)
 
