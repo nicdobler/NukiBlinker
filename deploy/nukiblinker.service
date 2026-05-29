@@ -1,0 +1,27 @@
+# systemd service for NukiBlinker (Docker Compose)
+# Install:
+#   sudo cp deploy/nukiblinker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now nukiblinker
+#
+# Starts on boot, restarts on crash (10s delay), and stops cleanly.
+
+[Unit]
+Description=NukiBlinker — Nuki doorbell notification service
+After=network-online.target docker.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nukiblinker
+ExecStartPre=/usr/bin/docker compose pull --quiet
+ExecStart=/usr/bin/docker compose up --abort-on-container-exit
+ExecStop=/usr/bin/docker compose down
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
