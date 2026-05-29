@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir poetry
 
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml poetry.loc* ./
 RUN poetry install --no-root --only=main
 
 COPY nukiblinker ./nukiblinker
