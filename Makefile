@@ -26,5 +26,8 @@ run:
 runLocal:
 	poetry run python -m nukiblinker --config config.yaml
 
+report:
+	bash script/test-and-report.sh
+
 cleanup-branches:
 	powershell -ExecutionPolicy Bypass -File script/cleanup-branches.ps1
