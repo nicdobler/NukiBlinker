@@ -64,10 +64,26 @@ class HomeKitService:
         self._accessory.add_service(doorbell_service)
         self._driver.add_accessory(self._accessory)
 
-        self._thread = threading.Thread(target=self._driver.start, daemon=True)
+        self._thread = threading.Thread(target=self._run_driver, daemon=True)
         self._thread.start()
         logger.info("HomeKit doorbell started (setup code: %s)", self._setup_code)
         return True
+
+    def _run_driver(self) -> None:
+        """Run the AccessoryDriver, catching mDNS errors."""
+        try:
+            self._driver.start()
+        except OSError as e:
+            if "5353" in str(e) or "Address already in use" in str(e):
+                logger.error(
+                    "HomeKit cannot advertise — port 5353 conflict. "
+                    "Stop the host mDNS service (Bonjour) to use HomeKit. "
+                    "See README troubleshooting."
+                )
+            else:
+                logger.error("HomeKit driver failed: %s", e)
+        except Exception:
+            logger.error("HomeKit driver failed", exc_info=True)
 
     def stop(self) -> None:
         """Stop the HAP accessory driver."""

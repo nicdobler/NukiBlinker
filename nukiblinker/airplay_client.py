@@ -78,11 +78,17 @@ class AirPlayClient:
 
     async def _play_on_device(self, device_config, audio_path: str, volume: float) -> None:
         """Connect to a single device and stream audio."""
+        logger.info("Connecting to AirPlay device: %s (%s)", device_config.name, device_config.address)
         atv = await pyatv.connect(device_config, asyncio.get_running_loop())
         try:
-            audio_iface = atv.stream
-            await audio_iface.stream_file(audio_path)
-            logger.info("Played audio on %s", device_config.name)
+            # Set volume if the device supports it
+            if hasattr(atv, "audio") and atv.audio is not None:
+                await atv.audio.set_volume(volume * 100)  # pyatv uses 0-100 scale
+            logger.info("Streaming %s to %s", audio_path, device_config.name)
+            await atv.stream.stream_file(audio_path)
+            logger.info("Playback finished on %s", device_config.name)
+        except Exception:
+            logger.error("AirPlay playback failed on %s", device_config.name, exc_info=True)
         finally:
             atv.close()
 
