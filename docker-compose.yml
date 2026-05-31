@@ -1,6 +1,6 @@
 services:
   nukiblinker:
-    image: ghcr.io/nicdobler/nukiblinker:latest
+    build: .
     container_name: nukiblinker
     ports:
       - "8080:8080"

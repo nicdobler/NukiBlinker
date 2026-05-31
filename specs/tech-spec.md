@@ -59,8 +59,8 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 |---|---|
 | Work laptop (Windows) | Code only. No testing, no Poetry, no Docker. |
 | Personal Mac | `make test` + `make lint` (unit tests, mocked). `make runLocal` for real-device testing. |
-| GitHub Actions | CI/CD: lint → test → build Docker → push to GHCR. |
-| Mini PC (Windows + WSL2) | Production: `docker compose pull && up -d`. |
+| GitHub Actions | CI: lint → test. |
+| Mini PC (Windows + WSL2) | Production: `git pull && docker compose build && up -d`. |
 
 ### Testing on Mac
 
@@ -581,9 +581,8 @@ The frontend is a single `index.html` with embedded CSS/JS (no build step, no np
 
 - **GitHub Actions** (`.github/workflows/ci.yml`):
   - On push/PR: lint (flake8) + test (pytest).
-  - On merge to `main`: build Docker image + push to `ghcr.io/<owner>/nukiblinker:latest` (also tagged by commit SHA).
 - **Dependabot** (`.github/dependabot.yml`): auto-updates for pip, GitHub Actions, and Docker.
-- **GHCR**: GitHub Container Registry. Image is public. No secrets needed on the Mini PC to pull.
+- **Local build**: Docker image is built on the Mini PC via `docker compose build`. No registry involved.
 
 ## Testing
 
@@ -617,7 +616,7 @@ FROM python:3.14.5-slim
 ```yaml
 services:
   nukiblinker:
-    image: ghcr.io/nicdobler/nukiblinker:latest
+    build: .
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -629,7 +628,7 @@ services:
 Deploy/update:
 
 ```sh
-docker compose pull && docker compose up -d
+docker compose build && docker compose up -d
 ```
 
 ### Local testing (Mac)
