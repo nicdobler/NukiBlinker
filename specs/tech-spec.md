@@ -28,7 +28,7 @@ nukiblinker/
 
 - **Python >= 3.11** (Docker image: `python:3.14.5-slim`)
 - **Poetry** for dependency management
-- **Docker** for deployment on Mini PC (WSL2), `--network host` for LAN access
+- **Docker** for deployment on Mini PC (WSL2), port mapping for LAN access
 
 ### Dependencies
 
@@ -50,7 +50,7 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 ## Execution Environment
 
 - **Target**: Mini PC running Windows with WSL2/Docker.
-- **Network**: `--network host` mode so the container shares the host's LAN IP.
+- **Network**: Bridge networking with port mapping (`8080:8080`). Outgoing LAN access via Docker's default gateway.
 - **Persistence**: `config.yaml` is read-write (web UI saves to it). Mounted as a volume.
 
 ### Development Environments
@@ -66,7 +66,7 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 
 - **`make test`** — Unit/integration tests with mocked HTTP. No real devices needed.
 - **`make runLocal`** — Real-device testing. Direct LAN access, mDNS works, HomeKit advertising works. Best for end-to-end validation.
-- **`make build`** — Verify Docker image builds. Note: `--network host` doesn't work on Docker for Mac (runs in a Linux VM), so use `make runLocal` for device testing.
+- **`make build`** — Verify Docker image builds. Use `make runLocal` for real-device testing.
 
 ## Event Flow
 
@@ -222,7 +222,7 @@ FastAPI app:
 
 Serves the configuration page and provides API endpoints for it.
 
-**Access control middleware**: Checks `request.client.host` against `127.0.0.1` / `::1`. Returns `403 Forbidden` for any other IP.
+**Access control middleware** (`PrivateNetworkMiddleware`): Uses `ipaddress.ip_address(client_ip).is_private` to allow requests from localhost, Docker gateway (172.x), and LAN IPs. Returns `403 Forbidden` for public IPs.
 
 **API routes** (all under `/api/`):
 
@@ -233,11 +233,14 @@ Serves the configuration page and provides API endpoints for it.
 | GET | `/api/discover/nuki` | Auto-discover Nuki Bridges |
 | GET | `/api/discover/hue` | Auto-discover Hue Bridges |
 | GET | `/api/discover/speakers` | Auto-discover Chromecast + AirPlay speakers |
-| GET | `/api/hue/lights` | List available Hue lights and groups |
+| POST | `/api/nuki/pair` | Register callback on Nuki Bridge |
+| GET | `/api/nuki/devices` | List Nuki devices (Openers + Smart Locks) |
+| GET | `/api/nuki/callbacks` | List registered callbacks on Bridge |
 | POST | `/api/hue/pair` | Initiate Hue Bridge pairing (press button flow) |
-| POST | `/api/test/event/{type}` | Fire all channels for a specific event rule (ring or ring_to_open) |
-| GET | `/api/status` | Bridge connectivity, last ring, uptime |
-| GET | `/api/homekit/setup-code` | Return HomeKit pairing code + QR data |
+| GET | `/api/hue/lights` | List available Hue lights |
+| GET | `/api/hue/groups` | List available Hue groups |
+| POST | `/api/test/event/{type}` | Fire all channels for a specific event rule |
+| GET | `/api/status` | Service status, last event |
 | POST | `/api/pause` | Deregister Nuki callback (keep service running) |
 | POST | `/api/resume` | Re-register Nuki callback |
 
@@ -413,36 +416,44 @@ flowchart TD
     D --> E{HomeKit enabled?}
     E -->|Yes| F[Start HAP driver in background thread]
     E -->|No| G[Skip]
-    F --> H[Register Nuki callback idempotent]
+    F --> H[Create FastAPI app with lifespan]
     G --> H
-    H --> I[Start FastAPI + uvicorn]
+    H --> I[Start uvicorn]
+    I --> J[Lifespan startup: launch callback registration as background task]
+    J --> K[Server accepts requests immediately]
 ```
 
 1. Parse CLI args (`--config config.yaml`).
 2. Load and validate config (defaults allow empty config).
 3. Configure logging.
 4. If HomeKit enabled: start HAP accessory driver in a background thread.
-5. Register callback on Nuki Bridge (idempotent). Skip if Nuki not configured yet.
-6. Register shutdown hook (`SIGTERM` / `SIGINT`).
-7. Start FastAPI/uvicorn server (callback endpoint + web UI).
+5. Create FastAPI app with `lifespan` context manager.
+6. Start uvicorn — server is ready immediately.
+7. Lifespan startup launches Nuki callback registration as `asyncio.create_task` (non-blocking, with infinite retry: 10s → 20s → 40s → 60s).
 
-### Shutdown Hook
+### Shutdown (Lifespan teardown)
 
-Registered via FastAPI's `@app.on_event("shutdown")` or `signal.signal(SIGTERM, ...)`:
+Handled by the `lifespan` context manager's teardown phase:
 
 ```python
-async def shutdown():
-    logger.info("Shutting down — deregistering Nuki callback")
-    try:
-        await nuki_client.remove_callback(registered_callback_id)
-    except Exception as e:
-        logger.warning("Failed to deregister callback: %s", e)
-    if homekit_service:
-        homekit_service.stop()
-    logger.info("Clean shutdown complete")
+@asynccontextmanager
+async def lifespan(app):
+    # startup
+    app.state.callback_id = None
+    registration_task = asyncio.create_task(
+        _register_callback_loop(config, clients, app)
+    )
+    yield
+    # shutdown
+    registration_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await registration_task
+    await _deregister_callback(clients, app.state.callback_id)
+    if clients.homekit is not None:
+        clients.homekit.stop()
 ```
 
-If the Nuki Bridge is unreachable at shutdown time, the deregistration is logged as a warning but does not block exit. The stale callback is harmless (Bridge silently skips unreachable URLs) and will be reused on next startup.
+On shutdown: cancels the registration retry task (if still running), deregisters the callback from the Nuki Bridge, and stops HomeKit. If the Bridge is unreachable, deregistration is logged as a warning but does not block exit.
 
 ## Nuki Bridge Callback Payload
 
@@ -607,7 +618,8 @@ FROM python:3.14.5-slim
 services:
   nukiblinker:
     image: ghcr.io/nicdobler/nukiblinker:latest
-    network_mode: host
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml       # read-write for web UI

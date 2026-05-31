@@ -26,11 +26,65 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 
 ```sh
 cp config.example.yaml config.yaml
-# Edit config.yaml with your bridge IPs and tokens
 docker compose up -d
 ```
 
 Open `http://localhost:8080/` on the Mini PC to configure via the web UI.
+
+## Initial Setup Guide
+
+After starting the container, open the web UI and follow these steps in order:
+
+### 1. Connect the Nuki Bridge
+
+Go to the **Nuki** tab.
+
+1. Click **Discover** to find your Nuki Bridge on the LAN, or enter the IP manually.
+2. Enter the **API Token** (find it in the Nuki app → Settings → Manage Bridge → Enable API).
+3. Click **Save** in the bottom bar.
+4. Click **Register Callback** — this tells the Bridge to send events (ring, door open) to NukiBlinker.
+5. Optionally, click **List Devices** and click on a device to filter events to a specific Opener or Smart Lock.
+
+### 2. Connect the Hue Bridge
+
+Go to the **Hue** tab.
+
+1. Click **Discover** to find the Hue Bridge IP, or enter it manually.
+2. **Press the physical button** on top of the Hue Bridge.
+3. Click **Pair** within 30 seconds — the API key is generated and saved automatically.
+4. Click **List Lights** and/or **List Groups** — click on the ones you want to blink on events.
+5. Click **Save**.
+
+### 3. Add speakers (optional)
+
+Go to the **Speakers** tab.
+
+1. Click **Discover** under Chromecast or AirPlay to find speakers on the network.
+2. Click on a speaker to add it, or type names manually (one per line).
+3. Adjust the **Volume** slider.
+4. Click **Save**.
+
+### 4. Enable HomeKit (optional)
+
+Go to the **HomeKit** tab.
+
+1. Toggle **Enabled** on.
+2. Note the **Setup Code** — use it to add the virtual doorbell in the Apple Home app.
+3. Click **Save**.
+
+### 5. Configure event rules
+
+Go to the **Events** tab. Each event type (Ring, Ring to Open, Door Opened) has its own settings:
+
+- **Blink mode**: `alert` (15s Hue built-in), `custom` (set color, flash count, interval), or `none`.
+- **Audio**: enable TTS announcements (with `{name}` placeholder) or play a chime sound.
+- **HomeKit**: toggle doorbell notification per event.
+
+Click **Save** when done.
+
+### 6. Test it
+
+Go to the **Status** tab and click **Test** next to any event type to trigger it. Check that your lights blink, speakers play, and HomeKit sends a notification.
 
 ## Web UI
 
@@ -84,9 +138,103 @@ See `config.example.yaml` for all options. Key sections:
 
 ## Deployment (Mini PC)
 
+### First-time setup
+
+```sh
+mkdir -p nukiblinker && cd nukiblinker
+# Copy docker-compose.yml and config.example.yaml from the repo
+cp config.example.yaml config.yaml
+```
+
+Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or configure later via the web UI).
+
+### Start / update
+
 ```sh
 docker compose pull && docker compose up -d
 ```
+
+### View logs
+
+```sh
+docker compose logs -f --tail 50
+```
+
+### Stop
+
+```sh
+docker compose down
+```
+
+### Access the web UI
+
+Open `http://localhost:8080/` from a browser on the same machine, or `http://<mini-pc-ip>:8080/` from another device on the LAN.
+
+The admin API (`/api/*`) and web UI (`/`) are restricted to **private-network IPs** (localhost, Docker gateway, LAN). Requests from public IPs are blocked with 403. The `/health` and `/nuki/callback` endpoints are accessible from any IP.
+
+## Troubleshooting
+
+### 403 Forbidden when accessing the web UI
+
+The admin middleware blocks requests from non-private IPs. Common causes:
+
+- **Accessing via a public IP or reverse proxy** that doesn't forward the real client IP. Access via `localhost` or a LAN IP (192.168.x.x, 10.x.x.x) instead.
+- **VPN or unusual network setup** where the client IP appears non-private.
+
+### ConnectTimeout when registering Nuki callback
+
+The container cannot reach the Nuki Bridge. Check:
+
+- **Nuki Bridge is powered on** and connected to your WiFi.
+- **Bridge IP is correct** in `config.yaml` (use the Nuki app → Bridge settings to verify).
+- **Docker networking**: the container uses bridge networking with port mapping. Outgoing connections to the LAN should work. If not, check `docker network inspect bridge` and your firewall rules.
+
+The app starts normally even if callback registration fails — you can re-register later from the web UI (Nuki tab → Register Callback).
+
+### Container starts but callback URL is wrong
+
+When `server.host` is `0.0.0.0`, NukiBlinker auto-detects the LAN IP for the callback URL sent to the Nuki Bridge. If auto-detection picks the wrong IP (e.g., Docker internal IP), set `server.host` to your actual LAN IP:
+
+```yaml
+server:
+  host: "192.168.1.50"   # Your Mini PC's LAN IP
+  port: 8080
+```
+
+> **Note**: This also changes the bind address. Use `0.0.0.0` to bind on all interfaces (recommended) and let auto-detection handle the callback URL.
+
+### Getting the Nuki Bridge API token
+
+1. Open the **Nuki app** on your phone.
+2. Go to **Settings → Manage my devices → Nuki Bridge**.
+3. Enable **HTTP API** if not already enabled.
+4. The app shows the **API token** — copy it into `config.yaml` under `nuki.api_token`.
+5. The bridge IP is shown in the same screen, or use the web UI's Nuki tab → **Discover** to find it automatically.
+
+Alternatively, you can discover the bridge and use its token directly from the web UI (Nuki tab → Discover → fill IP and token → Save).
+
+### Getting the Hue Bridge API key
+
+**Option A — Via the web UI (recommended):**
+
+1. Open the web UI → **Hue tab**.
+2. Click **Discover** to find the Hue Bridge IP.
+3. **Press the physical button** on top of the Hue Bridge.
+4. Click **Pair** within 30 seconds — the API key is generated and saved automatically.
+
+**Option B — Manually via curl:**
+
+```sh
+# Press the Hue Bridge button, then run within 30s:
+curl -X POST http://<bridge-ip>/api -d '{"devicetype":"nukiblinker"}'
+# Response: [{"success":{"username":"<your-api-key>"}}]
+```
+
+Copy the `username` value into `config.yaml` under `hue.api_key`.
+
+### DeprecationWarning about `on_event`
+
+Fixed in v0.2.0. Pull the latest image: `docker compose pull && docker compose up -d`.
 
 ## Development
 

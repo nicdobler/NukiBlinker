@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import contextlib
 import socket
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -69,11 +71,11 @@ def _build_clients(config: AppConfig) -> Clients:
 # ---------------------------------------------------------------------------
 
 
-async def _register_callback(config: AppConfig, clients: Clients) -> int | None:
-    """Register the Nuki callback (idempotent). Returns callback ID or None."""
-    if clients.nuki is None:
-        logger.warning("Nuki not configured — skipping callback registration")
-        return None
+_RETRY_DELAYS = [10, 20, 40]  # then 60s indefinitely
+
+
+def _resolve_callback_url(config: AppConfig) -> str:
+    """Build the callback URL, auto-detecting LAN IP if needed."""
     host = config.server.host
     if host in ("0.0.0.0", "::"):
         try:
@@ -83,12 +85,39 @@ async def _register_callback(config: AppConfig, clients: Clients) -> int | None:
             s.close()
         except Exception:
             host = "127.0.0.1"
-    callback_url = f"http://{host}:{config.server.port}/nuki/callback"
-    try:
-        return await clients.nuki.register_callback(callback_url)
-    except Exception:
-        logger.error("Failed to register Nuki callback", exc_info=True)
-        return None
+    return f"http://{host}:{config.server.port}/nuki/callback"
+
+
+async def _register_callback_loop(config: AppConfig, clients: Clients, app) -> None:
+    """Register the Nuki callback with infinite retry.
+
+    Retries after 10s, 20s, 40s, then every 60s until success or cancellation.
+    Runs as a background task so server startup is not blocked.
+    """
+    if clients.nuki is None:
+        logger.warning("Nuki not configured — skipping callback registration")
+        return
+    callback_url = _resolve_callback_url(config)
+    bridge_url = f"http://{config.nuki.bridge_ip}:{config.nuki.bridge_port}"
+    attempt = 0
+    while True:
+        try:
+            logger.info(
+                "Registering Nuki callback (attempt %d): bridge=%s callback=%s",
+                attempt + 1, bridge_url, callback_url,
+            )
+            cb_id = await clients.nuki.register_callback(callback_url)
+            app.state.callback_id = cb_id
+            logger.info("Nuki callback registered successfully (id=%s)", cb_id)
+            return
+        except Exception:
+            delay = _RETRY_DELAYS[attempt] if attempt < len(_RETRY_DELAYS) else 60
+            logger.warning(
+                "Failed to reach Nuki Bridge at %s — retrying in %ds",
+                bridge_url, delay,
+            )
+            attempt += 1
+            await asyncio.sleep(delay)
 
 
 async def _deregister_callback(clients: Clients, callback_id: int | None) -> None:
@@ -127,11 +156,16 @@ def main() -> None:  # pragma: no cover
     # Lifespan: startup + shutdown in a single context manager
     @asynccontextmanager
     async def lifespan(app):
-        callback_id = await _register_callback(config, clients)
-        app.state.callback_id = callback_id
+        app.state.callback_id = None
+        registration_task = asyncio.create_task(
+            _register_callback_loop(config, clients, app)
+        )
         yield
-        logger.info("Shutting down — deregistering callback")
-        await _deregister_callback(clients, callback_id)
+        logger.info("Shutting down — cancelling registration & deregistering callback")
+        registration_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await registration_task
+        await _deregister_callback(clients, app.state.callback_id)
         if clients.homekit is not None:
             clients.homekit.stop()
         logger.info("Clean shutdown complete")

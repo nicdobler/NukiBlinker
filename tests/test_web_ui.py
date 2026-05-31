@@ -102,10 +102,10 @@ class TestTestEvent:
         assert r.status_code == 400
 
 
-class TestLocalhostGuard:
-    """Verify non-localhost requests to /api/ are blocked."""
+class TestPrivateNetworkGuard:
+    """Verify non-private-network requests to /api/ are blocked."""
 
-    def test_blocked_when_not_localhost(self, tmp_path):
+    def test_blocked_when_not_private(self, tmp_path):
         """Create an app WITHOUT testclient in allowed_hosts."""
         config = AppConfig()
         clients = _make_clients()

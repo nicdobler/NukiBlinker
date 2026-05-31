@@ -1,7 +1,8 @@
-"""Web configuration UI — API routes with localhost access control."""
+"""Web configuration UI — API routes with private-network access control."""
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,24 +20,38 @@ if TYPE_CHECKING:
 logger = get_logger("web_ui")
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_LOCALHOST = {"127.0.0.1", "::1", "localhost"}
 
 
 # ---------------------------------------------------------------------------
-# Localhost-only middleware
+# Private-network middleware
 # ---------------------------------------------------------------------------
 
 
-class LocalhostOnlyMiddleware(BaseHTTPMiddleware):
-    """Block API requests from non-localhost clients (403)."""
+def _is_allowed(client_ip: str, allowed: set[str] | None) -> bool:
+    """Check if client IP may access the admin API.
+
+    If *allowed* is an explicit set, check membership.
+    Otherwise allow any private / loopback IP (covers localhost,
+    Docker gateway 172.17.x.x, and LAN 192.168.x.x / 10.x.x.x).
+    """
+    if allowed is not None:
+        return client_ip in allowed
+    try:
+        return ipaddress.ip_address(client_ip).is_private
+    except ValueError:
+        return False
+
+
+class PrivateNetworkMiddleware(BaseHTTPMiddleware):
+    """Block API requests from non-private-network clients (403)."""
 
     async def dispatch(self, request: Request, call_next):
         # Allow health and callback endpoints from anywhere
         path = request.url.path
         if path.startswith("/api/") or path == "/":
-            allowed = getattr(request.app.state, "allowed_hosts", _LOCALHOST)
+            allowed = getattr(request.app.state, "allowed_hosts", None)
             client_ip = request.client.host if request.client else ""
-            if client_ip not in allowed:
+            if not _is_allowed(client_ip, allowed):
                 logger.warning("Blocked request from %s to %s", client_ip, path)
                 return JSONResponse({"error": "forbidden"}, status_code=403)
         return await call_next(request)
@@ -51,7 +66,7 @@ router = APIRouter(prefix="/api")
 
 def mount_web_ui(app: FastAPI, config_path: str) -> None:
     """Mount the web UI routes and static files on the FastAPI app."""
-    app.add_middleware(LocalhostOnlyMiddleware)
+    app.add_middleware(PrivateNetworkMiddleware)
     app.state.config_path = config_path
 
     @router.get("/config")

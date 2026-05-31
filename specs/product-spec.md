@@ -140,7 +140,7 @@ An example template `config.example.yaml` is provided for initial bootstrap (bef
 
 A simple, single-page web interface for configuring NukiBlinker.
 
-**Access control**: The web UI is only accessible from the Mini PC itself (`127.0.0.1` / `localhost`). Requests from any other IP are rejected with `403 Forbidden`.
+**Access control**: The web UI is accessible from any private-network IP (localhost, Docker gateway, LAN). Requests from public IPs are rejected with `403 Forbidden`.
 
 **Sections**:
 
@@ -211,7 +211,7 @@ Key settings:
 10. **Channel independence** — Each notification channel works independently; a failure in one does not block others.
 11. **Idempotent startup** — Multiple restarts do not create duplicate callbacks on the Nuki Bridge.
 12. **Config validation** — Invalid config is rejected at startup with a clear error message.
-13. **Web UI** — Config page is accessible only from `localhost`. All settings are editable and persist to `config.yaml`.
+13. **Web UI** — Config page is accessible from private-network IPs (localhost, LAN). All settings are editable and persist to `config.yaml`.
 14. **Auto-discovery** — Nuki Bridge, Hue Bridge, Chromecast speakers, and AirPlay speakers are auto-discovered when available.
 15. **Test buttons** — Per-event "Test" button fires all enabled channels for that rule without a real doorbell event.
 16. **Graceful shutdown** — `docker compose down` deregisters the Nuki callback before exiting.
@@ -225,7 +225,7 @@ Key settings:
 - No Alexa support (no public local API for announcements).
 - No multi-bridge support (single Nuki Bridge + single Hue Bridge).
 - No door-opening automation — NukiBlinker is notification only, it never opens or locks doors.
-- No remote access to the web UI — localhost only.
+- No remote access to the web UI from public IPs — private networks only (localhost, LAN).
 
 ## Future Considerations
 

@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker: replaced `network_mode: host` with port mapping — fixes web UI access on Docker Desktop for Windows/Mac.
 - Migrated FastAPI `on_event("startup")`/`on_event("shutdown")` to `lifespan` context manager (fixes DeprecationWarning).
 - Callback URL now auto-detects LAN IP when `server.host` is `0.0.0.0` instead of sending a literal `0.0.0.0` to the Nuki Bridge.
+- Web UI middleware now allows all private-network IPs (not just localhost) — fixes 403 Forbidden when accessing via Docker bridge network.
+- Added deployment manual and troubleshooting section to README.
 
 ### Changed
 - Project scaffolding: specs, config, Dockerfile, Makefile, CI setup.
