@@ -88,6 +88,16 @@
             </div>
         </div>
         <div class="card">
+            <h2>Server</h2>
+            <div class="grid">
+                <div>
+                    <label>Public Host (LAN IP)</label>
+                    <input id="publicHost" placeholder="e.g. 192.168.86.50">
+                    <p class="help">LAN IP that speakers and Nuki Bridge use to reach this server. Required in Docker.</p>
+                </div>
+            </div>
+        </div>
+        <div class="card">
             <h2>Test Events</h2>
             <p class="help" style="margin-bottom:0.75rem">Fire test events to check lights, audio and HomeKit notifications.</p>
             <div class="btn-row">
@@ -439,6 +449,7 @@ async function loadConfig() {
         const vol = Math.round((d.speakers?.volume ?? 0.5) * 100);
         document.getElementById('speakersVolume').value = vol;
         document.getElementById('volumeValue').textContent = vol;
+        setVal('publicHost', d.server?.public_host);
         setChk('hkEnabled', d.homekit?.enabled); setVal('hkSetupCode', d.homekit?.setup_code);
         setVal('hkPersistDir', d.homekit?.persist_dir || '.homekit'); toggleHkFields();
         populateEventRule('ring', d.events?.ring);
@@ -459,6 +470,7 @@ async function saveConfig() {
             airplay: document.getElementById('speakersAirplay').value.split('\n').map(s=>s.trim()).filter(Boolean),
             volume: parseInt(val('speakersVolume')) / 100 },
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
+        server: { host: '0.0.0.0', port: 8080, public_host: val('publicHost') },
         events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door') },
     };
     try {

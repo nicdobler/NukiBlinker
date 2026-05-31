@@ -76,15 +76,9 @@ _RETRY_DELAYS = [10, 20, 40]  # then 60s indefinitely
 
 def _resolve_callback_url(config: AppConfig) -> str:
     """Build the callback URL, auto-detecting LAN IP if needed."""
-    host = config.server.host
-    if host in ("0.0.0.0", "::"):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect((config.nuki.bridge_ip, 80))
-            host = s.getsockname()[0]
-            s.close()
-        except Exception:
-            host = "127.0.0.1"
+    from nukiblinker.config import get_public_host
+
+    host = get_public_host(config)
     return f"http://{host}:{config.server.port}/nuki/callback"
 
 

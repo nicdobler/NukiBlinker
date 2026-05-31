@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import socket
 from typing import TYPE_CHECKING
 
 from nukiblinker import audio as audio_mod
@@ -17,15 +16,9 @@ logger = get_logger("notifier")
 
 def _build_audio_url(config: AppConfig, filename: str) -> str:
     """Build an HTTP URL for an audio file served by this instance."""
-    host = config.server.host
-    if host in ("0.0.0.0", "::"):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            host = s.getsockname()[0]
-            s.close()
-        except Exception:
-            host = "127.0.0.1"
+    from nukiblinker.config import get_public_host
+
+    host = get_public_host(config)
     return f"http://{host}:{config.server.port}/audio/{filename}"
 
 
