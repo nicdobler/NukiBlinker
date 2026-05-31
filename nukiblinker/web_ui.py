@@ -111,6 +111,9 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             hue = body.get("hue", {})
             if hue.get("api_key") in ("***", ""):
                 hue["api_key"] = current.hue.api_key
+            # Preserve server config if not provided by the UI
+            if "server" not in body:
+                body["server"] = current.server.model_dump()
             new_config = AppConfig.model_validate(body)
             request.app.state.config = new_config
             save_config(new_config, request.app.state.config_path)
@@ -323,8 +326,15 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         if event_type not in ("ring", "ring_to_open", "door_opened"):
             return JSONResponse({"error": f"unknown event type: {event_type}"}, status_code=400)
         try:
+            # Accept optional ?name= to simulate known vs unknown visitor
+            name = request.query_params.get("name")
+            payload: dict = {}
+            context_override: dict | None = None
+            if name is not None:
+                context_override = {"name": name}
             await event_router.dispatch(
-                event_type, {}, request.app.state.config, request.app.state.clients
+                event_type, payload, request.app.state.config,
+                request.app.state.clients, context_override=context_override,
             )
             return JSONResponse({"status": "fired", "event": event_type})
         except Exception as e:

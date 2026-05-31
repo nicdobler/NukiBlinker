@@ -85,18 +85,18 @@
             <div class="status"><div class="dot dot-ok" id="statusDot"></div><span id="statusText">Loading...</span></div>
             <div class="btn-row">
                 <button class="btn-secondary" onclick="togglePause()">Pause / Resume</button>
-                <button class="btn-secondary" onclick="testEvent('ring')">Test Ring</button>
-                <button class="btn-secondary" onclick="testEvent('ring_to_open')">Test RTO</button>
-                <button class="btn-secondary" onclick="testEvent('door_opened')">Test Door</button>
             </div>
         </div>
         <div class="card">
-            <h2>Server</h2>
-            <div class="grid">
-                <div><label>Host</label><input id="serverHost" value="0.0.0.0"></div>
-                <div><label>Port</label><input id="serverPort" type="number" value="8080"></div>
+            <h2>Test Events</h2>
+            <p class="help" style="margin-bottom:0.75rem">Fire test events to check lights, audio and HomeKit notifications.</p>
+            <div class="btn-row">
+                <button class="btn-secondary" onclick="testEvent('ring')">Ring (unknown)</button>
+                <button class="btn-secondary" onclick="testEvent('ring_to_open')">RTO (unknown)</button>
+                <button class="btn-secondary" onclick="testEventNamed('ring_to_open')">RTO (known visitor)</button>
+                <button class="btn-secondary" onclick="testEvent('door_opened')">Door Opened</button>
             </div>
-            <p class="help">Changes require service restart</p>
+            <div id="testResult" class="pair-status"></div>
         </div>
     </div>
 
@@ -194,15 +194,30 @@
     <!-- HOMEKIT -->
     <div id="panel-homekit" class="panel">
         <div class="card">
-            <h2>Apple HomeKit</h2>
-            <div class="toggle"><input type="checkbox" id="hkEnabled" onchange="toggleHkFields()"><label for="hkEnabled">Enable HomeKit doorbell accessory</label></div>
+            <h2>Apple HomeKit Doorbell</h2>
+            <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:1rem">Expose a virtual doorbell accessory so Apple Home and HomePod receive ring notifications.</p>
+            <div class="toggle"><input type="checkbox" id="hkEnabled" onchange="toggleHkFields()"><label for="hkEnabled">Enable HomeKit doorbell</label></div>
             <div id="hkFields" style="display:none">
+                <div class="pair-box" style="margin-bottom:1rem">
+                    <p class="instructions" style="margin-bottom:0.75rem"><strong>How to set up:</strong></p>
+                    <ol style="font-size:0.8rem;color:#94a3b8;margin-left:1.25rem;line-height:1.7">
+                        <li>Enable the toggle above and save configuration.</li>
+                        <li><strong>Restart the NukiBlinker service</strong> (HomeKit starts at boot).</li>
+                        <li>Open the <strong>Apple Home</strong> app on your iPhone/iPad.</li>
+                        <li>Tap <strong>+</strong> &rarr; <strong>Add Accessory</strong>.</li>
+                        <li>Choose <strong>"More options..."</strong> &mdash; the <em>NukiBlinker Doorbell</em> should appear.</li>
+                        <li>Enter the setup code shown below when prompted.</li>
+                    </ol>
+                </div>
                 <label>Setup Code <span class="opt">(auto-generated if empty)</span></label>
-                <input id="hkSetupCode" placeholder="111-22-333">
-                <p class="help">8-digit code used when pairing with Apple Home app</p>
+                <input id="hkSetupCode" placeholder="111-22-333" style="font-family:monospace;font-size:1.1rem;letter-spacing:2px;text-align:center">
+                <p class="help">This is the PIN you enter in Apple Home when pairing. Leave empty to auto-generate one on first start.</p>
                 <label>Persist Directory</label>
                 <input id="hkPersistDir" value=".homekit">
-                <p class="help">Directory for HAP-python accessory state</p>
+                <p class="help">Directory where pairing state is stored. Keeps pairings across restarts.</p>
+                <div class="pair-box" style="margin-top:1rem;border-color:#713f12">
+                    <p style="font-size:0.8rem;color:#fef08a"><strong>Docker note:</strong> HomeKit uses mDNS/Bonjour for discovery. If running in Docker, you must use <code style="background:#334155;padding:0.1rem 0.3rem;border-radius:3px">network_mode: host</code> in your docker-compose.yml, otherwise Apple Home won't find the accessory.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -211,6 +226,7 @@
     <div id="panel-events" class="panel">
         <div class="card">
             <h2>Ring (unknown visitor)</h2>
+            <p class="help">Triggered when someone rings without Ring to Open enabled.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
                 <select id="ringBlinkMode" onchange="toggleCustomBlink('ring')"><option value="alert">Alert (built-in)</option><option value="custom">Custom</option><option value="none">None</option></select>
@@ -225,11 +241,9 @@
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable audio</label></div>
                 <div id="ringAudioFields" style="display:none">
-                    <div class="grid">
-                        <div><label>Mode</label><select id="ringAudioMode" onchange="toggleAudioMode('ring')"><option value="tts">TTS</option><option value="chime">Chime</option></select></div>
-                        <div><label>Fallback name</label><input id="ringFallback" value="Alguien"></div>
-                    </div>
-                    <div id="ringTtsFields"><label>TTS Message</label><input id="ringTtsMsg" placeholder="{name} is at the door"><p class="help">Use {name} for visitor name</p></div>
+                    <label>Mode</label>
+                    <select id="ringAudioMode" onchange="toggleAudioMode('ring')"><option value="tts">TTS</option><option value="chime">Chime</option></select>
+                    <div id="ringTtsFields"><label>TTS Message</label><input id="ringTtsMsg" placeholder="Someone is at the door"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
                     <div id="ringChimeFields" style="display:none"><label>Chime file</label><input id="ringChime" value="chime.mp3"></div>
                 </div>
             </div>
@@ -240,6 +254,7 @@
 
         <div class="card">
             <h2>Ring to Open (known visitor)</h2>
+            <p class="help">Triggered when a known person rings and the door auto-opens.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
                 <select id="rtoBlinkMode" onchange="toggleCustomBlink('rto')"><option value="custom">Custom</option><option value="alert">Alert (built-in)</option><option value="none">None</option></select>
@@ -254,11 +269,9 @@
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="rtoAudioEnabled" checked onchange="toggleAudioFields('rto')"><label for="rtoAudioEnabled">Enable audio</label></div>
                 <div id="rtoAudioFields">
-                    <div class="grid">
-                        <div><label>Mode</label><select id="rtoAudioMode" onchange="toggleAudioMode('rto')"><option value="tts">TTS</option><option value="chime">Chime</option></select></div>
-                        <div><label>Fallback name</label><input id="rtoFallback" value="Alguien"></div>
-                    </div>
-                    <div id="rtoTtsFields"><label>TTS Message</label><input id="rtoTtsMsg" value="{name} llegó a casa"><p class="help">Use {name} for visitor name</p></div>
+                    <label>Mode</label>
+                    <select id="rtoAudioMode" onchange="toggleAudioMode('rto')"><option value="tts">TTS</option><option value="chime">Chime</option></select>
+                    <div id="rtoTtsFields"><label>TTS Message</label><input id="rtoTtsMsg" value="{name} llegó a casa"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
                     <div id="rtoChimeFields" style="display:none"><label>Chime file</label><input id="rtoChime" value="chime.mp3"></div>
                 </div>
             </div>
@@ -269,6 +282,7 @@
 
         <div class="card">
             <h2>Door Opened</h2>
+            <p class="help">Triggered when the smart lock is unlocked or unlatched.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
                 <select id="doorBlinkMode" onchange="toggleCustomBlink('door')"><option value="none">None</option><option value="alert">Alert (built-in)</option><option value="custom">Custom</option></select>
@@ -283,11 +297,9 @@
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable audio</label></div>
                 <div id="doorAudioFields">
-                    <div class="grid">
-                        <div><label>Mode</label><select id="doorAudioMode" onchange="toggleAudioMode('door')"><option value="chime">Chime</option><option value="tts">TTS</option></select></div>
-                        <div><label>Fallback name</label><input id="doorFallback" value="Alguien"></div>
-                    </div>
-                    <div id="doorTtsFields" style="display:none"><label>TTS Message</label><input id="doorTtsMsg" placeholder="The door was opened"></div>
+                    <label>Mode</label>
+                    <select id="doorAudioMode" onchange="toggleAudioMode('door')"><option value="chime">Chime</option><option value="tts">TTS</option></select>
+                    <div id="doorTtsFields" style="display:none"><label>TTS Message</label><input id="doorTtsMsg" placeholder="The door was opened"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
                     <div id="doorChimeFields"><label>Chime file</label><input id="doorChime" value="chime.mp3"></div>
                 </div>
             </div>
@@ -362,10 +374,22 @@ async function togglePause() {
     } catch (e) { showMsg('Action failed', false); }
 }
 async function testEvent(type) {
+    const el = document.getElementById('testResult');
+    el.innerHTML = `<span style="color:#94a3b8">Firing ${type}...</span>`;
     try {
         const d = await (await fetch(`${API}/test/event/${type}`, { method: 'POST' })).json();
-        showMsg(`Test ${type}: ${d.status || d.error}`, !!d.status);
-    } catch (e) { showMsg('Test failed', false); }
+        el.innerHTML = d.status ? `<span class="badge badge-ok">${type}: ${d.status}</span>` : `<span class="badge badge-err">${d.error}</span>`;
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Test failed</span>'; }
+}
+async function testEventNamed(type) {
+    const name = prompt('Enter visitor name for test:', 'Nico');
+    if (!name) return;
+    const el = document.getElementById('testResult');
+    el.innerHTML = `<span style="color:#94a3b8">Firing ${type} as "${name}"...</span>`;
+    try {
+        const d = await (await fetch(`${API}/test/event/${type}?name=${encodeURIComponent(name)}`, { method: 'POST' })).json();
+        el.innerHTML = d.status ? `<span class="badge badge-ok">${type}: ${d.status} (${name})</span>` : `<span class="badge badge-err">${d.error}</span>`;
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Test failed</span>'; }
 }
 
 /* --- Config helpers --- */
@@ -387,7 +411,7 @@ function populateEventRule(prefix, rule) {
     }
     setChk(prefix + 'AudioEnabled', a.enabled); toggleAudioFields(prefix);
     setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
-    setVal(prefix + 'TtsMsg', a.message); setVal(prefix + 'Chime', a.chime); setVal(prefix + 'Fallback', a.fallback_name);
+    setVal(prefix + 'TtsMsg', a.message); setVal(prefix + 'Chime', a.chime);
     setChk(prefix + 'Hk', rule.homekit);
 }
 
@@ -398,7 +422,7 @@ function collectEventRule(prefix) {
             brightness: parseInt(val(prefix + 'BlinkBri')) || 254, flashes: parseInt(val(prefix + 'BlinkFlashes')) || 3,
             interval_ms: parseInt(val(prefix + 'BlinkInterval')) || 500 } },
         audio: { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
-            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime'), fallback_name: val(prefix + 'Fallback') },
+            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime') },
         homekit: chk(prefix + 'Hk'),
     };
 }
@@ -420,7 +444,6 @@ async function loadConfig() {
         populateEventRule('ring', d.events?.ring);
         populateEventRule('rto', d.events?.ring_to_open);
         populateEventRule('door', d.events?.door_opened);
-        setVal('serverHost', d.server?.host || '0.0.0.0'); setVal('serverPort', d.server?.port || 8080);
         showMsg('Configuration loaded', true);
     } catch (e) { console.error(e); showMsg('Failed to load config', false); }
 }
@@ -437,7 +460,6 @@ async function saveConfig() {
             volume: parseInt(val('speakersVolume')) / 100 },
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
         events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door') },
-        server: { host: val('serverHost'), port: parseInt(val('serverPort')) || 8080 },
     };
     try {
         const d = await (await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();

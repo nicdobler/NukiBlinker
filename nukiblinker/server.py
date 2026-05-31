@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from nukiblinker import event_router
 from nukiblinker.logging_config import get_logger
@@ -22,6 +22,7 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
     app.state.clients = clients
     app.state.paused = False
     app.state.last_event = None
+    app.state.audio_files = {}  # filename -> Path mapping for /audio/ serving
 
     @app.post("/nuki/callback")
     async def nuki_callback(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
@@ -53,5 +54,13 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
     @app.get("/health")
     async def health() -> JSONResponse:
         return JSONResponse({"status": "ok", "paused": app.state.paused})
+
+    @app.get("/audio/{filename}")
+    async def serve_audio(filename: str) -> FileResponse:
+        """Serve audio files (TTS/chime) so speakers can stream them."""
+        path = app.state.audio_files.get(filename)
+        if path and path.exists():
+            return FileResponse(path, media_type="audio/mpeg")
+        return JSONResponse({"error": "not found"}, status_code=404)
 
     return app
