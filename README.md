@@ -250,16 +250,27 @@ If logs show `"fail to bind 5353"` or `"Address already in use"`, another proces
 
 **Immediate fix**: Enter speaker **IP addresses** instead of names. IP-based Chromecast connections use `get_chromecast_from_host()` and AirPlay uses unicast scanning — neither requires port 5353.
 
-**Root fix** (if you want name-based discovery):
+**Root fix** — free port 5353 so HomeKit, discovery, and name-based playback all work:
+
 ```powershell
-# Check if Apple Bonjour is running (common on Windows)
+# 1. Check if Apple Bonjour is running
 Get-Service -Name "Bonjour Service" -ErrorAction SilentlyContinue
-# If present, stop it:
+# If present, stop and disable it:
 Stop-Service -Name "Bonjour Service"
 Set-Service -Name "Bonjour Service" -StartupType Disabled
 ```
 
-Then rebuild: `docker compose up -d`. If no Bonjour service is found, the Windows DNS Client service itself handles mDNS — this cannot be safely stopped.
+If no Bonjour service is found, the **Windows DNS Client** (`Dnscache`) is occupying port 5353. Disable only its mDNS responder (DNS caching continues to work normally):
+
+```powershell
+# Run as Administrator
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters" `
+    -Name "EnableMDNS" -Value 0 -PropertyType DWord -Force
+# Reboot required
+Restart-Computer
+```
+
+After reboot, rebuild: `docker compose build && docker compose up -d`.
 
 ### WSL2: mDNS and multicast
 
