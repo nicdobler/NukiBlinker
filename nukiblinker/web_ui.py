@@ -152,22 +152,14 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 status_code=400,
             )
         try:
-            import socket
-
             from nukiblinker.nuki_client import NukiClient
 
             client = NukiClient(
                 config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token
             )
-            host = config.server.host
-            if host in ("0.0.0.0", "::"):
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    s.connect((config.nuki.bridge_ip, 80))
-                    host = s.getsockname()[0]
-                    s.close()
-                except Exception:
-                    host = "127.0.0.1"
+            from nukiblinker.config import get_public_host
+
+            host = get_public_host(config)
             callback_url = f"http://{host}:{config.server.port}/nuki/callback"
             cb_id = await client.register_callback(callback_url)
             if cb_id is not None:

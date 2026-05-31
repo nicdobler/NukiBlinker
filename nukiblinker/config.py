@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 from pathlib import Path
 
 import yaml
@@ -98,11 +99,14 @@ class HomeKitConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
+    public_host: str = ""
 
 
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
+
+_DOCKER_SUBNETS = ("192.168.65.", "172.17.", "172.18.", "172.19.")
 
 
 class AppConfig(BaseModel):
@@ -112,6 +116,35 @@ class AppConfig(BaseModel):
     homekit: HomeKitConfig = Field(default_factory=HomeKitConfig)
     events: EventRulesConfig = Field(default_factory=EventRulesConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+
+
+def get_public_host(config: AppConfig) -> str:
+    """Return the LAN IP to use in externally-reachable URLs.
+
+    Priority: public_host config > auto-detect via UDP probe.
+    Warns if auto-detected IP looks like a Docker internal address.
+    """
+    if config.server.public_host:
+        return config.server.public_host
+
+    host = config.server.host
+    if host in ("0.0.0.0", "::"):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            host = s.getsockname()[0]
+            s.close()
+        except Exception:
+            host = "127.0.0.1"
+
+    if any(host.startswith(prefix) for prefix in _DOCKER_SUBNETS):
+        logger.warning(
+            "Auto-detected IP %s looks like a Docker internal address. "
+            "Speakers won't be able to fetch audio. "
+            "Set server.public_host to your LAN IP in the config.",
+            host,
+        )
+    return host
 
 
 # ---------------------------------------------------------------------------
