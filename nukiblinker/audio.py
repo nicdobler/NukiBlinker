@@ -52,7 +52,7 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
     if audio_config.mode == "chime":
         chime_path = _SOUNDS_DIR / audio_config.chime
         if not chime_path.exists():
-            default = _SOUNDS_DIR / "chime.mp3"
+            default = _SOUNDS_DIR / "chime.wav"
             if default.exists():
                 logger.warning("Chime file not found: %s — falling back to default", chime_path)
                 chime_path = default
@@ -84,6 +84,6 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
     except Exception:
         logger.error("TTS generation failed for: %s", message, exc_info=True)
         # Fall back to chime if TTS fails
-        fallback = _SOUNDS_DIR / "chime.mp3"
+        fallback = _SOUNDS_DIR / "chime.wav"
         _register_file(fallback)
         return fallback

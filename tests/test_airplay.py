@@ -21,7 +21,7 @@ def _make_device(name="HomePod", address="10.0.0.10"):
 
 class TestPlay:
     @pytest.mark.asyncio
-    async def test_plays_on_matching_speaker(self, client):
+    async def test_plays_on_matching_speaker_by_name(self, client):
         dev = _make_device("HomePod")
         atv = AsyncMock()
         atv.stream.stream_file = AsyncMock()
@@ -34,6 +34,23 @@ class TestPlay:
             atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
 
     @pytest.mark.asyncio
+    async def test_plays_on_speaker_by_ip(self, client):
+        dev = _make_device("HomePod", "10.0.0.10")
+        atv = AsyncMock()
+        atv.stream.stream_file = AsyncMock()
+        atv.close = MagicMock()
+
+        with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
+            mock_pyatv.scan = AsyncMock(return_value=[dev])
+            mock_pyatv.connect = AsyncMock(return_value=atv)
+            await client.play(["10.0.0.10"], "/tmp/test.mp3", 0.5)
+            # Should use unicast scan with hosts=[ip]
+            mock_pyatv.scan.assert_called_once()
+            call_kwargs = mock_pyatv.scan.call_args
+            assert call_kwargs.kwargs.get("hosts") == ["10.0.0.10"]
+            atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
+
+    @pytest.mark.asyncio
     async def test_skips_non_matching_speaker(self, client):
         dev = _make_device("Bedroom Speaker")
 
@@ -41,6 +58,14 @@ class TestPlay:
             mock_pyatv.scan = AsyncMock(return_value=[dev])
             mock_pyatv.connect = AsyncMock()
             await client.play(["HomePod"], "/tmp/test.mp3", 0.5)
+            mock_pyatv.connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ip_scan_port_conflict(self, client):
+        """IP-based scan should handle OSError gracefully."""
+        with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
+            mock_pyatv.scan = AsyncMock(side_effect=OSError("Address already in use"))
+            await client.play(["10.0.0.10"], "/tmp/test.mp3", 0.5)
             mock_pyatv.connect.assert_not_called()
 
 
