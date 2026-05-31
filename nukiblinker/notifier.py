@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 from typing import TYPE_CHECKING
 
 from nukiblinker import audio as audio_mod
@@ -12,6 +13,20 @@ if TYPE_CHECKING:
     from nukiblinker.config import AppConfig, EventRuleConfig
 
 logger = get_logger("notifier")
+
+
+def _build_audio_url(config: AppConfig, filename: str) -> str:
+    """Build an HTTP URL for an audio file served by this instance."""
+    host = config.server.host
+    if host in ("0.0.0.0", "::"):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            host = s.getsockname()[0]
+            s.close()
+        except Exception:
+            host = "127.0.0.1"
+    return f"http://{host}:{config.server.port}/audio/{filename}"
 
 
 async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dict | None = None) -> None:
@@ -29,13 +44,22 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dic
 
     # Audio (chime or TTS)
     if rule.audio.enabled and rule.audio.mode != "none":
+        # Wire up the audio registry so files get registered for HTTP serving
+        app = getattr(clients, "_app", None)
+        if app is not None:
+            audio_mod._audio_registry = app.state.audio_files
         audio_path = audio_mod.get_audio(rule.audio, context or {})
-        chromecast = getattr(clients, "chromecast", None)
-        airplay = getattr(clients, "airplay", None)
-        if config.speakers.chromecast and chromecast is not None:
-            tasks.append(asyncio.ensure_future(_trigger_chromecast(chromecast, config.speakers, audio_path)))
-        if config.speakers.airplay and airplay is not None:
-            tasks.append(asyncio.ensure_future(_trigger_airplay(airplay, config.speakers, audio_path)))
+        if not audio_path.exists():
+            logger.warning("Audio file not found: %s — skipping speaker playback", audio_path)
+        else:
+            audio_url = _build_audio_url(config, audio_path.name)
+            logger.info("Audio URL for speakers: %s", audio_url)
+            chromecast = getattr(clients, "chromecast", None)
+            airplay = getattr(clients, "airplay", None)
+            if config.speakers.chromecast and chromecast is not None:
+                tasks.append(asyncio.ensure_future(_trigger_chromecast(chromecast, config.speakers, audio_url)))
+            if config.speakers.airplay and airplay is not None:
+                tasks.append(asyncio.ensure_future(_trigger_airplay(airplay, config.speakers, audio_url)))
 
     # HomeKit
     if rule.homekit and config.homekit.enabled:
@@ -61,14 +85,14 @@ async def _trigger_hue(hue_client, hue_config, blink_config) -> None:
         await hue_client.trigger_custom_blink(hue_config.lights, blink_config.custom)
 
 
-async def _trigger_chromecast(cc_client, speakers_config, audio_path) -> None:
+async def _trigger_chromecast(cc_client, speakers_config, audio_url) -> None:
     """Play audio on Chromecast speakers."""
-    await cc_client.play(speakers_config.chromecast, str(audio_path), speakers_config.volume)
+    await cc_client.play(speakers_config.chromecast, audio_url, speakers_config.volume)
 
 
-async def _trigger_airplay(ap_client, speakers_config, audio_path) -> None:
+async def _trigger_airplay(ap_client, speakers_config, audio_url) -> None:
     """Play audio on AirPlay speakers."""
-    await ap_client.play(speakers_config.airplay, str(audio_path), speakers_config.volume)
+    await ap_client.play(speakers_config.airplay, audio_url, speakers_config.volume)
 
 
 async def _trigger_homekit(hk_service) -> None:

@@ -76,7 +76,10 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
         return {"name": fallback_name}
 
 
-async def dispatch(event_type: str, payload: dict, config: AppConfig, clients) -> None:
+async def dispatch(
+    event_type: str, payload: dict, config: AppConfig, clients,
+    *, context_override: dict | None = None,
+) -> None:
     """Look up the event rule and fire matching notification channels."""
     from nukiblinker import notifier  # noqa: E402 — deferred to avoid circular import
 
@@ -85,10 +88,13 @@ async def dispatch(event_type: str, payload: dict, config: AppConfig, clients) -
         logger.warning("No event rule for type '%s'", event_type)
         return
 
-    context: dict = {}
-    if event_type in ("ring_to_open", "door_opened"):
+    if context_override is not None:
+        context = context_override
+    elif event_type in ("ring_to_open", "door_opened"):
         fallback = rule.audio.fallback_name if rule.audio else "Alguien"
         context = await resolve_person(payload, getattr(clients, "nuki", None), fallback)
+    else:
+        context = {}
 
     logger.info("Dispatching event '%s' with context %s", event_type, context)
     await notifier.notify(rule, config, clients, context)

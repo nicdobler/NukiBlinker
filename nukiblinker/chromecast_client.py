@@ -25,14 +25,33 @@ class ChromecastClient:
             return
 
         loop = asyncio.get_running_loop()
+        chromecasts = await loop.run_in_executor(
+            None, partial(self._get_chromecasts_by_name, speaker_names),
+        )
+        for cc in chromecasts:
+            await loop.run_in_executor(None, partial(self._play_on_device, cc, audio_url, volume))
 
-        chromecasts, browser = await loop.run_in_executor(None, pychromecast.get_chromecasts)
-        try:
-            for cc in chromecasts:
-                if cc.cast_info.friendly_name in speaker_names:
-                    await loop.run_in_executor(None, partial(self._play_on_device, cc, audio_url, volume))
-        finally:
-            browser.stop_discovery()
+    @staticmethod
+    def _get_chromecasts_by_name(speaker_names: list[str]) -> list:
+        """Blocking: discover and connect to named Chromecast devices."""
+        import time
+        from zeroconf import Zeroconf
+
+        zconf = Zeroconf()
+        browser = pychromecast.CastBrowser(
+            pychromecast.SimpleCastListener(), zconf,
+        )
+        browser.start_discovery()
+        time.sleep(5)
+
+        targets = []
+        for uuid, info in browser.devices.items():
+            if info.friendly_name in speaker_names:
+                cc = pychromecast.get_chromecast_from_cast_info(info, zconf)
+                targets.append(cc)
+        browser.stop_discovery()
+        # Note: don't close zconf yet — chromecasts need it for communication
+        return targets
 
     @staticmethod
     def _play_on_device(device, audio_url: str, volume: float) -> None:
@@ -60,21 +79,34 @@ class ChromecastClient:
         logger.info("Played audio on %s", device.cast_info.friendly_name)
 
     async def list_speakers(self) -> list[dict]:
-        """Discover Chromecast devices on LAN."""
+        """Discover Chromecast devices on LAN using CastBrowser."""
         if pychromecast is None:
             return []
 
         loop = asyncio.get_running_loop()
-        chromecasts, browser = await loop.run_in_executor(None, pychromecast.get_chromecasts)
-        try:
-            return [
-                {
-                    "name": cc.cast_info.friendly_name,
-                    "ip": str(cc.cast_info.host),
-                    "port": cc.cast_info.port,
-                    "type": "chromecast",
-                }
-                for cc in chromecasts
-            ]
-        finally:
-            browser.stop_discovery()
+        return await loop.run_in_executor(None, self._discover_speakers)
+
+    @staticmethod
+    def _discover_speakers() -> list[dict]:
+        """Blocking helper — runs in executor."""
+        import time
+        from zeroconf import Zeroconf
+
+        zconf = Zeroconf()
+        browser = pychromecast.CastBrowser(
+            pychromecast.SimpleCastListener(), zconf,
+        )
+        browser.start_discovery()
+        time.sleep(5)
+        devices = [
+            {
+                "name": info.friendly_name,
+                "ip": str(info.host),
+                "port": info.port,
+                "type": "chromecast",
+            }
+            for info in browser.devices.values()
+        ]
+        browser.stop_discovery()
+        zconf.close()
+        return devices

@@ -172,6 +172,7 @@ def main() -> None:  # pragma: no cover
 
     # Create app
     app = create_app(config, clients, lifespan=lifespan)
+    clients._app = app  # allow notifier to register audio files for serving
     mount_web_ui(app, args.config)
 
     # Run

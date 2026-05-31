@@ -22,6 +22,9 @@ except ImportError:  # pragma: no cover
 _SOUNDS_DIR = Path(__file__).parent / "sounds"
 _tts_cache: dict[str, Path] = {}
 
+# Set by the notifier at dispatch time so get_audio can register files
+_audio_registry: dict[str, Path] | None = None
+
 
 def render_message(template: str, context: dict, fallback_name: str = "Alguien") -> str:
     """Render a message template, replacing {name} with the resolved name."""
@@ -30,6 +33,14 @@ def render_message(template: str, context: dict, fallback_name: str = "Alguien")
         return template.format(name=name)
     except (KeyError, IndexError):
         return template
+
+
+def _register_file(path: Path) -> str:
+    """Register a file in the audio registry and return its serving filename."""
+    filename = path.name
+    if _audio_registry is not None:
+        _audio_registry[filename] = path
+    return filename
 
 
 def get_audio(audio_config: AudioConfig, context: dict) -> Path:
@@ -41,8 +52,14 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
     if audio_config.mode == "chime":
         chime_path = _SOUNDS_DIR / audio_config.chime
         if not chime_path.exists():
-            logger.warning("Chime file not found: %s — falling back to default", chime_path)
-            chime_path = _SOUNDS_DIR / "chime.mp3"
+            default = _SOUNDS_DIR / "chime.mp3"
+            if default.exists():
+                logger.warning("Chime file not found: %s — falling back to default", chime_path)
+                chime_path = default
+            else:
+                logger.warning("No chime files found in %s — audio will be skipped", _SOUNDS_DIR)
+                return chime_path  # caller must handle missing file
+        _register_file(chime_path)
         return chime_path
 
     # TTS mode
@@ -53,6 +70,7 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
         cached = _tts_cache[cache_key]
         if cached.exists():
             logger.debug("TTS cache hit for message: %s", message)
+            _register_file(cached)
             return cached
 
     logger.info("Generating TTS for message: %s", message)
@@ -61,8 +79,11 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
         tmp = Path(tempfile.mktemp(suffix=".mp3", prefix="nukiblinker_tts_"))
         tts.save(str(tmp))
         _tts_cache[cache_key] = tmp
+        _register_file(tmp)
         return tmp
     except Exception:
         logger.error("TTS generation failed for: %s", message, exc_info=True)
         # Fall back to chime if TTS fails
-        return _SOUNDS_DIR / "chime.mp3"
+        fallback = _SOUNDS_DIR / "chime.mp3"
+        _register_file(fallback)
+        return fallback

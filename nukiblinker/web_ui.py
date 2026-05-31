@@ -6,6 +6,8 @@ import ipaddress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
+
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -20,6 +22,23 @@ if TYPE_CHECKING:
 logger = get_logger("web_ui")
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _bridge_error(exc: Exception, bridge_label: str = "Bridge") -> tuple[dict, int]:
+    """Convert bridge communication exceptions to (body, status_code)."""
+    if isinstance(exc, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout)):
+        return {"error": f"{bridge_label} unreachable — connection timed out"}, 502
+    if isinstance(exc, httpx.ConnectError):
+        return {"error": f"{bridge_label} unreachable — cannot connect"}, 502
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 401:
+            return {"error": f"{bridge_label} rejected the API token — check your credentials"}, 401
+        if code == 403:
+            return {"error": f"{bridge_label} denied access (403 Forbidden)"}, 403
+        return {"error": f"{bridge_label} returned HTTP {code}"}, 502
+    msg = str(exc) or repr(exc)
+    return {"error": msg}, 500
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +111,9 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             hue = body.get("hue", {})
             if hue.get("api_key") in ("***", ""):
                 hue["api_key"] = current.hue.api_key
+            # Preserve server config if not provided by the UI
+            if "server" not in body:
+                body["server"] = current.server.model_dump()
             new_config = AppConfig.model_validate(body)
             request.app.state.config = new_config
             save_config(new_config, request.app.state.config_path)
@@ -161,7 +183,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             )
         except Exception as e:
             logger.error("Nuki pairing failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/nuki/devices")
     async def nuki_devices(request: Request) -> JSONResponse:
@@ -178,7 +201,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             devices = await client.list_devices()
             return JSONResponse(devices)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/nuki/callbacks")
     async def nuki_callbacks(request: Request) -> JSONResponse:
@@ -195,7 +219,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             callbacks = await client.list_callbacks()
             return JSONResponse(callbacks)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     # ------------------------------------------------------------------
     # Hue pairing & device discovery
@@ -229,7 +254,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             )
         except Exception as e:
             logger.error("Hue pairing failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/hue/lights")
     async def hue_lights(request: Request) -> JSONResponse:
@@ -246,7 +272,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             lights = await client.list_lights()
             return JSONResponse(lights)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/hue/groups")
     async def hue_groups(request: Request) -> JSONResponse:
@@ -263,7 +290,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             groups = await client.list_groups()
             return JSONResponse(groups)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/status")
     async def status(request: Request) -> JSONResponse:
@@ -298,8 +326,15 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         if event_type not in ("ring", "ring_to_open", "door_opened"):
             return JSONResponse({"error": f"unknown event type: {event_type}"}, status_code=400)
         try:
+            # Accept optional ?name= to simulate known vs unknown visitor
+            name = request.query_params.get("name")
+            payload: dict = {}
+            context_override: dict | None = None
+            if name is not None:
+                context_override = {"name": name}
             await event_router.dispatch(
-                event_type, {}, request.app.state.config, request.app.state.clients
+                event_type, payload, request.app.state.config,
+                request.app.state.clients, context_override=context_override,
             )
             return JSONResponse({"status": "fired", "event": event_type})
         except Exception as e:
