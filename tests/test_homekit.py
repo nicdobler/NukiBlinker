@@ -35,8 +35,9 @@ class TestStart:
         mock_loader.get_serv_loader.return_value.get_service.return_value = mock_service
 
         svc = HomeKitService(setup_code="111-22-333", persist_dir=str(tmp_path / "hk"))
-        svc.start()
+        result = svc.start()
 
+        assert result is True
         mock_driver.add_accessory.assert_called_once()
         # Thread started
         assert svc._thread is not None
@@ -44,7 +45,8 @@ class TestStart:
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", False)
     def test_skips_when_hap_not_available(self, tmp_path):
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
-        svc.start()  # Should not raise
+        result = svc.start()  # Should not raise
+        assert result is False
         assert svc._driver is None
 
 

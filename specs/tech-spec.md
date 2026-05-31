@@ -50,8 +50,9 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 ## Execution Environment
 
 - **Target**: Mini PC running Windows with WSL2/Docker.
-- **Network**: Bridge networking with port mapping (`8080:8080`). Outgoing LAN access via Docker's default gateway.
-- **Persistence**: `config.yaml` is read-write (web UI saves to it). Mounted as a volume.
+- **Network**: Host networking (`network_mode: host`). Container shares the host's network stack directly. Required for mDNS/multicast (speaker discovery, HomeKit advertising). On WSL2, mirrored networking mode is recommended for full LAN multicast support.
+- **Persistence**: `config.yaml` is read-write (web UI saves to it). Mounted as a volume. Save operations include read-back verification to detect silent write failures.
+- **Startup diagnostics**: Logs a config summary at startup showing which integrations are configured (e.g., `nuki=192.168.1.100, hue=<not configured>`).
 
 ### Development Environments
 
@@ -617,13 +618,14 @@ FROM python:3.14.5-slim
 services:
   nukiblinker:
     build: .
-    ports:
-      - "8080:8080"
+    network_mode: host
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml       # read-write for web UI
       - ./homekit:/app/.homekit               # HomeKit pairing state
 ```
+
+> **Note**: `network_mode: host` is required for mDNS-based speaker discovery and HomeKit. Port 8080 is exposed directly on the host (no port mapping needed). On WSL2, enable mirrored networking for full multicast support.
 
 Deploy/update:
 

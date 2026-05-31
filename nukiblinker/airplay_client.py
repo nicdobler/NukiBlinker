@@ -24,9 +24,12 @@ class AirPlayClient:
             return
 
         devices = await pyatv.scan(asyncio.get_running_loop())
-        for dev in devices:
-            if dev.name in speaker_names:
-                await self._play_on_device(dev, audio_path, volume)
+        matched = [d for d in devices if d.name in speaker_names]
+        if not matched:
+            logger.warning("No AirPlay speakers found matching: %s (discovered %d total)", speaker_names, len(devices))
+            return
+        for dev in matched:
+            await self._play_on_device(dev, audio_path, volume)
 
     async def _play_on_device(self, device_config, audio_path: str, volume: float) -> None:
         """Connect to a single device and stream audio."""
@@ -44,7 +47,7 @@ class AirPlayClient:
             return []
 
         devices = await pyatv.scan(asyncio.get_running_loop())
-        return [
+        result = [
             {
                 "name": d.name,
                 "ip": str(d.address),
@@ -53,3 +56,5 @@ class AirPlayClient:
             }
             for d in devices
         ]
+        logger.info("AirPlay discovery found %d device(s)", len(result))
+        return result

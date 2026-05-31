@@ -137,8 +137,38 @@ def load_config(path: str | Path) -> AppConfig:
 
 
 def save_config(config: AppConfig, path: str | Path) -> None:
-    """Persist config to YAML file."""
+    """Persist config to YAML file with read-back verification."""
     path = Path(path)
     data = config.model_dump(mode="json")
-    path.write_text(yaml.dump(data, default_flow_style=False, allow_unicode=True), encoding="utf-8")
-    logger.info("Config saved to %s", path)
+    yaml_text = yaml.dump(data, default_flow_style=False, allow_unicode=True)
+    path.write_text(yaml_text, encoding="utf-8")
+
+    # Verify the write persisted correctly
+    readback = path.read_text(encoding="utf-8")
+    if readback != yaml_text:
+        logger.error(
+            "Config verification FAILED — written %d bytes but read back %d bytes at %s",
+            len(yaml_text), len(readback), path,
+        )
+        raise IOError(f"Config verification failed for {path}")
+    logger.info("Config saved and verified (%d bytes) to %s", len(yaml_text), path)
+
+
+def summarize_config(config: AppConfig) -> str:
+    """Return a one-line summary of which integrations are configured."""
+    parts = []
+    if config.nuki.bridge_ip and config.nuki.api_token:
+        parts.append(f"nuki={config.nuki.bridge_ip}")
+    else:
+        parts.append("nuki=<not configured>")
+    if config.hue.bridge_ip and config.hue.api_key:
+        parts.append(f"hue={config.hue.bridge_ip}")
+    else:
+        parts.append("hue=<not configured>")
+    if config.speakers.chromecast:
+        parts.append(f"chromecast={len(config.speakers.chromecast)} speakers")
+    if config.speakers.airplay:
+        parts.append(f"airplay={len(config.speakers.airplay)} speakers")
+    if config.homekit.enabled:
+        parts.append("homekit=enabled")
+    return ", ".join(parts)

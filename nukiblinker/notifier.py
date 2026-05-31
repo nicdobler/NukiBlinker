@@ -68,7 +68,7 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dic
             tasks.append(asyncio.ensure_future(_trigger_homekit(hk)))
 
     if not tasks:
-        logger.debug("No notification channels to fire for this rule")
+        logger.info("No notification channels active for this rule")
         return
 
     results = await asyncio.gather(*tasks, return_exceptions=True)

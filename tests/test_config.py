@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from nukiblinker.config import AppConfig, load_config, save_config
+from nukiblinker.config import AppConfig, load_config, save_config, summarize_config
 
 
 class TestDefaults:
@@ -123,6 +123,34 @@ class TestSaveConfig:
         assert isinstance(data, dict)
         assert "nuki" in data
         assert "events" in data
+
+
+class TestSummarizeConfig:
+    """Config summary for startup logging."""
+
+    def test_default_config_summary(self):
+        summary = summarize_config(AppConfig())
+        assert "nuki=<not configured>" in summary
+        assert "hue=<not configured>" in summary
+
+    def test_configured_integrations(self):
+        cfg = AppConfig()
+        cfg.nuki.bridge_ip = "10.0.0.1"
+        cfg.nuki.api_token = "tok"
+        cfg.hue.bridge_ip = "10.0.0.2"
+        cfg.hue.api_key = "key"
+        cfg.homekit.enabled = True
+        summary = summarize_config(cfg)
+        assert "nuki=10.0.0.1" in summary
+        assert "hue=10.0.0.2" in summary
+        assert "homekit=enabled" in summary
+
+    def test_partial_config(self):
+        cfg = AppConfig()
+        cfg.nuki.bridge_ip = "10.0.0.1"
+        # No api_token — still not configured
+        summary = summarize_config(cfg)
+        assert "nuki=<not configured>" in summary
 
 
 class TestValidation:

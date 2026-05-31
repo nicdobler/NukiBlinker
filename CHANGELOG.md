@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deploy/update scripts use `docker compose build` instead of `docker compose pull`.
 
 ### Added
+- Config startup summary log: shows which integrations are configured on boot (e.g., `nuki=192.168.1.100, hue=<not configured>`).
+- Config save verification: `save_config()` reads back written file and raises `IOError` if content doesn't match.
+- Speaker logging: Chromecast and AirPlay clients now warn when no matching speakers are found during playback and log discovery count.
 - Enhanced web UI: tabbed configuration interface (Status, Nuki, Hue, Speakers, HomeKit, Events).
   - Nuki: bridge discovery, callback registration, device listing with click-to-set IDs.
   - Hue: bridge discovery, guided pairing (press button → pair), light & group listing.
@@ -24,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/hue/pair`, `/api/hue/lights`, `/api/hue/groups`.
 
 ### Fixed
+- HomeKit startup log: `start()` now returns a boolean; success message only logged when HAP-python is available.
+- Notifier: "no notification channels" message bumped from DEBUG to INFO for better diagnostics.
 - `PUT /api/config` now preserves masked secrets (`***`) instead of overwriting real tokens.
-- Docker: replaced `network_mode: host` with port mapping — fixes web UI access on Docker Desktop for Windows/Mac.
+- Docker: switched to `network_mode: host` — enables mDNS/multicast for speaker discovery, HomeKit, and direct LAN access to Nuki/Hue bridges.
 - Migrated FastAPI `on_event("startup")`/`on_event("shutdown")` to `lifespan` context manager (fixes DeprecationWarning).
 - Callback URL now auto-detects LAN IP when `server.host` is `0.0.0.0` instead of sending a literal `0.0.0.0` to the Nuki Bridge.
 - Web UI middleware now allows all private-network IPs (not just localhost) — fixes 403 Forbidden when accessing via Docker bridge network.

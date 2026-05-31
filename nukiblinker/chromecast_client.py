@@ -28,6 +28,9 @@ class ChromecastClient:
         chromecasts = await loop.run_in_executor(
             None, partial(self._get_chromecasts_by_name, speaker_names),
         )
+        if not chromecasts:
+            logger.warning("No Chromecast speakers found matching: %s", speaker_names)
+            return
         for cc in chromecasts:
             await loop.run_in_executor(None, partial(self._play_on_device, cc, audio_url, volume))
 
@@ -109,4 +112,5 @@ class ChromecastClient:
         ]
         browser.stop_discovery()
         zconf.close()
+        logger.info("Chromecast discovery found %d device(s)", len(devices))
         return devices
