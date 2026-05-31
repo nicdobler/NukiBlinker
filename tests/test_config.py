@@ -36,7 +36,7 @@ class TestDefaults:
         audio = cfg.events.ring_to_open.audio
         assert "{name}" in audio.message
         assert audio.fallback_name == "Alguien"
-        assert audio.chime == "chime.mp3"
+        assert audio.chime == "chime.wav"
 
 
 class TestLoadConfig:

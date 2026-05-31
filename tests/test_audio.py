@@ -38,7 +38,7 @@ class TestGetAudioChime:
             assert result == chime_file
 
     def test_chime_missing_falls_back_to_default(self, tmp_path):
-        default_chime = tmp_path / "chime.mp3"
+        default_chime = tmp_path / "chime.wav"
         default_chime.write_bytes(b"default")
 
         cfg = AudioConfig(enabled=True, mode="chime", chime="nonexistent.mp3")
@@ -83,7 +83,7 @@ class TestGetAudioTTS:
             assert result1 == result2
 
     def test_tts_fallback_on_error(self, tmp_path):
-        default_chime = tmp_path / "chime.mp3"
+        default_chime = tmp_path / "chime.wav"
         default_chime.write_bytes(b"fallback")
 
         cfg = AudioConfig(enabled=True, mode="tts", message="test")

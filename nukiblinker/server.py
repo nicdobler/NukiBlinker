@@ -60,7 +60,8 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
         """Serve audio files (TTS/chime) so speakers can stream them."""
         path = app.state.audio_files.get(filename)
         if path and path.exists():
-            return FileResponse(path, media_type="audio/mpeg")
+            media_type = "audio/wav" if path.suffix == ".wav" else "audio/mpeg"
+            return FileResponse(path, media_type=media_type)
         return JSONResponse({"error": "not found"}, status_code=404)
 
     return app

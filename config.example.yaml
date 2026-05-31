@@ -12,8 +12,8 @@ hue:
   groups: []                       # or group IDs (e.g. [1] for "Living room")
 
 speakers:
-  chromecast: []                   # Google Nest / Chromecast speaker names
-  airplay: []                      # HomePod / AirPlay speaker names
+  chromecast: []                   # speaker names or IP addresses
+  airplay: []                      # speaker names or IP addresses
   volume: 0.5                      # 0.0 - 1.0
 
 homekit:
@@ -51,7 +51,7 @@ events:
     audio:
       enabled: true
       mode: "chime"
-      chime: "chime.mp3"
+      chime: "chime.wav"
     homekit: false
 
 server:

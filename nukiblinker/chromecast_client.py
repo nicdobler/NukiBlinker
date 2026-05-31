@@ -126,7 +126,8 @@ class ChromecastClient:
         original_volume = device.status.volume_level if device.status else volume
         device.set_volume(volume)
 
-        mc.play_media(audio_url, "audio/mp3")
+        content_type = "audio/wav" if audio_url.endswith(".wav") else "audio/mp3"
+        mc.play_media(audio_url, content_type)
         mc.block_until_active(timeout=10)
 
         # Wait for playback to finish
