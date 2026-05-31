@@ -127,6 +127,10 @@ class ChromecastClient:
         device.set_volume(volume)
 
         content_type = "audio/wav" if audio_url.endswith(".wav") else "audio/mp3"
+        logger.info(
+            "Casting %s (type=%s) to %s",
+            audio_url, content_type, device.cast_info.friendly_name,
+        )
         mc.play_media(audio_url, content_type)
         mc.block_until_active(timeout=10)
 
@@ -140,7 +144,7 @@ class ChromecastClient:
 
         # Restore volume
         device.set_volume(original_volume)
-        logger.info("Played audio on %s", device.cast_info.friendly_name)
+        logger.info("Playback finished on %s", device.cast_info.friendly_name)
 
     async def list_speakers(self) -> list[dict]:
         """Discover Chromecast devices on LAN using CastBrowser."""

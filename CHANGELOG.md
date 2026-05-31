@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Speaker logging: Chromecast and AirPlay clients now warn when no matching speakers are found during playback and log discovery count.
 - Speaker IP connections: speakers can be configured by IP address instead of name, bypassing mDNS/zeroconf entirely. Chromecast uses `get_chromecast_from_host()`; AirPlay uses unicast `pyatv.scan(hosts=[ip])`.
 - Graceful zeroconf error handling: port 5353 conflicts no longer crash discovery or playback — clear warnings are logged with guidance to use IPs.
+- Silenced verbose third-party loggers (httpx, pychromecast, zeroconf, casttube, pyatv) — only warnings and errors from libraries.
+- Improved default chime: longer ding-dong with harmonics for natural bell timbre.
+- Better TTS diagnostics: logs file size on success, internet requirement on failure.
 - Enhanced web UI: tabbed configuration interface (Status, Nuki, Hue, Speakers, HomeKit, Events).
   - Nuki: bridge discovery, callback registration, device listing with click-to-set IDs.
   - Hue: bridge discovery, guided pairing (press button → pair), light & group listing.

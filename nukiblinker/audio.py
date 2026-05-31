@@ -73,17 +73,26 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
             _register_file(cached)
             return cached
 
-    logger.info("Generating TTS for message: %s", message)
+    if gTTS is None:
+        logger.warning("gTTS not installed — falling back to chime")
+        fallback = _SOUNDS_DIR / "chime.wav"
+        _register_file(fallback)
+        return fallback
+
+    logger.info("Generating TTS for message: '%s'", message)
     try:
         tts = gTTS(text=message, lang="es")
         tmp = Path(tempfile.mktemp(suffix=".mp3", prefix="nukiblinker_tts_"))
         tts.save(str(tmp))
+        logger.info("TTS audio saved: %s (%d bytes)", tmp.name, tmp.stat().st_size)
         _tts_cache[cache_key] = tmp
         _register_file(tmp)
         return tmp
     except Exception:
-        logger.error("TTS generation failed for: %s", message, exc_info=True)
-        # Fall back to chime if TTS fails
+        logger.error(
+            "TTS generation failed (gTTS needs internet) for: '%s' — falling back to chime",
+            message, exc_info=True,
+        )
         fallback = _SOUNDS_DIR / "chime.wav"
         _register_file(fallback)
         return fallback

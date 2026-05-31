@@ -59,7 +59,8 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dic
             if config.speakers.chromecast and chromecast is not None:
                 tasks.append(asyncio.ensure_future(_trigger_chromecast(chromecast, config.speakers, audio_url)))
             if config.speakers.airplay and airplay is not None:
-                tasks.append(asyncio.ensure_future(_trigger_airplay(airplay, config.speakers, audio_url)))
+                # AirPlay uses pyatv stream_file — needs local path, not HTTP URL
+                tasks.append(asyncio.ensure_future(_trigger_airplay(airplay, config.speakers, str(audio_path))))
 
     # HomeKit
     if rule.homekit and config.homekit.enabled:
