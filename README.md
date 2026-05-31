@@ -187,7 +187,7 @@ The container cannot reach the Nuki Bridge. Check:
 
 - **Nuki Bridge is powered on** and connected to your WiFi.
 - **Bridge IP is correct** in `config.yaml` (use the Nuki app → Bridge settings to verify).
-- **Docker networking**: the container uses bridge networking with port mapping. Outgoing connections to the LAN should work. If not, check `docker network inspect bridge` and your firewall rules.
+- **Docker networking**: the container uses `network_mode: host`, so it shares the host's network stack. If running on WSL2, make sure the WSL2 VM can reach the LAN (see WSL2 section below).
 
 The app starts normally even if callback registration fails — you can re-register later from the web UI (Nuki tab → Register Callback).
 
@@ -231,6 +231,46 @@ curl -X POST http://<bridge-ip>/api -d '{"devicetype":"nukiblinker"}'
 ```
 
 Copy the `username` value into `config.yaml` under `hue.api_key`.
+
+### Speakers not found (discovery returns empty)
+
+Speaker discovery and playback rely on **mDNS/multicast** (zeroconf for Chromecast, pyatv for AirPlay). This requires `network_mode: host` in `docker-compose.yml` (the default). If discovery returns empty:
+
+- **Verify host networking**: `docker inspect nukiblinker --format '{{.HostConfig.NetworkMode}}'` should return `host`.
+- **Speakers are on the same LAN** and powered on.
+- **Firewall**: mDNS uses UDP port 5353. Ensure it's not blocked.
+- **WSL2**: see the section below.
+
+### WSL2: mDNS and multicast
+
+On Windows with WSL2, `network_mode: host` gives the container access to the WSL2 VM's network — not the Windows host directly. For mDNS (speaker discovery, HomeKit) to work:
+
+1. **Use WSL2 mirrored networking** (recommended). In `%USERPROFILE%\.wslconfig`:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+   Then restart WSL: `wsl --shutdown` and reopen. Mirrored mode shares the Windows host's network interfaces, so mDNS packets reach the LAN.
+
+2. **Verify mDNS works** from inside WSL2:
+   ```sh
+   # Install avahi-utils if needed
+   sudo apt install avahi-utils
+   avahi-browse -a -t
+   ```
+   If this shows your Chromecast/HomePod devices, discovery will work from Docker too.
+
+3. **NAT mode (default WSL2)** does NOT forward multicast. If you can't switch to mirrored mode, speakers won't be discoverable from inside the container. Consider running NukiBlinker directly on the host instead of Docker.
+
+### No logs after test event (nothing happens)
+
+The `ring` event has **audio disabled by default**. If you're testing speakers, use `ring_to_open` or enable audio for `ring` in the Events tab first. Check the startup log for a config summary:
+
+```
+[INFO] Config loaded from /app/config.yaml: nuki=192.168.1.100, hue=192.168.1.200, chromecast=2 speakers
+```
+
+If integrations show `<not configured>`, the config wasn't saved or loaded correctly.
 
 ### DeprecationWarning about `on_event`
 

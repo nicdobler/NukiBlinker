@@ -93,6 +93,7 @@ Summarize your understanding before proposing changes.
 
 - After implementation, update `README.md` and specs to reflect changes.
 - Keep documentation short and simple.
+- **Session-start doc check**: At the beginning of every session, verify that `README.md`, `CHANGELOG.md`, `specs/product-spec.md`, and `specs/tech-spec.md` are consistent with the current codebase. Flag any drift and fix it before starting new work.
 
 ## 10. Branch-Based Development
 
