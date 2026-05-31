@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import uvicorn
 
-from nukiblinker.config import AppConfig, load_config
+from nukiblinker.config import AppConfig, load_config, summarize_config
 from nukiblinker.logging_config import get_logger, setup_logging
 from nukiblinker.server import create_app
 from nukiblinker.web_ui import mount_web_ui
@@ -146,6 +146,7 @@ def main() -> None:  # pragma: no cover
     logger.info("Starting NukiBlinker")
 
     config = load_config(args.config)
+    logger.info("Config loaded from %s: %s", args.config, summarize_config(config))
     clients = _build_clients(config)
 
     # Start HomeKit if enabled
