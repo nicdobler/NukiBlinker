@@ -150,8 +150,8 @@ def main() -> None:  # pragma: no cover
 
     # Start HomeKit if enabled
     if clients.homekit is not None:
-        clients.homekit.start()
-        logger.info("HomeKit doorbell started (code: %s)", clients.homekit.get_setup_code())
+        if clients.homekit.start():
+            logger.info("HomeKit doorbell started (code: %s)", clients.homekit.get_setup_code())
 
     # Lifespan: startup + shutdown in a single context manager
     @asynccontextmanager

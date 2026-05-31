@@ -43,11 +43,14 @@ class HomeKitService:
         digits = "".join(random.choices(string.digits, k=8))
         return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
 
-    def start(self) -> None:
-        """Start the HAP accessory driver in a background thread."""
+    def start(self) -> bool:
+        """Start the HAP accessory driver in a background thread.
+
+        Returns True if started successfully, False if HAP-python is missing.
+        """
         if not _HAP_AVAILABLE:
             logger.error("HAP-python not installed — HomeKit disabled")
-            return
+            return False
 
         persist_file = self._persist_dir / "accessory.state"
         self._driver = AccessoryDriver(
@@ -64,6 +67,7 @@ class HomeKitService:
         self._thread = threading.Thread(target=self._driver.start, daemon=True)
         self._thread.start()
         logger.info("HomeKit doorbell started (setup code: %s)", self._setup_code)
+        return True
 
     def stop(self) -> None:
         """Stop the HAP accessory driver."""
