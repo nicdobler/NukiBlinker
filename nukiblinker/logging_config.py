@@ -20,6 +20,10 @@ def setup_logging(level: str = "INFO") -> None:
         handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
         root.addHandler(handler)
 
+    # Silence chatty third-party libraries
+    for lib in ("httpx", "httpcore", "pychromecast", "zeroconf", "casttube", "pyatv"):
+        logging.getLogger(lib).setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     """Return a logger scoped to the given module name."""
