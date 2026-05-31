@@ -149,6 +149,35 @@ server:
 
 > **Note**: This also changes the bind address. Use `0.0.0.0` to bind on all interfaces (recommended) and let auto-detection handle the callback URL.
 
+### Getting the Nuki Bridge API token
+
+1. Open the **Nuki app** on your phone.
+2. Go to **Settings → Manage my devices → Nuki Bridge**.
+3. Enable **HTTP API** if not already enabled.
+4. The app shows the **API token** — copy it into `config.yaml` under `nuki.api_token`.
+5. The bridge IP is shown in the same screen, or use the web UI's Nuki tab → **Discover** to find it automatically.
+
+Alternatively, you can discover the bridge and use its token directly from the web UI (Nuki tab → Discover → fill IP and token → Save).
+
+### Getting the Hue Bridge API key
+
+**Option A — Via the web UI (recommended):**
+
+1. Open the web UI → **Hue tab**.
+2. Click **Discover** to find the Hue Bridge IP.
+3. **Press the physical button** on top of the Hue Bridge.
+4. Click **Pair** within 30 seconds — the API key is generated and saved automatically.
+
+**Option B — Manually via curl:**
+
+```sh
+# Press the Hue Bridge button, then run within 30s:
+curl -X POST http://<bridge-ip>/api -d '{"devicetype":"nukiblinker"}'
+# Response: [{"success":{"username":"<your-api-key>"}}]
+```
+
+Copy the `username` value into `config.yaml` under `hue.api_key`.
+
 ### DeprecationWarning about `on_event`
 
 Fixed in v0.2.0. Pull the latest image: `docker compose pull && docker compose up -d`.
