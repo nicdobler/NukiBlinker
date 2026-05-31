@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import socket
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
