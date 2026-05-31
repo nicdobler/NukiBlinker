@@ -84,9 +84,74 @@ See `config.example.yaml` for all options. Key sections:
 
 ## Deployment (Mini PC)
 
+### First-time setup
+
+```sh
+mkdir -p nukiblinker && cd nukiblinker
+# Copy docker-compose.yml and config.example.yaml from the repo
+cp config.example.yaml config.yaml
+```
+
+Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or configure later via the web UI).
+
+### Start / update
+
 ```sh
 docker compose pull && docker compose up -d
 ```
+
+### View logs
+
+```sh
+docker compose logs -f --tail 50
+```
+
+### Stop
+
+```sh
+docker compose down
+```
+
+### Access the web UI
+
+Open `http://localhost:8080/` from a browser on the same machine, or `http://<mini-pc-ip>:8080/` from another device on the LAN.
+
+The admin API (`/api/*`) and web UI (`/`) are restricted to **private-network IPs** (localhost, Docker gateway, LAN). Requests from public IPs are blocked with 403. The `/health` and `/nuki/callback` endpoints are accessible from any IP.
+
+## Troubleshooting
+
+### 403 Forbidden when accessing the web UI
+
+The admin middleware blocks requests from non-private IPs. Common causes:
+
+- **Accessing via a public IP or reverse proxy** that doesn't forward the real client IP. Access via `localhost` or a LAN IP (192.168.x.x, 10.x.x.x) instead.
+- **VPN or unusual network setup** where the client IP appears non-private.
+
+### ConnectTimeout when registering Nuki callback
+
+The container cannot reach the Nuki Bridge. Check:
+
+- **Nuki Bridge is powered on** and connected to your WiFi.
+- **Bridge IP is correct** in `config.yaml` (use the Nuki app → Bridge settings to verify).
+- **Docker networking**: the container uses bridge networking with port mapping. Outgoing connections to the LAN should work. If not, check `docker network inspect bridge` and your firewall rules.
+
+The app starts normally even if callback registration fails — you can re-register later from the web UI (Nuki tab → Register Callback).
+
+### Container starts but callback URL is wrong
+
+When `server.host` is `0.0.0.0`, NukiBlinker auto-detects the LAN IP for the callback URL sent to the Nuki Bridge. If auto-detection picks the wrong IP (e.g., Docker internal IP), set `server.host` to your actual LAN IP:
+
+```yaml
+server:
+  host: "192.168.1.50"   # Your Mini PC's LAN IP
+  port: 8080
+```
+
+> **Note**: This also changes the bind address. Use `0.0.0.0` to bind on all interfaces (recommended) and let auto-detection handle the callback URL.
+
+### DeprecationWarning about `on_event`
+
+Fixed in v0.2.0. Pull the latest image: `docker compose pull && docker compose up -d`.
 
 ## Development
 
