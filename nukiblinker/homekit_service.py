@@ -18,7 +18,8 @@ try:
     from pyhap import loader as service_loader
 
     _HAP_AVAILABLE = True
-except ImportError:
+except ImportError as _exc:
+    logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
     CATEGORY_DOORBELL = None  # type: ignore[assignment]
