@@ -26,11 +26,65 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 
 ```sh
 cp config.example.yaml config.yaml
-# Edit config.yaml with your bridge IPs and tokens
 docker compose up -d
 ```
 
 Open `http://localhost:8080/` on the Mini PC to configure via the web UI.
+
+## Initial Setup Guide
+
+After starting the container, open the web UI and follow these steps in order:
+
+### 1. Connect the Nuki Bridge
+
+Go to the **Nuki** tab.
+
+1. Click **Discover** to find your Nuki Bridge on the LAN, or enter the IP manually.
+2. Enter the **API Token** (find it in the Nuki app → Settings → Manage Bridge → Enable API).
+3. Click **Save** in the bottom bar.
+4. Click **Register Callback** — this tells the Bridge to send events (ring, door open) to NukiBlinker.
+5. Optionally, click **List Devices** and click on a device to filter events to a specific Opener or Smart Lock.
+
+### 2. Connect the Hue Bridge
+
+Go to the **Hue** tab.
+
+1. Click **Discover** to find the Hue Bridge IP, or enter it manually.
+2. **Press the physical button** on top of the Hue Bridge.
+3. Click **Pair** within 30 seconds — the API key is generated and saved automatically.
+4. Click **List Lights** and/or **List Groups** — click on the ones you want to blink on events.
+5. Click **Save**.
+
+### 3. Add speakers (optional)
+
+Go to the **Speakers** tab.
+
+1. Click **Discover** under Chromecast or AirPlay to find speakers on the network.
+2. Click on a speaker to add it, or type names manually (one per line).
+3. Adjust the **Volume** slider.
+4. Click **Save**.
+
+### 4. Enable HomeKit (optional)
+
+Go to the **HomeKit** tab.
+
+1. Toggle **Enabled** on.
+2. Note the **Setup Code** — use it to add the virtual doorbell in the Apple Home app.
+3. Click **Save**.
+
+### 5. Configure event rules
+
+Go to the **Events** tab. Each event type (Ring, Ring to Open, Door Opened) has its own settings:
+
+- **Blink mode**: `alert` (15s Hue built-in), `custom` (set color, flash count, interval), or `none`.
+- **Audio**: enable TTS announcements (with `{name}` placeholder) or play a chime sound.
+- **HomeKit**: toggle doorbell notification per event.
+
+Click **Save** when done.
+
+### 6. Test it
+
+Go to the **Status** tab and click **Test** next to any event type to trigger it. Check that your lights blink, speakers play, and HomeKit sends a notification.
 
 ## Web UI
 
