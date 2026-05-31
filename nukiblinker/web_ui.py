@@ -30,6 +30,13 @@ def _bridge_error(exc: Exception, bridge_label: str = "Bridge") -> tuple[dict, i
         return {"error": f"{bridge_label} unreachable — connection timed out"}, 502
     if isinstance(exc, httpx.ConnectError):
         return {"error": f"{bridge_label} unreachable — cannot connect"}, 502
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 401:
+            return {"error": f"{bridge_label} rejected the API token — check your credentials"}, 401
+        if code == 403:
+            return {"error": f"{bridge_label} denied access (403 Forbidden)"}, 403
+        return {"error": f"{bridge_label} returned HTTP {code}"}, 502
     msg = str(exc) or repr(exc)
     return {"error": msg}, 500
 

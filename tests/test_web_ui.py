@@ -117,6 +117,20 @@ class TestBridgeError:
         assert status == 502
         assert "Hue Bridge unreachable" in body["error"]
 
+    def test_http_401_returns_clear_auth_error(self):
+        resp = httpx.Response(401, request=httpx.Request("GET", "http://x"))
+        exc = httpx.HTTPStatusError("", request=resp.request, response=resp)
+        body, status = _bridge_error(exc, "Nuki Bridge")
+        assert status == 401
+        assert "API token" in body["error"]
+
+    def test_http_500_from_bridge_returns_502(self):
+        resp = httpx.Response(500, request=httpx.Request("GET", "http://x"))
+        exc = httpx.HTTPStatusError("", request=resp.request, response=resp)
+        body, status = _bridge_error(exc, "Bridge")
+        assert status == 502
+        assert "HTTP 500" in body["error"]
+
     def test_generic_exception_returns_500(self):
         body, status = _bridge_error(ValueError("bad value"), "Bridge")
         assert status == 500
