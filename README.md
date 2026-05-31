@@ -234,12 +234,32 @@ Copy the `username` value into `config.yaml` under `hue.api_key`.
 
 ### Speakers not found (discovery returns empty)
 
-Speaker discovery and playback rely on **mDNS/multicast** (zeroconf for Chromecast, pyatv for AirPlay). This requires `network_mode: host` in `docker-compose.yml` (the default). If discovery returns empty:
+Speaker discovery relies on **mDNS/multicast** (zeroconf for Chromecast, pyatv for AirPlay). If the Discover button returns empty:
 
 - **Verify host networking**: `docker inspect nukiblinker --format '{{.HostConfig.NetworkMode}}'` should return `host`.
 - **Speakers are on the same LAN** and powered on.
 - **Firewall**: mDNS uses UDP port 5353. Ensure it's not blocked.
-- **WSL2**: see the section below.
+- **Port 5353 conflict**: see below.
+- **WSL2**: see the WSL2 section below.
+
+**Workaround — use IP addresses**: If discovery doesn't work, you can enter speaker **IP addresses** instead of names in the Speakers tab. IP-based connections bypass mDNS entirely. Find the IP in the Google Home / Apple Home app under device settings.
+
+### Port 5353 conflict (mDNS)
+
+If logs show `"fail to bind 5353"` or `"Address already in use"`, another process on the host already occupies the mDNS port. This blocks both discovery AND name-based playback.
+
+**Immediate fix**: Enter speaker **IP addresses** instead of names. IP-based Chromecast connections use `get_chromecast_from_host()` and AirPlay uses unicast scanning — neither requires port 5353.
+
+**Root fix** (if you want name-based discovery):
+```powershell
+# Check if Apple Bonjour is running (common on Windows)
+Get-Service -Name "Bonjour Service" -ErrorAction SilentlyContinue
+# If present, stop it:
+Stop-Service -Name "Bonjour Service"
+Set-Service -Name "Bonjour Service" -StartupType Disabled
+```
+
+Then rebuild: `docker compose up -d`. If no Bonjour service is found, the Windows DNS Client service itself handles mDNS — this cannot be safely stopped.
 
 ### WSL2: mDNS and multicast
 
