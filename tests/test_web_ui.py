@@ -2,12 +2,13 @@
 
 from unittest.mock import MagicMock, AsyncMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from nukiblinker.config import AppConfig
 from nukiblinker.server import create_app
-from nukiblinker.web_ui import mount_web_ui
+from nukiblinker.web_ui import mount_web_ui, _bridge_error
 
 
 def _make_clients():
@@ -100,6 +101,46 @@ class TestTestEvent:
     def test_unknown_event_type(self, client):
         r = client.post("/api/test/event/unknown")
         assert r.status_code == 400
+
+
+class TestBridgeError:
+    """Verify _bridge_error returns user-friendly messages and correct status."""
+
+    def test_connect_timeout_returns_502(self):
+        body, status = _bridge_error(httpx.ConnectTimeout("timed out"), "Nuki Bridge")
+        assert status == 502
+        assert "Nuki Bridge unreachable" in body["error"]
+        assert "timed out" in body["error"]
+
+    def test_connect_error_returns_502(self):
+        body, status = _bridge_error(httpx.ConnectError("refused"), "Hue Bridge")
+        assert status == 502
+        assert "Hue Bridge unreachable" in body["error"]
+
+    def test_generic_exception_returns_500(self):
+        body, status = _bridge_error(ValueError("bad value"), "Bridge")
+        assert status == 500
+        assert body["error"] == "bad value"
+
+    def test_empty_str_exception_uses_repr(self):
+        """Regression: httpx.ConnectTimeout str() can be empty."""
+        body, status = _bridge_error(httpx.ConnectTimeout(""), "Nuki Bridge")
+        assert status == 502
+        assert body["error"]  # must not be empty
+
+
+class TestNukiPairTimeout:
+    """Regression: POST /api/nuki/pair should return 502 on ConnectTimeout, not 500."""
+
+    def test_returns_502_on_bridge_timeout(self, app, client):
+        # Ensure Nuki is configured so the endpoint doesn't short-circuit with 400
+        app.state.config.nuki.bridge_ip = "192.168.1.100"
+        app.state.config.nuki.api_token = "test-token"
+        with patch("nukiblinker.nuki_client.NukiClient.list_callbacks",
+                    new_callable=AsyncMock, side_effect=httpx.ConnectTimeout("")):
+            r = client.post("/api/nuki/pair")
+            assert r.status_code == 502
+            assert "Nuki Bridge unreachable" in r.json()["error"]
 
 
 class TestPrivateNetworkGuard:

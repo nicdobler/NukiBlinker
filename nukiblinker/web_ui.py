@@ -6,6 +6,8 @@ import ipaddress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import httpx
+
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -20,6 +22,16 @@ if TYPE_CHECKING:
 logger = get_logger("web_ui")
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _bridge_error(exc: Exception, bridge_label: str = "Bridge") -> tuple[dict, int]:
+    """Convert bridge communication exceptions to (body, status_code)."""
+    if isinstance(exc, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout)):
+        return {"error": f"{bridge_label} unreachable — connection timed out"}, 502
+    if isinstance(exc, httpx.ConnectError):
+        return {"error": f"{bridge_label} unreachable — cannot connect"}, 502
+    msg = str(exc) or repr(exc)
+    return {"error": msg}, 500
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +173,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             )
         except Exception as e:
             logger.error("Nuki pairing failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/nuki/devices")
     async def nuki_devices(request: Request) -> JSONResponse:
@@ -178,7 +191,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             devices = await client.list_devices()
             return JSONResponse(devices)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/nuki/callbacks")
     async def nuki_callbacks(request: Request) -> JSONResponse:
@@ -195,7 +209,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             callbacks = await client.list_callbacks()
             return JSONResponse(callbacks)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
 
     # ------------------------------------------------------------------
     # Hue pairing & device discovery
@@ -229,7 +244,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             )
         except Exception as e:
             logger.error("Hue pairing failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/hue/lights")
     async def hue_lights(request: Request) -> JSONResponse:
@@ -246,7 +262,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             lights = await client.list_lights()
             return JSONResponse(lights)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/hue/groups")
     async def hue_groups(request: Request) -> JSONResponse:
@@ -263,7 +280,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             groups = await client.list_groups()
             return JSONResponse(groups)
         except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+            body, status = _bridge_error(e, "Hue Bridge")
+            return JSONResponse(body, status_code=status)
 
     @router.get("/status")
     async def status(request: Request) -> JSONResponse:
