@@ -2,8 +2,7 @@ services:
   nukiblinker:
     build: .
     container_name: nukiblinker
-    ports:
-      - "8080:8080"
+    network_mode: host
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml
