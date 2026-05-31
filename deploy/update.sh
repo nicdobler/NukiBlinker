@@ -10,7 +10,7 @@ cd "$INSTALL_DIR"
 echo "=== Updating NukiBlinker ==="
 
 git pull --ff-only
-docker compose pull
+docker compose build
 docker compose up -d
 
 echo ""

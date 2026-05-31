@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Switched from GHCR image pull to local Docker build on Mini PC (`docker compose build`).
+- CI pipeline now only runs lint + test; removed `build-and-push` job.
+- Deploy/update scripts use `docker compose build` instead of `docker compose pull`.
+
 ### Added
 - Enhanced web UI: tabbed configuration interface (Status, Nuki, Hue, Speakers, HomeKit, Events).
   - Nuki: bridge discovery, callback registration, device listing with click-to-set IDs.

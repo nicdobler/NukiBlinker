@@ -151,7 +151,7 @@ Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or conf
 ### Start / update
 
 ```sh
-docker compose pull && docker compose up -d
+docker compose build && docker compose up -d
 ```
 
 ### View logs
@@ -234,7 +234,7 @@ Copy the `username` value into `config.yaml` under `hue.api_key`.
 
 ### DeprecationWarning about `on_event`
 
-Fixed in v0.2.0. Pull the latest image: `docker compose pull && docker compose up -d`.
+Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -d`.
 
 ## Development
 

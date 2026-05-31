@@ -50,10 +50,10 @@ fi
 # 4. Create homekit persist dir
 mkdir -p "$INSTALL_DIR/homekit"
 
-# 5. Pull and start
-echo "Pulling latest image..."
+# 5. Build and start
+echo "Building image..."
 cd "$INSTALL_DIR"
-docker compose pull
+docker compose build
 docker compose up -d
 
 echo ""

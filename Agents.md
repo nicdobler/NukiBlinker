@@ -166,14 +166,14 @@ This ensures the next session can pick up without context loss.
 |---|---|---|
 | **Work laptop** (Windows) | Code only | Write code, push to GitHub. **No testing, no Poetry, no Docker.** |
 | **Personal Mac** | Test & validate | `git clone`, `make install`, `make test`, `make lint`. Push when green. |
-| **GitHub Actions** | CI/CD | Lint → test → build Docker image → push to `ghcr.io`. Triggered on merge to `main`. |
-| **Mini PC** (Windows + WSL2) | Production | `docker compose pull && docker compose up -d`. Config mounted as volume. |
+| **GitHub Actions** | CI | Lint → test. Triggered on push/PR to `main`. |
+| **Mini PC** (Windows + WSL2) | Production | `git pull && docker compose build && docker compose up -d`. Local build, no registry. |
 
 ### Deployment flow
 ```
 Work laptop → push → GitHub → PR → Mac validates → merge to main
-    → GitHub Actions: test + build + push to GHCR
-    → Mini PC: docker compose pull && docker compose up -d
+    → GitHub Actions: lint + test
+    → Mini PC: git pull && docker compose build && docker compose up -d
 ```
 
 ### NEVER on work laptop
