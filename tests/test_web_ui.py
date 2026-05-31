@@ -150,8 +150,10 @@ class TestNukiPairTimeout:
         # Ensure Nuki is configured so the endpoint doesn't short-circuit with 400
         app.state.config.nuki.bridge_ip = "192.168.1.100"
         app.state.config.nuki.api_token = "test-token"
-        with patch("nukiblinker.nuki_client.NukiClient.list_callbacks",
-                    new_callable=AsyncMock, side_effect=httpx.ConnectTimeout("")):
+        with patch(
+            "nukiblinker.nuki_client.NukiClient.list_callbacks",
+            new_callable=AsyncMock, side_effect=httpx.ConnectTimeout(""),
+        ):
             r = client.post("/api/nuki/pair")
             assert r.status_code == 502
             assert "Nuki Bridge unreachable" in r.json()["error"]
