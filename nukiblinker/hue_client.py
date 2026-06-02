@@ -24,6 +24,45 @@ class HueClient:
         return f"{self._base}{path}"
 
     # ------------------------------------------------------------------
+    # Connection check
+    # ------------------------------------------------------------------
+
+    async def check_connection(self) -> dict:
+        """Verify the API key is valid by reading the bridge config.
+
+        Returns a dict with:
+        - ``connected``: True if the bridge accepted the API key.
+        - ``name``: Bridge friendly name (when connected).
+        - ``error``: Error description (when not connected).
+        """
+        url = f"http://{self._bridge_ip}/api/{self._api_key}/config"
+        try:
+            async with httpx.AsyncClient(timeout=5) as c:
+                r = await c.get(url)
+                r.raise_for_status()
+                data = r.json()
+                # Hue returns a list with an error object for invalid keys
+                if isinstance(data, list):
+                    err = data[0].get("error", {}) if data else {}
+                    return {
+                        "connected": False,
+                        "error": err.get("description", "Unknown error"),
+                    }
+                # Valid key → full config dict returned
+                return {
+                    "connected": True,
+                    "name": data.get("name", "Hue Bridge"),
+                    "api_version": data.get("apiversion", ""),
+                    "mac": data.get("mac", ""),
+                }
+        except httpx.ConnectError:
+            return {"connected": False, "error": "Bridge unreachable — cannot connect"}
+        except (httpx.ConnectTimeout, httpx.ReadTimeout):
+            return {"connected": False, "error": "Bridge unreachable — connection timed out"}
+        except Exception as exc:
+            return {"connected": False, "error": str(exc)}
+
+    # ------------------------------------------------------------------
     # Alert mode
     # ------------------------------------------------------------------
 

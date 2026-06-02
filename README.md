@@ -128,7 +128,8 @@ See `config.example.yaml` for all options. Key sections:
 | `/api/nuki/pair` | POST | Register callback on Nuki Bridge |
 | `/api/nuki/devices` | GET | List Nuki devices |
 | `/api/nuki/callbacks` | GET | List registered callbacks |
-| `/api/hue/pair` | POST | Pair with Hue Bridge (press button first) |
+| `/api/hue/status` | GET | Check Hue Bridge connection & API key validity |
+| `/api/hue/pair` | POST | Pair with Hue Bridge (tries existing key first) |
 | `/api/hue/lights` | GET | List Hue lights |
 | `/api/hue/groups` | GET | List Hue groups |
 | `/api/status` | GET | Service status |

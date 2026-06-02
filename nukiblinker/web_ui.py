@@ -218,9 +218,46 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     # Hue pairing & device discovery
     # ------------------------------------------------------------------
 
+    @router.get("/hue/status")
+    async def hue_status(request: Request) -> JSONResponse:
+        """Check Hue Bridge connection and API key validity."""
+        config = request.app.state.config
+        if not config.hue.bridge_ip:
+            return JSONResponse({
+                "connected": False,
+                "has_api_key": False,
+                "error": "Hue Bridge IP not configured",
+            })
+        if not config.hue.api_key:
+            return JSONResponse({
+                "connected": False,
+                "has_api_key": False,
+                "error": "No API key \u2014 pairing required",
+            })
+        try:
+            from nukiblinker.hue_client import HueClient
+
+            client = HueClient(config.hue.bridge_ip, config.hue.api_key)
+            result = await client.check_connection()
+            result["has_api_key"] = True
+            result["bridge_ip"] = config.hue.bridge_ip
+            return JSONResponse(result)
+        except Exception as e:
+            err_body, _ = _bridge_error(e, "Hue Bridge")
+            return JSONResponse({
+                "connected": False,
+                "has_api_key": True,
+                "error": err_body.get("error", str(e)),
+            })
+
     @router.post("/hue/pair")
     async def hue_pair(request: Request) -> JSONResponse:
-        """Pair with Hue Bridge \u2014 press the bridge button first."""
+        """Pair with Hue Bridge.
+
+        If an API key already exists, validates it first and returns
+        success without re-pairing.  Otherwise (or if the key is
+        invalid) attempts the standard press-button pairing flow.
+        """
         body = await request.json()
         bridge_ip = body.get("bridge_ip") or request.app.state.config.hue.bridge_ip
         if not bridge_ip:
@@ -230,6 +267,28 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         try:
             from nukiblinker.hue_client import HueClient
 
+            # Try existing API key first
+            existing_key = request.app.state.config.hue.api_key
+            if existing_key:
+                client = HueClient(bridge_ip, existing_key)
+                check = await client.check_connection()
+                if check.get("connected"):
+                    logger.info("Hue Bridge \u2014 existing API key still valid")
+                    config = request.app.state.config
+                    config.hue.bridge_ip = bridge_ip
+                    save_config(config, request.app.state.config_path)
+                    return JSONResponse({
+                        "status": "paired",
+                        "method": "existing_key",
+                        "api_key_preview": existing_key[:8] + "...",
+                        "bridge_name": check.get("name", ""),
+                    })
+                logger.info(
+                    "Hue Bridge \u2014 existing API key invalid (%s), attempting new pairing",
+                    check.get("error", ""),
+                )
+
+            # Full pairing flow (press button)
             api_key = await HueClient.pair(bridge_ip)
             if api_key:
                 config = request.app.state.config
@@ -238,6 +297,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 save_config(config, request.app.state.config_path)
                 return JSONResponse({
                     "status": "paired",
+                    "method": "new_pairing",
                     "api_key_preview": api_key[:8] + "...",
                 })
             return JSONResponse(
