@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from nukiblinker.logging_config import get_logger
+from nukiblinker.network import validate_local_ip
 
 logger = get_logger("hue_client")
 
@@ -16,8 +17,9 @@ class HueClient:
     """Async client for the Philips Hue Bridge v1 REST API."""
 
     def __init__(self, bridge_ip: str, api_key: str) -> None:
-        self._base = f"http://{bridge_ip}/api/{api_key}"
-        self._bridge_ip = bridge_ip
+        safe_ip = validate_local_ip(bridge_ip, "Hue Bridge")
+        self._base = f"http://{safe_ip}/api/{api_key}"
+        self._bridge_ip = safe_ip
         self._api_key = api_key
 
     def _url(self, path: str) -> str:
@@ -133,7 +135,8 @@ class HueClient:
     @staticmethod
     async def pair(bridge_ip: str) -> str | None:
         """Create an API key on the Hue Bridge (press button first)."""
-        url = f"http://{bridge_ip}/api"
+        safe_ip = validate_local_ip(bridge_ip, "Hue Bridge")
+        url = f"http://{safe_ip}/api"
         body = {"devicetype": "nukiblinker"}
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(url, json=body)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 
 from nukiblinker.logging_config import get_logger
+from nukiblinker.network import validate_local_ip
 
 logger = get_logger("nuki_client")
 
@@ -13,7 +14,8 @@ class NukiClient:
     """Async client for the Nuki Bridge HTTP API."""
 
     def __init__(self, bridge_ip: str, bridge_port: int, api_token: str) -> None:
-        self._base = f"http://{bridge_ip}:{bridge_port}"
+        safe_ip = validate_local_ip(bridge_ip, "Nuki Bridge")
+        self._base = f"http://{safe_ip}:{bridge_port}"
         self._token = api_token
 
     def _url(self, path: str) -> str:
