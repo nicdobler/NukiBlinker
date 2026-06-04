@@ -247,7 +247,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse({
                 "connected": False,
                 "has_api_key": True,
-                "error": err_body.get("error", str(e)),
+                "error": err_body.get("error", "Unexpected bridge communication error"),
             })
 
     @router.post("/hue/pair")
