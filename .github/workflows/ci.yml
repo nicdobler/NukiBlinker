@@ -88,14 +88,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download lint output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lint-output
           path: .
         continue-on-error: true
 
       - name: Download test output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-output
           path: .
