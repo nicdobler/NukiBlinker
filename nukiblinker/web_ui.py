@@ -37,8 +37,8 @@ def _bridge_error(exc: Exception, bridge_label: str = "Bridge") -> tuple[dict, i
         if code == 403:
             return {"error": f"{bridge_label} denied access (403 Forbidden)"}, 403
         return {"error": f"{bridge_label} returned HTTP {code}"}, 502
-    msg = str(exc) or repr(exc)
-    return {"error": msg}, 500
+    logger.warning("Unexpected bridge error: %s", exc, exc_info=True)
+    return {"error": "Unexpected bridge communication error"}, 500
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse({"status": "saved"})
         except Exception as e:
             logger.warning("Config update failed: %s", e)
-            return JSONResponse({"error": str(e)}, status_code=400)
+            return JSONResponse({"error": "Invalid configuration data"}, status_code=400)
 
     @router.get("/discover/nuki")
     async def discover_nuki() -> JSONResponse:
@@ -391,7 +391,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse({"status": "fired", "event": event_type})
         except Exception as e:
             logger.error("Test event failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Test event failed"}, status_code=500)
 
     app.include_router(router)
 
