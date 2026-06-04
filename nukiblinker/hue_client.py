@@ -62,7 +62,8 @@ class HueClient:
         except (httpx.ConnectTimeout, httpx.ReadTimeout):
             return {"connected": False, "error": "Bridge unreachable — connection timed out"}
         except Exception as exc:
-            return {"connected": False, "error": str(exc)}
+            logger.warning("Unexpected error checking Hue connection: %s", exc, exc_info=True)
+            return {"connected": False, "error": "Unexpected error checking bridge connection"}
 
     # ------------------------------------------------------------------
     # Alert mode
