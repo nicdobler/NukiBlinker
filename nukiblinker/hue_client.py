@@ -3,36 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 from typing import Any
 
 import httpx
 
 from nukiblinker.logging_config import get_logger
+from nukiblinker.network import validate_local_ip
 
 logger = get_logger("hue_client")
-
-
-def _validate_bridge_ip(bridge_ip: str) -> str:
-    """Validate Hue bridge target and return a normalized IP string."""
-    try:
-        ip = ipaddress.ip_address(bridge_ip)
-    except ValueError as exc:
-        raise ValueError("Hue Bridge IP must be a valid IP address") from exc
-
-    if not (ip.is_private or ip.is_loopback or ip.is_link_local):
-        raise ValueError("Hue Bridge IP must be in a local/private network range")
-
-    return ip.compressed
 
 
 class HueClient:
     """Async client for the Philips Hue Bridge v1 REST API."""
 
     def __init__(self, bridge_ip: str, api_key: str) -> None:
-        safe_bridge_ip = _validate_bridge_ip(bridge_ip)
-        self._base = f"http://{safe_bridge_ip}/api/{api_key}"
-        self._bridge_ip = safe_bridge_ip
+        safe_ip = validate_local_ip(bridge_ip, "Hue Bridge")
+        self._base = f"http://{safe_ip}/api/{api_key}"
+        self._bridge_ip = safe_ip
         self._api_key = api_key
 
     def _url(self, path: str) -> str:
@@ -148,8 +135,8 @@ class HueClient:
     @staticmethod
     async def pair(bridge_ip: str) -> str | None:
         """Create an API key on the Hue Bridge (press button first)."""
-        safe_bridge_ip = _validate_bridge_ip(bridge_ip)
-        url = f"http://{safe_bridge_ip}/api"
+        safe_ip = validate_local_ip(bridge_ip, "Hue Bridge")
+        url = f"http://{safe_ip}/api"
         body = {"devicetype": "nukiblinker"}
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(url, json=body)
