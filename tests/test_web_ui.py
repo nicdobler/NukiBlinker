@@ -131,10 +131,11 @@ class TestBridgeError:
         assert status == 502
         assert "HTTP 500" in body["error"]
 
-    def test_generic_exception_returns_500(self):
+    def test_generic_exception_returns_500_without_leaking_details(self):
         body, status = _bridge_error(ValueError("bad value"), "Bridge")
         assert status == 500
-        assert body["error"] == "bad value"
+        assert body["error"] == "Unexpected bridge communication error"
+        assert "bad value" not in body["error"]
 
     def test_empty_str_exception_uses_repr(self):
         """Regression: httpx.ConnectTimeout str() can be empty."""

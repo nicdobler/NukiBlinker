@@ -82,7 +82,9 @@ def get_audio(audio_config: AudioConfig, context: dict) -> Path:
     logger.info("Generating TTS for message: '%s'", message)
     try:
         tts = gTTS(text=message, lang="es")
-        tmp = Path(tempfile.mktemp(suffix=".mp3", prefix="nukiblinker_tts_"))
+        tmp_fd = tempfile.NamedTemporaryFile(suffix=".mp3", prefix="nukiblinker_tts_", delete=False)
+        tmp = Path(tmp_fd.name)
+        tmp_fd.close()
         tts.save(str(tmp))
         logger.info("TTS audio saved: %s (%d bytes)", tmp.name, tmp.stat().st_size)
         _tts_cache[cache_key] = tmp
