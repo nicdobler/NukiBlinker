@@ -16,7 +16,7 @@ pydantic = "^2.10.0"
 pychromecast = "^14.0.0"
 pyatv = ">=0.16,<0.18"
 gTTS = "^2.5.0"
-HAP-python = {version = "^4.9.0", extras = ["QRCode"]}
+HAP-python = {version = ">=4.9,<6.0", extras = ["QRCode"]}
 zeroconf = ">=0.136,<0.150"
 
 [tool.poetry.group.dev.dependencies]

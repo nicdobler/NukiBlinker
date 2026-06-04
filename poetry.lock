@@ -214,18 +214,6 @@ typing_extensions = {version = ">=4.5", markers = "python_version < \"3.13\""}
 trio = ["trio (>=0.32.0)"]
 
 [[package]]
-name = "async-timeout"
-version = "5.0.1"
-description = "Timeout context manager for asyncio programs"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c"},
-    {file = "async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3"},
-]
-
-[[package]]
 name = "attrs"
 version = "26.1.0"
 description = "Classes Without Boilerplate"
@@ -1005,18 +993,17 @@ files = [
 
 [[package]]
 name = "hap-python"
-version = "4.9.2"
+version = "5.0.0"
 description = "HomeKit Accessory Protocol implementation in python"
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "HAP_python-4.9.2-py3-none-any.whl", hash = "sha256:acd9e7bed3d6ce6ef9e893b254a4eb6da62f69b2ef9280b275a8999e4d3634b6"},
-    {file = "hap_python-4.9.2.tar.gz", hash = "sha256:5218a38f576f9b8f55aa3ffd93b9415e3429902bb340dcde74044b2f40f47c0d"},
+    {file = "hap_python-5.0.0-py3-none-any.whl", hash = "sha256:c1ca3abc68adbfb0a4a50be3fff2399ab7ed7ac3d91f66f4e9d9d26037c04ed7"},
+    {file = "hap_python-5.0.0.tar.gz", hash = "sha256:455d3ac0721cc9cbb6373cf8c9422c3182db2d95c472f94d3a65cc94dda7434d"},
 ]
 
 [package.dependencies]
-async-timeout = "*"
 base36 = {version = "*", optional = true, markers = "extra == \"qrcode\""}
 chacha20poly1305-reuseable = "*"
 cryptography = "*"
@@ -2800,4 +2787,4 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "11114f12ac5446b14567ed3a371d1e6c857cc36e0099a57ed670d7308735c74f"
+content-hash = "fd32223f0cf6e2cbfc579e7444a39db92e5a6ff7d5f865e45f776258088b10ba"
