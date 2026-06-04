@@ -153,6 +153,7 @@
     <div id="panel-hue" class="panel">
         <div class="card">
             <h2>Philips Hue Bridge</h2>
+            <div id="hueConnectionStatus" style="margin-bottom:1rem"></div>
             <label>Bridge IP <span class="req">*</span></label>
             <div class="inline-btn"><input id="hueIp" placeholder="192.168.1.101"><button class="btn-secondary btn-sm" onclick="discoverHue()">Discover</button></div>
             <div id="hueDiscoverResults" class="discover-results"></div>
@@ -161,8 +162,11 @@
                 <label>API Key</label>
                 <input id="hueKey" type="password" placeholder="Auto-filled after pairing">
                 <div class="pair-box">
-                    <p class="instructions"><strong>Step 1:</strong> Press the physical button on your Hue Bridge.<br><strong>Step 2:</strong> Click "Pair" within 30 seconds.</p>
-                    <div class="btn-row"><button class="btn-primary btn-sm" onclick="huePair()">Pair with Hue Bridge</button></div>
+                    <p class="instructions" id="huePairInstructions"><strong>Step 1:</strong> Press the physical button on your Hue Bridge.<br><strong>Step 2:</strong> Click "Pair" within 30 seconds.</p>
+                    <div class="btn-row">
+                        <button class="btn-primary btn-sm" onclick="huePair()">Pair with Hue Bridge</button>
+                        <button class="btn-secondary btn-sm" onclick="hueCheckStatus()">Check Status</button>
+                    </div>
                     <div id="huePairStatus" class="pair-status"></div>
                 </div>
             </div>
@@ -524,7 +528,7 @@ async function nukiListDevices() {
     } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed to list devices</p>'; }
 }
 
-/* --- Hue Discovery & Pairing --- */
+/* --- Hue Discovery, Status & Pairing --- */
 async function discoverHue() {
     const el = document.getElementById('hueDiscoverResults');
     el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Searching...</p>';
@@ -534,15 +538,47 @@ async function discoverHue() {
         el.innerHTML = bridges.map(b => `<div class="discover-item" onclick="setVal('hueIp','${b.ip}')"><span>${b.name}</span><span style="color:#64748b">${b.ip}</span></div>`).join('');
     } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Discovery failed</p>'; }
 }
+function renderHueStatus(d) {
+    const el = document.getElementById('hueConnectionStatus');
+    if (d.connected) {
+        let info = d.name || 'Hue Bridge';
+        if (d.api_version) info += ` (API ${d.api_version})`;
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:#166534;border-radius:8px;font-size:0.8rem;color:#bbf7d0"><div class="dot dot-ok"></div><strong>Connected</strong> ${info}</div>`;
+    } else if (d.has_api_key) {
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:#7f1d1d;border-radius:8px;font-size:0.8rem;color:#fecaca"><div class="dot" style="background:#ef4444"></div><strong>Disconnected</strong> ${d.error || 'API key invalid'}</div>`;
+    } else {
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;background:#713f12;border-radius:8px;font-size:0.8rem;color:#fef08a"><div class="dot dot-warn"></div><strong>Not paired</strong> ${d.error || 'Pairing required'}</div>`;
+    }
+}
+async function hueCheckStatus() {
+    const el = document.getElementById('hueConnectionStatus');
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Checking connection...</p>';
+    try {
+        const d = await (await fetch(`${API}/hue/status`)).json();
+        renderHueStatus(d);
+    } catch (e) {
+        el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Status check failed</p>';
+    }
+}
 async function huePair() {
     const el = document.getElementById('huePairStatus');
     const ip = val('hueIp');
     if (!ip) { el.innerHTML = '<span class="badge badge-err">Enter Bridge IP first</span>'; return; }
-    el.innerHTML = '<span style="color:#f59e0b">Pairing... Make sure you pressed the bridge button!</span>';
+    el.innerHTML = '<span style="color:#f59e0b">Connecting... trying existing API key first...</span>';
     try {
         const d = await (await fetch(`${API}/hue/pair`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({bridge_ip: ip}) })).json();
-        if (d.status === 'paired') { el.innerHTML = `<span class="badge badge-ok">Paired!</span> API key saved (${d.api_key_preview})`; loadConfig(); }
-        else { el.innerHTML = `<span class="badge badge-err">Failed</span> ${d.error}`; }
+        if (d.status === 'paired') {
+            if (d.method === 'existing_key') {
+                el.innerHTML = `<span class="badge badge-ok">Connected!</span> Existing API key is valid (${d.api_key_preview})`;
+                if (d.bridge_name) el.innerHTML += ` <small style="color:#64748b">${d.bridge_name}</small>`;
+            } else {
+                el.innerHTML = `<span class="badge badge-ok">Paired!</span> New API key saved (${d.api_key_preview})`;
+            }
+            loadConfig();
+            hueCheckStatus();
+        } else {
+            el.innerHTML = `<span class="badge badge-err">Failed</span> ${d.error}`;
+        }
     } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
 }
 async function hueListLights() {
@@ -593,6 +629,7 @@ function addSpeaker(tid, name) {
 
 loadStatus();
 loadConfig();
+hueCheckStatus();
 </script>
 </body>
 </html>

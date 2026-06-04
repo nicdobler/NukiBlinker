@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Hue Bridge connection status indicator in the web UI Hue tab — shows connected/disconnected/not paired with bridge name and API version.
+- `GET /api/hue/status` endpoint — checks Hue Bridge reachability and API key validity.
+- "Check Status" button in the Hue tab to verify registration on demand.
+- Smart pairing: `POST /api/hue/pair` now validates the existing API key first before attempting a new press-button pairing flow.
+- `HueClient.check_connection()` method — verifies API key against the bridge config endpoint.
+
 ### Changed
 - Switched from GHCR image pull to local Docker build on Mini PC (`docker compose build`).
 - CI pipeline now only runs lint + test; removed `build-and-push` job.

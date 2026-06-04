@@ -237,7 +237,8 @@ Serves the configuration page and provides API endpoints for it.
 | POST | `/api/nuki/pair` | Register callback on Nuki Bridge |
 | GET | `/api/nuki/devices` | List Nuki devices (Openers + Smart Locks) |
 | GET | `/api/nuki/callbacks` | List registered callbacks on Bridge |
-| POST | `/api/hue/pair` | Initiate Hue Bridge pairing (press button flow) |
+| GET | `/api/hue/status` | Check Hue Bridge connection and API key validity |
+| POST | `/api/hue/pair` | Pair with Hue Bridge (validates existing key first) |
 | GET | `/api/hue/lights` | List available Hue lights |
 | GET | `/api/hue/groups` | List available Hue groups |
 | POST | `/api/test/event/{type}` | Fire all channels for a specific event rule |
@@ -262,6 +263,7 @@ Manages the Nuki Bridge HTTP API:
 
 Manages the Philips Hue Bridge v1 REST API:
 
+- **`check_connection()`** — Validates API key by reading bridge config (`GET /api/{key}/config`). Returns `{connected, name, error}`.
 - **`trigger_alert(light_ids, group_ids)`** — Sends `{"alert": "lselect"}`.
 - **`get_light_state(light_id)`** — Reads current state.
 - **`set_light_state(light_id, state)`** — Sets light to a specific state.
