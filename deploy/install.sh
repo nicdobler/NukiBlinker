@@ -50,10 +50,10 @@ fi
 # 4. Create homekit persist dir
 mkdir -p "$INSTALL_DIR/homekit"
 
-# 5. Build and start
-echo "Building image..."
+# 5. Pull image and start
+echo "Pulling latest image from GHCR..."
 cd "$INSTALL_DIR"
-docker compose build
+docker compose pull
 docker compose up -d
 
 echo ""

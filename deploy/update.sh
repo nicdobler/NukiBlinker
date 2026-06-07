@@ -10,7 +10,8 @@ cd "$INSTALL_DIR"
 echo "=== Updating NukiBlinker ==="
 
 git pull --ff-only
-docker compose build
+echo "Pulling latest image from GHCR..."
+docker compose pull
 docker compose up -d
 
 echo ""
