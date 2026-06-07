@@ -1,6 +1,6 @@
 services:
   nukiblinker:
-    build: .
+    image: ghcr.io/nicdobler/nukiblinker:latest
     container_name: nukiblinker
     network_mode: host
     restart: unless-stopped
