@@ -2,12 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    # Temporarily build on all branches to test GHCR permissions
-    # Will restrict to [main] after verification
-    branches:
-      - main
-      - feat/docker-ci
-      - '**'
+    branches: [main]
 
 concurrency:
   group: docker-build-${{ github.ref }}
@@ -40,8 +35,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/nukiblinker
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch
+            type=raw,value=latest
             type=sha,prefix=,suffix=,format=short
 
       - name: Build and push
