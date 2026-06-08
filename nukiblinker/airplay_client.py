@@ -86,11 +86,14 @@ class AirPlayClient:
                 await atv.audio.set_volume(volume * 100)  # pyatv uses 0-100 scale
             logger.info("Streaming %s to %s", audio_path, device_config.name)
             await atv.stream.stream_file(audio_path)
+            # Wait briefly for playback to complete before closing
+            # stream_file returns when streaming starts, not when finished
+            await asyncio.sleep(3)
             logger.info("Playback finished on %s", device_config.name)
         except Exception:
             logger.error("AirPlay playback failed on %s", device_config.name, exc_info=True)
         finally:
-            atv.close()
+            await atv.close()
 
     async def list_speakers(self) -> list[dict]:
         """Discover AirPlay 2 devices on LAN."""

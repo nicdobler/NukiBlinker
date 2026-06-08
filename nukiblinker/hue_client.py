@@ -99,11 +99,13 @@ class HueClient:
             r = await c.put(self._url(f"/lights/{light_id}/state"), json=state)
             r.raise_for_status()
 
-    async def trigger_custom_blink(self, light_ids: list[int], blink_config) -> None:
+    async def trigger_custom_blink(
+        self, light_ids: list[int], group_ids: list[int], blink_config,
+    ) -> None:
         """Custom blink: save state → flash loop → restore."""
         saved_states: dict[int, dict] = {}
 
-        # Save current states
+        # Save current states (lights only; groups don't have individual state to save)
         for lid in light_ids:
             try:
                 saved_states[lid] = await self.get_light_state(lid)
@@ -120,7 +122,7 @@ class HueClient:
         off_state = {"on": False, "transitiontime": 0}
         interval_s = blink_config.interval_ms / 1000.0
 
-        # Flash loop
+        # Flash loop — lights
         for _ in range(blink_config.flashes):
             for lid in light_ids:
                 try:
@@ -135,7 +137,22 @@ class HueClient:
                     logger.warning("Flash off failed for light %s", lid, exc_info=True)
             await asyncio.sleep(interval_s)
 
-        # Restore
+        # Flash loop — groups (using group action endpoint)
+        for _ in range(blink_config.flashes):
+            for gid in group_ids:
+                try:
+                    await self._set_group_action(gid, flash_state)
+                except Exception:
+                    logger.warning("Flash on failed for group %s", gid, exc_info=True)
+            await asyncio.sleep(interval_s)
+            for gid in group_ids:
+                try:
+                    await self._set_group_action(gid, off_state)
+                except Exception:
+                    logger.warning("Flash off failed for group %s", gid, exc_info=True)
+            await asyncio.sleep(interval_s)
+
+        # Restore (lights only)
         for lid, orig in saved_states.items():
             restore = {
                 "on": orig.get("on", False),
@@ -149,6 +166,12 @@ class HueClient:
                 logger.debug("Restored light %s", lid)
             except Exception:
                 logger.warning("Could not restore light %s", lid, exc_info=True)
+
+    async def _set_group_action(self, group_id: int, action: dict) -> None:
+        """Set a group action (same state format as lights, but different endpoint)."""
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.put(self._url(f"/groups/{group_id}/action"), json=action)
+            r.raise_for_status()
 
     # ------------------------------------------------------------------
     # Discovery / listing

@@ -25,20 +25,19 @@ class TestPlay:
         dev = _make_device("HomePod")
         atv = AsyncMock()
         atv.stream.stream_file = AsyncMock()
-        atv.close = MagicMock()
 
         with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
             mock_pyatv.scan = AsyncMock(return_value=[dev])
             mock_pyatv.connect = AsyncMock(return_value=atv)
             await client.play(["HomePod"], "/tmp/test.mp3", 0.5)
             atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
+            atv.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_plays_on_speaker_by_ip(self, client):
         dev = _make_device("HomePod", "10.0.0.10")
         atv = AsyncMock()
         atv.stream.stream_file = AsyncMock()
-        atv.close = MagicMock()
 
         with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
             mock_pyatv.scan = AsyncMock(return_value=[dev])
@@ -49,6 +48,7 @@ class TestPlay:
             call_kwargs = mock_pyatv.scan.call_args
             assert call_kwargs.kwargs.get("hosts") == ["10.0.0.10"]
             atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
+            atv.close.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_skips_non_matching_speaker(self, client):

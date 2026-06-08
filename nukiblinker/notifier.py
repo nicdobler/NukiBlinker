@@ -76,7 +76,7 @@ async def _trigger_hue(hue_client, hue_config, blink_config) -> None:
     if blink_config.mode == "alert":
         await hue_client.trigger_alert(hue_config.lights, hue_config.groups)
     elif blink_config.mode == "custom":
-        await hue_client.trigger_custom_blink(hue_config.lights, blink_config.custom)
+        await hue_client.trigger_custom_blink(hue_config.lights, hue_config.groups, blink_config.custom)
 
 
 async def _trigger_chromecast(cc_client, speakers_config, audio_url) -> None:
