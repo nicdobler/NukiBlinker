@@ -63,7 +63,7 @@ class TestCustomBlink:
         ctx = _patch_httpx(mock_http)
         try:
             blink = CustomBlinkConfig(hue=0, saturation=254, brightness=254, flashes=1, interval_ms=10)
-            await client.trigger_custom_blink([1], blink)
+            await client.trigger_custom_blink([1], [2], blink)  # light_ids=[1], group_ids=[2]
             # get: 1 (save) | put: 2 (on, off) + 1 (restore) = 3
             assert mock_http.get.call_count == 1
             assert mock_http.put.call_count >= 3

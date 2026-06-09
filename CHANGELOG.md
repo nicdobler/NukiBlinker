@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **#35**: AirPlay audio now plays correctly on HomePod — fixed missing `await` on `atv.close()` and added playback completion wait.
+- **#38**: Hue groups now blink correctly in custom blink mode — `trigger_custom_blink()` now accepts and processes `group_ids` parameter.
+
 ### Added
 - Hue Bridge connection status indicator in the web UI Hue tab — shows connected/disconnected/not paired with bridge name and API version.
 - `GET /api/hue/status` endpoint — checks Hue Bridge reachability and API key validity.
