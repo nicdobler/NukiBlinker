@@ -14,6 +14,22 @@ from nukiblinker.server import _dispatch_with_logging
 from nukiblinker import notifier
 
 
+def _fake_datetime(hour, minute):
+    """Return a datetime subclass whose now() reports the given local time.
+
+    Subclassing keeps classmethods like combine() and today() functional.
+    """
+    import datetime as _dt
+
+    class FakeDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            today = _dt.date.today()
+            return cls(today.year, today.month, today.day, hour, minute)
+
+    return FakeDateTime
+
+
 class TestEventPipelineIntegration:
     """Integration tests for the complete event pipeline."""
 
@@ -59,15 +75,6 @@ class TestEventPipelineIntegration:
         # Mock event validator
         clients.event_validator = EventValidator(max_delay_seconds=60)
 
-        # Mock event log with temporary file
-        with tempfile.TemporaryDirectory() as temp_dir:
-            clients.event_log = EventLog(
-                max_entries=100,
-                persist_to_file=False,
-                file_path=str(Path(temp_dir) / "test_log.json")
-            )
-            yield clients
-
         # Mock night mode
         clients.night_mode = NightMode(
             start_time="22:00",
@@ -82,6 +89,16 @@ class TestEventPipelineIntegration:
         clients.airplay = AsyncMock()
         clients.homekit = AsyncMock()
         clients.nuki = AsyncMock()
+        clients._app = None
+
+        # Mock event log with temporary file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            clients.event_log = EventLog(
+                max_entries=100,
+                persist_to_file=False,
+                file_path=str(Path(temp_dir) / "test_log.json")
+            )
+            yield clients
 
     @pytest.mark.asyncio
     async def test_complete_event_pipeline_valid_event(self, mock_config, mock_clients):
@@ -96,16 +113,8 @@ class TestEventPipelineIntegration:
         }
 
         # Mock daytime (not night mode)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(10, 0)  # 10 AM
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(10, 0))
 
             # Process the event
             validation_result = mock_clients.event_validator.validate_event(payload)
@@ -171,17 +180,12 @@ class TestEventPipelineIntegration:
             "timestamp": event_time.timestamp()
         }
 
-        # Mock nighttime (night mode active)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(23, 0)  # 11 PM
-                return MockNow()
+        # Night mode only adjusts brightness for custom blink mode
+        mock_config.events.ring_to_open.blink.mode = "custom"
 
+        # Mock nighttime (night mode active)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(23, 0))
 
             # Process the event
             validation_result = mock_clients.event_validator.validate_event(payload)
@@ -255,42 +259,18 @@ class TestEventPipelineIntegration:
         )
 
         # Test just before start time (within grace period)
-        class MockDateTimeGraceBefore:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(21, 56)  # 4 minutes before 22:00
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceBefore)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(21, 56))
             assert night_mode.is_night_time() is True
 
         # Test just after end time (within grace period)
-        class MockDateTimeGraceAfter:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(7, 3)  # 3 minutes after 7:00
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceAfter)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(7, 3))
             assert night_mode.is_night_time() is True
 
         # Test outside grace period
-        class MockDateTimeOutside:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(21, 50)  # 10 minutes before 22:00
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeOutside)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(21, 50))
             assert night_mode.is_night_time() is False
 
     @pytest.mark.asyncio

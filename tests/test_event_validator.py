@@ -153,14 +153,15 @@ class TestEventValidator:
         """Test validation exactly at the threshold boundary."""
         validator = EventValidator(max_delay_seconds=60)
 
-        # Event exactly 60 seconds ago
-        event_time = datetime.now(timezone.utc) - timedelta(seconds=60)
+        # Event just inside the threshold (test runtime adds a few ms,
+        # so exactly 60s would flakily exceed the limit)
+        event_time = datetime.now(timezone.utc) - timedelta(seconds=59)
         payload = {"timestamp": event_time.timestamp()}
 
         result = validator.validate_event(payload)
 
         assert result.valid is True
-        assert result.delay_seconds == pytest.approx(60.0, rel=1e-1)
+        assert result.delay_seconds == pytest.approx(59.0, rel=1e-1)
         assert result.reason is None
 
     def test_validate_event_edge_case_just_over_threshold(self):

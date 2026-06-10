@@ -1,10 +1,28 @@
 """Tests for night mode service."""
 
 import pytest
-from datetime import datetime, time
+from datetime import time
 
 from nukiblinker.night_mode import NightMode
 from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig, CustomBlinkConfig
+
+
+def _fake_datetime(year=None, month=None, day=None, hour=0, minute=0):
+    """Return a datetime subclass whose now() reports a fixed time.
+
+    Subclassing keeps classmethods like combine() and today() functional.
+    """
+    import datetime as _dt
+
+    class FakeDateTime(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if year is None:
+                t = _dt.date.today()
+                return cls(t.year, t.month, t.day, hour, minute)
+            return cls(year, month, day, hour, minute)
+
+    return FakeDateTime
 
 
 class TestNightMode:
@@ -54,49 +72,19 @@ class TestNightMode:
         # Test with a range that doesn't cross midnight (e.g., 01:00 to 05:00)
         night_mode = NightMode(start_time="01:00", end_time="05:00", grace_minutes=0)
 
-        # Create times for testing
-        night_time_inside = time(2, 30)  # 2:30 AM - should be night
-        night_time_before = time(0, 30)  # 12:30 AM - should be day
-        night_time_after = time(6, 30)   # 6:30 AM - should be day
-
-        # Mock datetime.now() to return specific times
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return night_time_inside
-                return MockNow()
-
-        # Test inside range
+        # Test inside range (2:30 AM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=2, minute=30))
             assert night_mode.is_night_time() is True
 
-        # Test before range
-        class MockDateTimeBefore:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return night_time_before
-                return MockNow()
-
+        # Test before range (0:30 AM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeBefore)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=0, minute=30))
             assert night_mode.is_night_time() is False
 
-        # Test after range
-        class MockDateTimeAfter:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return night_time_after
-                return MockNow()
-
+        # Test after range (6:30 AM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeAfter)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=6, minute=30))
             assert night_mode.is_night_time() is False
 
     def test_is_night_time_overnight_range(self):
@@ -104,82 +92,33 @@ class TestNightMode:
         # Test with range that crosses midnight (e.g., 22:00 to 07:00)
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=0)
 
-        # Create times for testing
-        night_time_evening = time(23, 30)  # 11:30 PM - should be night
-        night_time_morning = time(3, 30)   # 3:30 AM - should be night
-        day_time_afternoon = time(14, 30)  # 2:30 PM - should be day
-
-        # Test evening (inside range)
-        class MockDateTimeEvening:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return night_time_evening
-                return MockNow()
-
+        # Test evening (inside range, 11:30 PM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeEvening)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=30))
             assert night_mode.is_night_time() is True
 
-        # Test morning (inside range)
-        class MockDateTimeMorning:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return night_time_morning
-                return MockNow()
-
+        # Test morning (inside range, 3:30 AM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeMorning)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=3, minute=30))
             assert night_mode.is_night_time() is True
 
-        # Test afternoon (outside range)
-        class MockDateTimeAfternoon:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return day_time_afternoon
-                return MockNow()
-
+        # Test afternoon (outside range, 2:30 PM)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeAfternoon)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=14, minute=30))
             assert night_mode.is_night_time() is False
 
     def test_is_night_time_with_grace_period(self):
         """Test night time detection with grace period."""
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=5)
 
-        # Test just before start time (within grace period)
-        grace_time_before = time(21, 56)  # 21:56 - 4 minutes before 22:00
-
-        class MockDateTimeGraceBefore:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return grace_time_before
-                return MockNow()
-
+        # Test just before start time (21:56, within grace period)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceBefore)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=21, minute=56))
             assert night_mode.is_night_time() is True  # Should be night due to grace period
 
-        # Test just after end time (within grace period)
-        grace_time_after = time(7, 3)  # 7:03 - 3 minutes after 7:00
-
-        class MockDateTimeGraceAfter:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return grace_time_after
-                return MockNow()
-
+        # Test just after end time (7:03, within grace period)
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceAfter)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=7, minute=3))
             assert night_mode.is_night_time() is True  # Should be night due to grace period
 
     def test_apply_night_mode_disabled(self):
@@ -203,16 +142,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="01:00", end_time="05:00", grace_minutes=0)
 
         # Mock current time as 10:00 (outside night range)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(10, 0)
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=10, minute=0))
 
             rule = EventRuleConfig(
                 blink=BlinkConfig(mode="custom"),
@@ -231,16 +162,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="22:00", end_time="07:00", brightness_factor=0.5, grace_minutes=0)
 
         # Mock current time as 23:00 (inside night range)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(23, 0)
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=0))
 
             original_rule = EventRuleConfig(
                 blink=BlinkConfig(
@@ -281,16 +204,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=0)
 
         # Mock current time as 23:00 (inside night range)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(23, 0)
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=0))
 
             rule = EventRuleConfig(
                 blink=BlinkConfig(mode="alert"),  # Alert mode
@@ -314,16 +229,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=0)
 
         # Mock current time as 23:00 (inside night range)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                class MockNow:
-                    def time(self):
-                        return time(23, 0)
-                return MockNow()
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=0))
 
             rule = EventRuleConfig(
                 blink=BlinkConfig(mode="none"),  # No blink
@@ -347,13 +254,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=0)
 
         # Mock current time as 10:00 (day mode)
-        class MockDateTimeDay:
-            @staticmethod
-            def now():
-                return datetime(2023, 6, 15, 10, 0)  # 10:00 AM
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeDay)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 10, 0))
 
             next_change = night_mode.get_next_change_time()
 
@@ -364,13 +266,8 @@ class TestNightMode:
             assert next_change.date().day == 15
 
         # Mock current time as 23:00 (night mode)
-        class MockDateTimeNight:
-            @staticmethod
-            def now():
-                return datetime(2023, 6, 15, 23, 0)  # 11:00 PM
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTimeNight)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 23, 0))
 
             next_change = night_mode.get_next_change_time()
 
@@ -455,13 +352,8 @@ class TestNightMode:
         night_mode = NightMode(start_time="22:00", end_time="07:00", brightness_factor=0.3, grace_minutes=5)
 
         # Mock current time as 10:00 (day mode)
-        class MockDateTime:
-            @staticmethod
-            def now():
-                return datetime(2023, 6, 15, 10, 0)
-
         with pytest.MonkeyPatch().context() as m:
-            m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 10, 0))
 
             status = night_mode.get_status()
 

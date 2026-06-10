@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from nukiblinker.server import create_app
+from nukiblinker.web_ui import mount_web_ui
 from nukiblinker.config import AppConfig, EventValidationConfig, NightModeConfig, EventLogConfig
 from nukiblinker.event_validator import EventValidator
 from nukiblinker.event_log import EventLog
@@ -67,14 +68,12 @@ class TestWebUINewEndpoints:
             yield clients
 
     @pytest.fixture
-    def test_client(self, mock_config, mock_clients):
+    def test_client(self, mock_config, mock_clients, tmp_path):
         """Create a test client with mock services."""
         app = create_app(mock_config, mock_clients)
-        app.state.clients = mock_clients
-        app.state.config = mock_config
-        app.state.paused = False
-        app.state.last_event = None
-        app.state.audio_files = {}
+        mount_web_ui(app, str(tmp_path / "config.yaml"))
+        # Allow TestClient's "testclient" host through the localhost guard
+        app.state.allowed_hosts = {"127.0.0.1", "::1", "localhost", "testclient"}
 
         return TestClient(app)
 

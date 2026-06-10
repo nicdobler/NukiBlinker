@@ -120,10 +120,8 @@ class EventLog:
         """
         with self._lock:
             # Return entries in reverse chronological order (newest first)
-            recent = self.entries[-(offset + limit):]
-            if offset > 0:
-                recent = recent[-limit:]
-            return list(reversed(recent))
+            items = list(reversed(self.entries))
+            return items[offset:offset + limit]
 
     def get_event_count(self) -> int:
         """Get total number of events in log."""
