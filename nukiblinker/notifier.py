@@ -75,7 +75,7 @@ async def notify_with_actions(
         rule: EventRuleConfig, config: AppConfig, clients,
         context: dict | None = None
     ) -> list[str]:
-        """Fire all enabled notification channels and return detailed action results.
+    """Fire all enabled notification channels and return detailed action results.
 
         Returns:
             List of action descriptions (e.g., ["Hue lights blinked", "TTS played"])
