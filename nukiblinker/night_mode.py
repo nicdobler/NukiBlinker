@@ -98,13 +98,13 @@ class NightMode:
         if night_rule.blink.mode == "custom":
             original_brightness = night_rule.blink.custom.brightness
             night_rule.blink.custom.brightness = max(
-                    1, int(original_brightness * self.brightness_factor)
-                )
-                logger.debug(
-                    "Night mode: reduced brightness from %d to %d (%.1f%%)",
-                    original_brightness, night_rule.blink.custom.brightness,
-                    self.brightness_factor * 100
-                )
+                1, int(original_brightness * self.brightness_factor)
+            )
+            logger.debug(
+                "Night mode: reduced brightness from %d to %d (%.1f%%)",
+                original_brightness, night_rule.blink.custom.brightness,
+                self.brightness_factor * 100
+            )
 
         # Note: HomeKit notifications remain enabled (silent push notifications)
         logger.debug("Night mode applied to event rule")
@@ -203,9 +203,11 @@ class NightMode:
         if grace_minutes is not None:
             self.grace_minutes = max(0, grace_minutes)
 
-        logger.info("NightMode settings updated: %s to %s, brightness=%.1f%%, grace=%d min",
-                   self.start_time_str, self.end_time_str,
-                   self.brightness_factor * 100, self.grace_minutes)
+        logger.info(
+                "NightMode settings updated: %s to %s, brightness=%.1f%%, grace=%d min",
+                self.start_time_str, self.end_time_str,
+                self.brightness_factor * 100, self.grace_minutes
+            )
 
     def get_status(self) -> dict:
         """Get current night mode status.

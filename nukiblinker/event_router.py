@@ -105,7 +105,7 @@ async def dispatch_with_actions(
     *, context_override: dict | None = None,
 ) -> list[str]:
     """Look up the event rule and fire matching notification channels, returning actions taken.
-    
+
     Returns:
         List of action descriptions (e.g., ["Hue lights blinked", "TTS played"])
     """

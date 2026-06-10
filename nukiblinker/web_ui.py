@@ -617,12 +617,19 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             if "max_entries" in data:
                 max_entries = data["max_entries"]
                 if not isinstance(max_entries, int) or max_entries < 10 or max_entries > 10000:
-                    return JSONResponse({"error": "max_entries must be an integer between 10 and 10000"}, status_code=400)
-        if "retention_days" in data:
+                    return JSONResponse(
+                        {"error": "max_entries must be an integer between 10 and 10000"},
+                        status_code=400
+                    )
+            if "retention_days" in data:
                 retention = data["retention_days"]
                 if not isinstance(retention, int) or retention < 1 or retention > 365:
-                    return JSONResponse({"error": "retention_days must be an integer between 1 and 365"}, status_code=400)
-        # Update configuration
+                    return JSONResponse(
+                        {"error": "retention_days must be an integer between 1 and 365"},
+                        status_code=400
+                    )
+
+            # Update configuration
             config = request.app.state.config
             if "enabled" in data:
                 config.event_log.enabled = bool(data["enabled"])

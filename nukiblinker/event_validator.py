@@ -22,22 +22,22 @@ class ValidationResult:
 
 class EventValidator:
     """Validates event timestamps before processing."""
-    
+
     def __init__(self, max_delay_seconds: int = 60):
         """Initialize validator with maximum allowed delay.
-        
+
         Args:
             max_delay_seconds: Maximum allowed delay in seconds before rejecting events
         """
         self.max_delay_seconds = max_delay_seconds
         logger.info("EventValidator initialized with max_delay_seconds=%d", max_delay_seconds)
-    
+
     def validate_event(self, payload: dict) -> ValidationResult:
         """Check if event timestamp is within acceptable delay.
-        
+
         Args:
             payload: Nuki callback payload
-            
+
         Returns:
             ValidationResult with validation status and details
         """
@@ -47,14 +47,16 @@ class EventValidator:
                 # If no timestamp, assume event is valid (fallback behavior)
                 logger.debug("No timestamp found in payload, assuming event is valid")
                 return ValidationResult(valid=True, delay_seconds=0.0)
-            
+
             now = datetime.now(timezone.utc)
             delay = (now - event_time).total_seconds()
-            
+
             if delay < 0:
                 # Event timestamp is in the future - could be clock sync issue
-                logger.warning("Event timestamp is in the future: %s, delay: %.2f seconds", 
-                             event_time.isoformat(), delay)
+                logger.warning(
+                    "Event timestamp is in the future: %s, delay: %.2f seconds",
+                    event_time.isoformat(), delay
+                )
                 # Allow future events within a small window (5 minutes) for clock sync
                 if abs(delay) > 300:  # 5 minutes
                     return ValidationResult(
@@ -63,7 +65,7 @@ class EventValidator:
                         reason=f"Event timestamp is too far in the future: {abs(delay):.1f}s"
                     )
                 return ValidationResult(valid=True, delay_seconds=delay)
-            
+
             is_valid = delay <= self.max_delay_seconds
             reason = None
             if not is_valid:
@@ -71,13 +73,13 @@ class EventValidator:
                 logger.warning("Event rejected: %s", reason)
             else:
                 logger.debug("Event validated: delay=%.2f seconds", delay)
-            
+
             return ValidationResult(
                 valid=is_valid,
                 delay_seconds=delay,
                 reason=reason
             )
-            
+
         except Exception as e:
             logger.error("Error validating event: %s", e)
             # On validation error, allow event to proceed (fail-safe)
@@ -86,16 +88,16 @@ class EventValidator:
                 delay_seconds=0.0,
                 reason=f"Validation error: {e}"
             )
-    
+
     def _extract_timestamp(self, payload: dict) -> Optional[datetime]:
         """Extract timestamp from Nuki callback payload.
-        
+
         Nuki Bridge HTTP API v1.13 may include timestamp field.
         If not present, we cannot validate the event time.
-        
+
         Args:
             payload: Nuki callback payload
-            
+
         Returns:
             Event timestamp in UTC or None if not found
         """
@@ -107,7 +109,7 @@ class EventValidator:
             except (ValueError, OSError) as e:
                 logger.debug("Failed to parse timestamp %s: %s", timestamp, e)
                 return None
-        
+
         # Check for other possible timestamp fields
         for field in ["time", "created_at", "eventTime"]:
             if field in payload:
@@ -117,19 +119,19 @@ class EventValidator:
                 except (ValueError, OSError) as e:
                     logger.debug("Failed to parse alternative timestamp %s: %s", payload[field], e)
                     continue
-        
+
         logger.debug("No timestamp found in payload")
         return None
-    
+
     def _parse_timestamp_value(self, timestamp) -> datetime:
         """Parse a timestamp value into a datetime object.
-        
+
         Args:
             timestamp: The timestamp value to parse
-            
+
         Returns:
             datetime object in UTC
-            
+
         Raises:
             ValueError: If timestamp cannot be parsed
         """
@@ -140,7 +142,7 @@ class EventValidator:
                 timestamp_seconds = timestamp / 1000
             else:  # Seconds
                 timestamp_seconds = timestamp
-            
+
             return datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc)
         elif isinstance(timestamp, str):
             # Try ISO format first
