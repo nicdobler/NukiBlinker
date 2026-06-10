@@ -1,7 +1,6 @@
 """Integration tests for the complete event pipeline with new services."""
 
 import pytest
-import asyncio
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -12,17 +11,17 @@ from nukiblinker.event_validator import EventValidator
 from nukiblinker.event_log import EventLog
 from nukiblinker.night_mode import NightMode
 from nukiblinker.server import _dispatch_with_logging
-from nukiblinker import event_router, notifier
+from nukiblinker import notifier
 
 
 class TestEventPipelineIntegration:
     """Integration tests for the complete event pipeline."""
-    
+
     @pytest.fixture
     def mock_config(self):
         """Create a mock configuration for testing."""
         config = AppConfig()
-        
+
         # Enable all new features
         config.event_validation = EventValidationConfig(
             enabled=True,
@@ -41,25 +40,25 @@ class TestEventPipelineIntegration:
             retention_days=7,
             persist_to_file=False  # Disable file persistence for tests
         )
-        
+
         # Configure basic services
         config.hue.bridge_ip = "192.168.1.100"
         config.hue.api_key = "test-key"
         config.hue.lights = [1, 2]
-        
+
         config.nuki.bridge_ip = "192.168.1.101"
         config.nuki.api_token = "test-token"
-        
+
         return config
-    
+
     @pytest.fixture
     def mock_clients(self):
         """Create mock clients for testing."""
         clients = MagicMock()
-        
+
         # Mock event validator
         clients.event_validator = EventValidator(max_delay_seconds=60)
-        
+
         # Mock event log with temporary file
         with tempfile.TemporaryDirectory() as temp_dir:
             clients.event_log = EventLog(
@@ -68,7 +67,7 @@ class TestEventPipelineIntegration:
                 file_path=str(Path(temp_dir) / "test_log.json")
             )
             yield clients
-        
+
         # Mock night mode
         clients.night_mode = NightMode(
             start_time="22:00",
@@ -76,14 +75,14 @@ class TestEventPipelineIntegration:
             brightness_factor=0.5,
             grace_minutes=5
         )
-        
+
         # Mock other clients
         clients.hue = AsyncMock()
         clients.chromecast = AsyncMock()
         clients.airplay = AsyncMock()
         clients.homekit = AsyncMock()
         clients.nuki = AsyncMock()
-    
+
     @pytest.mark.asyncio
     async def test_complete_event_pipeline_valid_event(self, mock_config, mock_clients):
         """Test complete pipeline with a valid event during daytime."""
@@ -95,7 +94,7 @@ class TestEventPipelineIntegration:
             "state": 1,  # ring
             "timestamp": event_time.timestamp()
         }
-        
+
         # Mock daytime (not night mode)
         class MockDateTime:
             @staticmethod
@@ -104,28 +103,28 @@ class TestEventPipelineIntegration:
                     def time(self):
                         return time(10, 0)  # 10 AM
                 return MockNow()
-        
+
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
-            
+
             # Process the event
             validation_result = mock_clients.event_validator.validate_event(payload)
             assert validation_result.valid is True
-            
+
             await _dispatch_with_logging(
                 "ring", payload, mock_config, mock_clients, validation_result
             )
-        
+
         # Verify event was logged
         assert len(mock_clients.event_log.entries) == 1
         logged_event = mock_clients.event_log.entries[0]
         assert logged_event.event_type == "ring"
         assert logged_event.validation_result.valid is True
         assert len(logged_event.actions) > 0
-        
+
         # Verify Hue was called (not affected by night mode during day)
         mock_clients.hue.trigger_alert.assert_called_once()
-    
+
     @pytest.mark.asyncio
     async def test_complete_event_pipeline_invalid_event(self, mock_config, mock_clients):
         """Test complete pipeline with an invalid (old) event."""
@@ -137,11 +136,11 @@ class TestEventPipelineIntegration:
             "state": 1,  # ring
             "timestamp": event_time.timestamp()
         }
-        
+
         # Process the event
         validation_result = mock_clients.event_validator.validate_event(payload)
         assert validation_result.valid is False
-        
+
         # Log the rejected event (simulating server behavior)
         mock_clients.event_log.log_event(
             payload=payload,
@@ -149,17 +148,17 @@ class TestEventPipelineIntegration:
             actions=[f"Rejected: {validation_result.reason}"],
             validation_result=validation_result
         )
-        
+
         # Verify event was logged as rejected
         assert len(mock_clients.event_log.entries) == 1
         logged_event = mock_clients.event_log.entries[0]
         assert logged_event.event_type is None
         assert logged_event.validation_result.valid is False
         assert "Rejected" in logged_event.actions[0]
-        
+
         # Verify no notifications were sent
         mock_clients.hue.trigger_alert.assert_not_called()
-    
+
     @pytest.mark.asyncio
     async def test_complete_event_pipeline_night_mode(self, mock_config, mock_clients):
         """Test complete pipeline during night mode."""
@@ -171,7 +170,7 @@ class TestEventPipelineIntegration:
             "state": 7,  # ring_to_open
             "timestamp": event_time.timestamp()
         }
-        
+
         # Mock nighttime (night mode active)
         class MockDateTime:
             @staticmethod
@@ -180,32 +179,32 @@ class TestEventPipelineIntegration:
                     def time(self):
                         return time(23, 0)  # 11 PM
                 return MockNow()
-        
+
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', MockDateTime)
-            
+
             # Process the event
             validation_result = mock_clients.event_validator.validate_event(payload)
             assert validation_result.valid is True
-            
+
             await _dispatch_with_logging(
                 "ring_to_open", payload, mock_config, mock_clients, validation_result
             )
-        
+
         # Verify event was logged
         assert len(mock_clients.event_log.entries) == 1
         logged_event = mock_clients.event_log.entries[0]
         assert logged_event.event_type == "ring_to_open"
         assert logged_event.validation_result.valid is True
-        
+
         # Verify notifications were affected by night mode
         # Hue should be called but with reduced brightness
         mock_clients.hue.trigger_custom_blink.assert_called_once()
-        
+
         # Check that the blink parameters were modified by night mode
         call_args = mock_clients.hue.trigger_custom_blink.call_args
         assert call_args is not None
-    
+
     @pytest.mark.asyncio
     async def test_event_log_persistence_and_cleanup(self, mock_config, mock_clients):
         """Test event log persistence and cleanup functionality."""
@@ -219,7 +218,7 @@ class TestEventPipelineIntegration:
                 "timestamp": event_time.timestamp(),
                 "index": i
             }
-            
+
             validation_result = mock_clients.event_validator.validate_event(payload)
             mock_clients.event_log.log_event(
                 payload=payload,
@@ -227,25 +226,25 @@ class TestEventPipelineIntegration:
                 actions=[f"Action {i}"],
                 validation_result=validation_result
             )
-        
+
         # Verify all events were logged
         assert len(mock_clients.event_log.entries) == 5
-        
+
         # Test CSV export
         csv_content = mock_clients.event_log.export_to_csv()
         lines = csv_content.strip().split('\n')
         assert len(lines) == 6  # Header + 5 data rows
-        
+
         # Test cleanup by max entries
         mock_clients.event_log.max_entries = 3
         mock_clients.event_log._cleanup_old_entries()
         assert len(mock_clients.event_log.entries) == 3
-        
+
         # Verify newest events are kept
         entries = mock_clients.event_log.get_recent_events()
         assert entries[0].payload["index"] == 4  # Most recent
         assert entries[2].payload["index"] == 2  # Oldest kept
-    
+
     @pytest.mark.asyncio
     async def test_night_mode_grace_period(self, mock_config, mock_clients):
         """Test night mode grace period functionality."""
@@ -254,7 +253,7 @@ class TestEventPipelineIntegration:
             end_time="07:00",
             grace_minutes=5
         )
-        
+
         # Test just before start time (within grace period)
         class MockDateTimeGraceBefore:
             @staticmethod
@@ -263,11 +262,11 @@ class TestEventPipelineIntegration:
                     def time(self):
                         return time(21, 56)  # 4 minutes before 22:00
                 return MockNow()
-        
+
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceBefore)
             assert night_mode.is_night_time() is True
-        
+
         # Test just after end time (within grace period)
         class MockDateTimeGraceAfter:
             @staticmethod
@@ -276,11 +275,11 @@ class TestEventPipelineIntegration:
                     def time(self):
                         return time(7, 3)  # 3 minutes after 7:00
                 return MockNow()
-        
+
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', MockDateTimeGraceAfter)
             assert night_mode.is_night_time() is True
-        
+
         # Test outside grace period
         class MockDateTimeOutside:
             @staticmethod
@@ -289,41 +288,41 @@ class TestEventPipelineIntegration:
                     def time(self):
                         return time(21, 50)  # 10 minutes before 22:00
                 return MockNow()
-        
+
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', MockDateTimeOutside)
             assert night_mode.is_night_time() is False
-    
+
     @pytest.mark.asyncio
     async def test_event_validation_edge_cases(self, mock_config, mock_clients):
         """Test event validation edge cases."""
         validator = mock_clients.event_validator
-        
+
         # Test missing timestamp
         payload_no_timestamp = {"deviceType": 2, "state": 1}
         result = validator.validate_event(payload_no_timestamp)
         assert result.valid is True
         assert result.delay_seconds == 0.0
-        
+
         # Test future timestamp within grace period
         future_time = datetime.now(timezone.utc) + timedelta(minutes=1)
         payload_future = {"deviceType": 2, "state": 1, "timestamp": future_time.timestamp()}
         result = validator.validate_event(payload_future)
         assert result.valid is True
         assert result.delay_seconds < 0
-        
+
         # Test future timestamp beyond grace period
         far_future_time = datetime.now(timezone.utc) + timedelta(minutes=10)
         payload_far_future = {"deviceType": 2, "state": 1, "timestamp": far_future_time.timestamp()}
         result = validator.validate_event(payload_far_future)
         assert result.valid is False
         assert "too far in the future" in result.reason
-    
+
     @pytest.mark.asyncio
     async def test_notifier_with_actions_integration(self, mock_config, mock_clients):
         """Test notifier integration with action tracking."""
         from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig, CustomBlinkConfig
-        
+
         rule = EventRuleConfig(
             blink=BlinkConfig(
                 mode="custom",
@@ -338,22 +337,22 @@ class TestEventPipelineIntegration:
             audio=AudioConfig(enabled=True, mode="tts"),
             homekit=True
         )
-        
+
         # Mock successful responses
         mock_clients.hue.trigger_custom_blink.return_value = None
         mock_clients.homekit.trigger_ring.return_value = None
-        
+
         actions = await notifier.notify_with_actions(rule, mock_config, mock_clients, {"name": "Test"})
-        
+
         # Verify actions were returned
         assert len(actions) >= 2  # At least Hue and HomeKit
         assert any("Hue lights" in action for action in actions)
         assert any("HomeKit" in action for action in actions)
-        
+
         # Verify clients were called
         mock_clients.hue.trigger_custom_blink.assert_called_once()
         mock_clients.homekit.trigger_ring.assert_called_once()
-    
+
     @pytest.mark.asyncio
     async def test_error_handling_in_pipeline(self, mock_config, mock_clients):
         """Test error handling throughout the pipeline."""
@@ -365,30 +364,30 @@ class TestEventPipelineIntegration:
             "state": 1,
             "timestamp": event_time.timestamp()
         }
-        
+
         # Mock Hue client to raise an exception
         mock_clients.hue.trigger_alert.side_effect = Exception("Hue connection failed")
-        
+
         validation_result = mock_clients.event_validator.validate_event(payload)
         assert validation_result.valid is True
-        
+
         # Process the event - should handle the error gracefully
         await _dispatch_with_logging(
             "ring", payload, mock_config, mock_clients, validation_result
         )
-        
+
         # Verify event was still logged despite the error
         assert len(mock_clients.event_log.entries) == 1
         logged_event = mock_clients.event_log.entries[0]
         assert logged_event.event_type == "ring"
         assert any("Error" in action for action in logged_event.actions)
-    
+
     @pytest.mark.asyncio
     async def test_configuration_updates_runtime(self, mock_config, mock_clients):
         """Test that configuration updates affect runtime behavior."""
         # Initially, validation is enabled
         assert mock_config.event_validation.enabled is True
-        
+
         # Create an old event that should be rejected
         old_time = datetime.now(timezone.utc) - timedelta(minutes=5)
         payload = {
@@ -396,24 +395,24 @@ class TestEventPipelineIntegration:
             "state": 1,
             "timestamp": old_time.timestamp()
         }
-        
+
         validation_result = mock_clients.event_validator.validate_event(payload)
         assert validation_result.valid is False
-        
+
         # Disable validation
         mock_config.event_validation.enabled = False
-        
+
         # The same event should now be processed (though validation still runs)
         # Note: In real implementation, the server checks config.event_validation.enabled
         # before rejecting events. This test verifies the validator still works.
         validation_result = mock_clients.event_validator.validate_event(payload)
         assert validation_result.valid is False  # Validator still works independently
-    
+
     def test_event_log_thread_safety(self, mock_config, mock_clients):
         """Test thread safety of event logging."""
         import threading
         import time
-        
+
         def log_events(thread_id):
             for i in range(10):
                 payload = {"deviceType": 2, "state": 1, "thread": thread_id, "index": i}
@@ -425,21 +424,21 @@ class TestEventPipelineIntegration:
                     validation_result=validation_result
                 )
                 time.sleep(0.001)  # Small delay to increase chance of race conditions
-        
+
         # Create multiple threads
         threads = []
         for i in range(3):
             thread = threading.Thread(target=log_events, args=(i,))
             threads.append(thread)
             thread.start()
-        
+
         # Wait for all threads to complete
         for thread in threads:
             thread.join()
-        
+
         # Should have all events without corruption
         assert len(mock_clients.event_log.entries) == 30
-        
+
         # Verify no corruption
         for entry in mock_clients.event_log.entries:
             assert entry.event_type == "ring"

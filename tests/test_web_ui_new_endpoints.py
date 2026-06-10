@@ -1,11 +1,10 @@
 """Tests for new web UI API endpoints."""
 
 import pytest
-import json
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from nukiblinker.server import create_app
