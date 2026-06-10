@@ -74,10 +74,10 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         # Dispatch in background so we return 200 immediately
         background_tasks.add_task(
-            _dispatch_with_logging, 
-            event_type, 
-            payload, 
-            app.state.config, 
+            _dispatch_with_logging,
+            event_type,
+            payload,
+            app.state.config,
             app.state.clients,
             validation_result
         )
@@ -103,20 +103,20 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 async def _dispatch_with_logging(event_type: str, payload: dict, config, clients, validation_result):
     """Dispatch event with logging and night mode support."""
     start_time = time.time()
-    
+
     try:
         # Apply night mode if enabled
         rule = getattr(config.events, event_type)
         if config.night_mode.enabled:
             rule = clients.night_mode.apply_night_mode(rule)
-        
+
         # Dispatch the event
         actions = await event_router.dispatch_with_actions(
             event_type, payload, config, clients, rule
         )
-        
+
         processing_time_ms = (time.time() - start_time) * 1000
-        
+
         # Log the successful event
         if config.event_log.enabled:
             clients.event_log.log_event(
@@ -126,12 +126,12 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
                 validation_result=validation_result or clients.event_validator.validate_event(payload),
                 processing_time_ms=processing_time_ms
             )
-        
+
         logger.info("Event processed: %s -> %s (%.1fms)", event_type, actions, processing_time_ms)
-        
+
     except Exception as e:
         processing_time_ms = (time.time() - start_time) * 1000
-        
+
         # Log the error
         if config.event_log.enabled:
             clients.event_log.log_event(
@@ -141,5 +141,5 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
                 validation_result=validation_result or clients.event_validator.validate_event(payload),
                 processing_time_ms=processing_time_ms
             )
-        
+
         logger.error("Event processing failed: %s", e)

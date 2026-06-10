@@ -72,8 +72,8 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dic
 
 
 async def notify_with_actions(rule: EventRuleConfig, config: AppConfig, clients, context: dict | None = None) -> list[str]:
-    """Fire all enabled notification channels and return detailed action results.
-    
+        """Fire all enabled notification channels and return detailed action results.
+
     Returns:
         List of action descriptions (e.g., ["Hue lights blinked", "TTS played"])
     """
@@ -103,11 +103,10 @@ async def notify_with_actions(rule: EventRuleConfig, config: AppConfig, clients,
             airplay = getattr(clients, "airplay", None)
             if config.speakers.chromecast and chromecast is not None:
                 tasks.append(asyncio.ensure_future(_trigger_chromecast_with_result(chromecast, config.speakers, audio_url, actions)))
-            if config.speakers.airplay and airplay is not None:
+        if config.speakers.airplay and airplay is not None:
                 # AirPlay uses pyatv stream_file — needs local path, not HTTP URL
                 tasks.append(asyncio.ensure_future(_trigger_airplay_with_result(airplay, config.speakers, str(audio_path), actions)))
-
-    # HomeKit
+        # HomeKit
     if rule.homekit and config.homekit.enabled:
         hk = getattr(clients, "homekit", None)
         if hk is not None:
@@ -158,7 +157,7 @@ async def _trigger_hue_with_result(hue_client, hue_config, blink_config, actions
         elif blink_config.mode == "custom":
             await hue_client.trigger_custom_blink(hue_config.lights, hue_config.groups, blink_config.custom)
             actions.append(f"Hue lights blinked (custom: H={blink_config.custom.hue}, S={blink_config.custom.saturation}, B={blink_config.custom.brightness})")
-    except Exception as e:
+        except Exception as e:
         actions.append(f"Hue lights failed: {str(e)}")
         raise
 

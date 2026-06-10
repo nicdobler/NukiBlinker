@@ -382,15 +382,15 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Get recent event log entries."""
         if not request.app.state.config.event_log.enabled:
             return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
-        
+
         try:
             limit = int(request.query_params.get("limit", 100))
             offset = int(request.query_params.get("offset", 0))
             limit = min(limit, 1000)  # Cap at 1000 to prevent overload
-            
+
             events = request.app.state.clients.event_log.get_recent_events(limit, offset)
             total_count = request.app.state.clients.event_log.get_event_count()
-            
+
             return JSONResponse({
                 "events": [event.to_dict() for event in events],
                 "total_count": total_count,
@@ -406,21 +406,21 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Export event log as CSV."""
         if not request.app.state.config.event_log.enabled:
             return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
-        
+
         try:
             csv_content = request.app.state.clients.event_log.export_to_csv()
-            
+
             # Create temporary file
             import tempfile
             from datetime import datetime
-            
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"nukiblinker_events_{timestamp}.csv"
-            
+
             with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
                 f.write(csv_content)
                 temp_path = f.name
-            
+
             return FileResponse(
                 temp_path,
                 media_type='text/csv',
@@ -435,7 +435,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Clear all event log entries."""
         if not request.app.state.config.event_log.enabled:
             return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
-        
+
         try:
             request.app.state.clients.event_log.clear_log()
             logger.info("Event log cleared via web UI")
@@ -462,7 +462,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Update event validation configuration."""
         try:
             data = await request.json()
-            
+
             # Validate input
             if "max_delay_seconds" in data:
                 delay = data["max_delay_seconds"]
@@ -470,21 +470,21 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                     return JSONResponse({
                         "error": "max_delay_seconds must be an integer between 1 and 3600"
                     }, status_code=400)
-            
+
             # Update configuration
             config = request.app.state.config
             if "enabled" in data:
                 config.event_validation.enabled = bool(data["enabled"])
             if "max_delay_seconds" in data:
                 config.event_validation.max_delay_seconds = data["max_delay_seconds"]
-            
+
             # Update validator service
             if hasattr(request.app.state.clients, 'event_validator'):
                 request.app.state.clients.event_validator.max_delay_seconds = config.event_validation.max_delay_seconds
-            
+
             # Save configuration
             save_config(config, "config.yaml")
-            
+
             logger.info("Event validation config updated: %s", data)
             return JSONResponse({
                 "enabled": config.event_validation.enabled,
@@ -499,10 +499,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Get current night mode configuration and status."""
         config = request.app.state.config.night_mode
         status = {}
-        
+
         if hasattr(request.app.state.clients, 'night_mode'):
             status = request.app.state.clients.night_mode.get_status()
-        
+
         return JSONResponse({
             "enabled": config.enabled,
             "start_time": config.start_time,
@@ -517,7 +517,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Update night mode configuration."""
         try:
             data = await request.json()
-            
+
             # Validate input
             if "start_time" in data:
                 start_time = data["start_time"]
@@ -528,7 +528,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                     datetime.strptime(start_time, "%H:%M")
                 except ValueError:
                     return JSONResponse({"error": "start_time must be in HH:MM format"}, status_code=400)
-            
+
             if "end_time" in data:
                 end_time = data["end_time"]
                 if not isinstance(end_time, str) or len(end_time) != 5:
@@ -538,18 +538,17 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                     datetime.strptime(end_time, "%H:%M")
                 except ValueError:
                     return JSONResponse({"error": "end_time must be in HH:MM format"}, status_code=400)
-            
+
             if "brightness_factor" in data:
                 factor = data["brightness_factor"]
                 if not isinstance(factor, (int, float)) or factor < 0.0 or factor > 1.0:
                     return JSONResponse({"error": "brightness_factor must be between 0.0 and 1.0"}, status_code=400)
-            
+
             if "grace_minutes" in data:
                 minutes = data["grace_minutes"]
                 if not isinstance(minutes, int) or minutes < 0 or minutes > 60:
                     return JSONResponse({"error": "grace_minutes must be an integer between 0 and 60"}, status_code=400)
-            
-            # Update configuration
+        # Update configuration
             config = request.app.state.config
             if "enabled" in data:
                 config.night_mode.enabled = bool(data["enabled"])
@@ -561,7 +560,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 config.night_mode.brightness_factor = float(data["brightness_factor"])
             if "grace_minutes" in data:
                 config.night_mode.grace_minutes = int(data["grace_minutes"])
-            
+
             # Update night mode service
             if hasattr(request.app.state.clients, 'night_mode'):
                 request.app.state.clients.night_mode.update_settings(
@@ -570,10 +569,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                     brightness_factor=config.night_mode.brightness_factor,
                     grace_minutes=config.night_mode.grace_minutes
                 )
-            
+
             # Save configuration
             save_config(config, "config.yaml")
-            
+
             logger.info("Night mode config updated: %s", data)
             return JSONResponse({
                 "enabled": config.night_mode.enabled,
@@ -591,14 +590,14 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Get current event log configuration."""
         config = request.app.state.config.event_log
         stats = {}
-        
+
         if hasattr(request.app.state.clients, 'event_log'):
             stats = {
                 "current_entries": request.app.state.clients.event_log.get_event_count(),
                 "max_entries": config.max_entries,
                 "retention_days": config.retention_days
             }
-        
+
         return JSONResponse({
             "enabled": config.enabled,
             "max_entries": config.max_entries,
@@ -613,19 +612,17 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         """Update event log configuration."""
         try:
             data = await request.json()
-            
+
             # Validate input
             if "max_entries" in data:
                 max_entries = data["max_entries"]
                 if not isinstance(max_entries, int) or max_entries < 10 or max_entries > 10000:
                     return JSONResponse({"error": "max_entries must be an integer between 10 and 10000"}, status_code=400)
-            
-            if "retention_days" in data:
+        if "retention_days" in data:
                 retention = data["retention_days"]
                 if not isinstance(retention, int) or retention < 1 or retention > 365:
                     return JSONResponse({"error": "retention_days must be an integer between 1 and 365"}, status_code=400)
-            
-            # Update configuration
+        # Update configuration
             config = request.app.state.config
             if "enabled" in data:
                 config.event_log.enabled = bool(data["enabled"])
@@ -635,10 +632,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 config.event_log.retention_days = data["retention_days"]
             if "persist_to_file" in data:
                 config.event_log.persist_to_file = bool(data["persist_to_file"])
-            
+
             # Save configuration
             save_config(config, "config.yaml")
-            
+
             logger.info("Event log config updated: %s", data)
             return JSONResponse({
                 "enabled": config.event_log.enabled,
