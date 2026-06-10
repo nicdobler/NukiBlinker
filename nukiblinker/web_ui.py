@@ -461,7 +461,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     async def update_event_validation_config(request: Request) -> JSONResponse:
         """Update event validation configuration."""
         try:
-            data = await request.json()
+            try:
+                data = await request.json()
+            except Exception:
+                return JSONResponse({"error": "Invalid JSON payload"}, status_code=400)
 
             # Validate input
             if "max_delay_seconds" in data:
@@ -516,7 +519,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     async def update_night_mode_config(request: Request) -> JSONResponse:
         """Update night mode configuration."""
         try:
-            data = await request.json()
+            try:
+                data = await request.json()
+            except Exception:
+                return JSONResponse({"error": "Invalid JSON payload"}, status_code=400)
 
             # Validate input
             if "start_time" in data:
@@ -611,7 +617,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     async def update_event_log_config(request: Request) -> JSONResponse:
         """Update event log configuration."""
         try:
-            data = await request.json()
+            try:
+                data = await request.json()
+            except Exception:
+                return JSONResponse({"error": "Invalid JSON payload"}, status_code=400)
 
             # Validate input
             if "max_entries" in data:

@@ -113,7 +113,7 @@ class TestWebUINewEndpoints:
         response = test_client.put("/api/config/event-validation", json=update_data)
 
         assert response.status_code == 400
-        assert "max_delay_seconds must be between 1 and 3600" in response.json()["error"]
+        assert "max_delay_seconds must be an integer between 1 and 3600" in response.json()["error"]
 
     def test_get_night_mode_config(self, test_client):
         """Test getting night mode configuration."""
@@ -212,7 +212,7 @@ class TestWebUINewEndpoints:
         response = test_client.put("/api/config/event-log", json=update_data)
 
         assert response.status_code == 400
-        assert "max_entries must be between 10 and 10000" in response.json()["error"]
+        assert "max_entries must be an integer between 10 and 10000" in response.json()["error"]
 
     def test_get_event_log_empty(self, test_client):
         """Test getting event log when empty."""
@@ -392,12 +392,17 @@ class TestWebUINewEndpoints:
 
     def test_night_mode_status_in_config(self, test_client, mock_clients):
         """Test that night mode status is included in config response."""
-        # Mock current time as nighttime
-        with patch('nukiblinker.night_mode.datetime') as mock_datetime:
-            mock_now = MagicMock()
-            mock_now.time.return_value = datetime.now().replace(hour=23, minute=0).time()
-            mock_datetime.now.return_value = mock_now
+        # Mock current time as nighttime (23:00). A datetime subclass keeps
+        # classmethods like combine()/today() functional.
+        import datetime as _dt
 
+        class FakeDateTime(_dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                t = _dt.date.today()
+                return cls(t.year, t.month, t.day, 23, 0)
+
+        with patch('nukiblinker.night_mode.datetime', FakeDateTime):
             response = test_client.get("/api/config/night-mode")
 
             assert response.status_code == 200
@@ -459,7 +464,7 @@ class TestWebUINewEndpoints:
             headers={"content-type": "application/json"}
         )
 
-        assert response.status_code == 422  # Unprocessable Entity
+        assert response.status_code == 400  # Bad Request: malformed JSON
 
     def test_concurrent_event_log_access(self, test_client, mock_clients):
         """Test concurrent access to event log endpoints."""

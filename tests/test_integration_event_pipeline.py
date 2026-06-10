@@ -318,6 +318,9 @@ class TestEventPipelineIntegration:
             homekit=True
         )
 
+        # HomeKit channel requires the global config flag (disabled by default)
+        mock_config.homekit.enabled = True
+
         # Mock successful responses
         mock_clients.hue.trigger_custom_blink.return_value = None
         mock_clients.homekit.trigger_ring.return_value = None
