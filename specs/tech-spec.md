@@ -642,9 +642,177 @@ make runLocal    # best for real-device testing (direct LAN + mDNS)
 make build       # verify Docker image builds
 ```
 
+## New Features (v0.3.0)
+
+### Event Validation Service (`event_validator.py`)
+
+Validates event timestamps before processing:
+
+```python
+class EventValidator:
+    def __init__(self, max_delay_seconds: int = 60):
+        self.max_delay_seconds = max_delay_seconds
+    
+    def validate_event(self, payload: dict) -> ValidationResult:
+        """Check if event timestamp is within acceptable delay."""
+        event_time = self._extract_timestamp(payload)
+        now = datetime.now(timezone.utc)
+        delay = (now - event_time).total_seconds()
+        
+        return ValidationResult(
+            valid=delay <= self.max_delay_seconds,
+            delay_seconds=delay,
+            reason="Event too old" if delay > self.max_delay_seconds else None
+        )
+```
+
+### Event Log Service (`event_log.py`)
+
+Persistent event logging with web UI access:
+
+```python
+class EventLog:
+    def __init__(self, max_entries: int = 1000, retention_days: int = 7):
+        self.entries: list[EventLogEntry] = []
+        self.max_entries = max_entries
+        self.retention_days = retention_days
+    
+    def log_event(self, payload: dict, event_type: str, actions: list[str], validation_result: ValidationResult):
+        """Add event to log with full context."""
+        entry = EventLogEntry(
+            timestamp=datetime.now(timezone.utc),
+            event_type=event_type,
+            payload=payload,
+            actions=actions,
+            validation_result=validation_result
+        )
+        self.entries.append(entry)
+        self._cleanup_old_entries()
+    
+    def get_recent_events(self, limit: int = 100) -> list[EventLogEntry]:
+        """Return recent events for web UI."""
+        return self.entries[-limit:]
+```
+
+### Night Mode Service (`night_mode.py`)
+
+Manages time-based notification behavior:
+
+```python
+class NightMode:
+    def __init__(self, start_time: str = "22:00", end_time: str = "07:00", brightness_factor: float = 0.3):
+        self.start_time = start_time
+        self.end_time = end_time
+        self.brightness_factor = brightness_factor
+    
+    def is_night_time(self) -> bool:
+        """Check if current time is within night mode hours."""
+        now = datetime.now().time()
+        start = datetime.strptime(self.start_time, "%H:%M").time()
+        end = datetime.strptime(self.end_time, "%H:%M").time()
+        
+        if start <= end:
+            return start <= now <= end
+        else:  # Overnight (e.g., 22:00 to 07:00)
+            return now >= start or now <= end
+    
+    def apply_night_mode(self, rule: EventRuleConfig) -> EventRuleConfig:
+        """Return modified rule for night mode."""
+        if not self.is_night_time():
+            return rule
+        
+        night_rule = rule.copy(deep=True)
+        night_rule.audio.enabled = False  # Disable audio
+        
+        # Reduce light brightness for custom blink
+        if night_rule.blink.mode == "custom":
+            night_rule.blink.custom.brightness = int(
+                night_rule.blink.custom.brightness * self.brightness_factor
+            )
+        
+        return night_rule
+```
+
+### Updated Config Models
+
+Extended Pydantic models for new features:
+
+```python
+class EventValidationConfig(BaseModel):
+    enabled: bool = True
+    max_delay_seconds: int = 60  # Reject events older than 60 seconds
+
+class NightModeConfig(BaseModel):
+    enabled: bool = False
+    start_time: str = "22:00"    # 10 PM
+    end_time: str = "07:00"      # 7 AM
+    brightness_factor: float = 0.3  # 30% of normal brightness
+    grace_minutes: int = 5       # 5-minute buffer
+
+class EventLogConfig(BaseModel):
+    enabled: bool = True
+    max_entries: int = 1000
+    retention_days: int = 7
+    persist_to_file: bool = True
+    file_path: str = "logs/event_log.json"
+
+class AppConfig(BaseModel):
+    # ... existing fields ...
+    event_validation: EventValidationConfig = EventValidationConfig()
+    night_mode: NightModeConfig = NightModeConfig()
+    event_log: EventLogConfig = EventLogConfig()
+```
+
+### Updated Web UI API Routes
+
+New endpoints in `web_ui.py`:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/events/log` | Get recent event log entries |
+| GET | `/api/events/export` | Download event log as CSV |
+| POST | `/api/events/clear` | Clear event log |
+| PUT | `/api/config/event-validation` | Update validation settings |
+| PUT | `/api/config/night-mode` | Update night mode settings |
+| PUT | `/api/config/event-log` | Update event log settings |
+
+### Updated Event Flow
+
+```mermaid
+sequenceDiagram
+    participant NB as Nuki Bridge
+    participant NK as NukiBlinker
+    participant EV as EventValidator
+    participant EL as EventLog
+    participant NM as NightMode
+    participant ER as EventRouter
+    participant N as Notifier
+
+    NB->>NK: HTTP POST /nuki/callback
+    NK->>EV: validate_event(payload)
+    EV-->>NK: ValidationResult
+    alt Event invalid (too old)
+        NK->>EL: log_event(validation_result=invalid)
+        NK-->>NB: 200 OK (no notifications)
+    else Event valid
+        NK->>EL: log_event(validation_result=valid)
+        NK->>NM: is_night_time()?
+        NM-->>NK: boolean
+        NK->>ER: classify_and_dispatch(payload, night_mode_rule)
+        ER->>N: notify()
+        N-->>ER: results
+        ER-->>NK: actions_taken
+        NK->>EL: log_event(actions=actions_taken)
+        NK-->>NB: 200 OK
+    end
+```
+
 ## Logging
 
 - Structured logging via Python `logging` module.
 - Console output (INFO level by default).
 - Rotating file log (`logs/nukiblinker.log`), configurable retention.
+- Event log service: separate structured log for event processing (JSON format).
 - Key events logged: startup, callback received, event classified (ring / ring_to_open), rule dispatched, channel triggered, channel failure, config saved.
+- Event validation warnings when events are rejected due to age.
+- Night mode activation/deactivation logs.

@@ -373,6 +373,284 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         logger.info("Service resumed")
         return JSONResponse({"status": "resumed"})
 
+    # ------------------------------------------------------------------
+    # Event log endpoints
+    # ------------------------------------------------------------------
+
+    @router.get("/events/log")
+    async def get_event_log(request: Request) -> JSONResponse:
+        """Get recent event log entries."""
+        if not request.app.state.config.event_log.enabled:
+            return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
+        
+        try:
+            limit = int(request.query_params.get("limit", 100))
+            offset = int(request.query_params.get("offset", 0))
+            limit = min(limit, 1000)  # Cap at 1000 to prevent overload
+            
+            events = request.app.state.clients.event_log.get_recent_events(limit, offset)
+            total_count = request.app.state.clients.event_log.get_event_count()
+            
+            return JSONResponse({
+                "events": [event.to_dict() for event in events],
+                "total_count": total_count,
+                "limit": limit,
+                "offset": offset
+            })
+        except Exception as e:
+            logger.error("Failed to get event log: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to retrieve event log"}, status_code=500)
+
+    @router.get("/events/export")
+    async def export_event_log(request: Request) -> FileResponse:
+        """Export event log as CSV."""
+        if not request.app.state.config.event_log.enabled:
+            return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
+        
+        try:
+            csv_content = request.app.state.clients.event_log.export_to_csv()
+            
+            # Create temporary file
+            import tempfile
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"nukiblinker_events_{timestamp}.csv"
+            
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+                f.write(csv_content)
+                temp_path = f.name
+            
+            return FileResponse(
+                temp_path,
+                media_type='text/csv',
+                filename=filename
+            )
+        except Exception as e:
+            logger.error("Failed to export event log: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to export event log"}, status_code=500)
+
+    @router.post("/events/clear")
+    async def clear_event_log(request: Request) -> JSONResponse:
+        """Clear all event log entries."""
+        if not request.app.state.config.event_log.enabled:
+            return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
+        
+        try:
+            request.app.state.clients.event_log.clear_log()
+            logger.info("Event log cleared via web UI")
+            return JSONResponse({"status": "cleared"})
+        except Exception as e:
+            logger.error("Failed to clear event log: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to clear event log"}, status_code=500)
+
+    # ------------------------------------------------------------------
+    # Configuration endpoints for new features
+    # ------------------------------------------------------------------
+
+    @router.get("/config/event-validation")
+    async def get_event_validation_config(request: Request) -> JSONResponse:
+        """Get current event validation configuration."""
+        config = request.app.state.config.event_validation
+        return JSONResponse({
+            "enabled": config.enabled,
+            "max_delay_seconds": config.max_delay_seconds
+        })
+
+    @router.put("/config/event-validation")
+    async def update_event_validation_config(request: Request) -> JSONResponse:
+        """Update event validation configuration."""
+        try:
+            data = await request.json()
+            
+            # Validate input
+            if "max_delay_seconds" in data:
+                delay = data["max_delay_seconds"]
+                if not isinstance(delay, int) or delay < 1 or delay > 3600:
+                    return JSONResponse({
+                        "error": "max_delay_seconds must be an integer between 1 and 3600"
+                    }, status_code=400)
+            
+            # Update configuration
+            config = request.app.state.config
+            if "enabled" in data:
+                config.event_validation.enabled = bool(data["enabled"])
+            if "max_delay_seconds" in data:
+                config.event_validation.max_delay_seconds = data["max_delay_seconds"]
+            
+            # Update validator service
+            if hasattr(request.app.state.clients, 'event_validator'):
+                request.app.state.clients.event_validator.max_delay_seconds = config.event_validation.max_delay_seconds
+            
+            # Save configuration
+            save_config(config, "config.yaml")
+            
+            logger.info("Event validation config updated: %s", data)
+            return JSONResponse({
+                "enabled": config.event_validation.enabled,
+                "max_delay_seconds": config.event_validation.max_delay_seconds
+            })
+        except Exception as e:
+            logger.error("Failed to update event validation config: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
+
+    @router.get("/config/night-mode")
+    async def get_night_mode_config(request: Request) -> JSONResponse:
+        """Get current night mode configuration and status."""
+        config = request.app.state.config.night_mode
+        status = {}
+        
+        if hasattr(request.app.state.clients, 'night_mode'):
+            status = request.app.state.clients.night_mode.get_status()
+        
+        return JSONResponse({
+            "enabled": config.enabled,
+            "start_time": config.start_time,
+            "end_time": config.end_time,
+            "brightness_factor": config.brightness_factor,
+            "grace_minutes": config.grace_minutes,
+            "status": status
+        })
+
+    @router.put("/config/night-mode")
+    async def update_night_mode_config(request: Request) -> JSONResponse:
+        """Update night mode configuration."""
+        try:
+            data = await request.json()
+            
+            # Validate input
+            if "start_time" in data:
+                start_time = data["start_time"]
+                if not isinstance(start_time, str) or len(start_time) != 5:
+                    return JSONResponse({"error": "start_time must be in HH:MM format"}, status_code=400)
+                try:
+                    from datetime import datetime
+                    datetime.strptime(start_time, "%H:%M")
+                except ValueError:
+                    return JSONResponse({"error": "start_time must be in HH:MM format"}, status_code=400)
+            
+            if "end_time" in data:
+                end_time = data["end_time"]
+                if not isinstance(end_time, str) or len(end_time) != 5:
+                    return JSONResponse({"error": "end_time must be in HH:MM format"}, status_code=400)
+                try:
+                    from datetime import datetime
+                    datetime.strptime(end_time, "%H:%M")
+                except ValueError:
+                    return JSONResponse({"error": "end_time must be in HH:MM format"}, status_code=400)
+            
+            if "brightness_factor" in data:
+                factor = data["brightness_factor"]
+                if not isinstance(factor, (int, float)) or factor < 0.0 or factor > 1.0:
+                    return JSONResponse({"error": "brightness_factor must be between 0.0 and 1.0"}, status_code=400)
+            
+            if "grace_minutes" in data:
+                minutes = data["grace_minutes"]
+                if not isinstance(minutes, int) or minutes < 0 or minutes > 60:
+                    return JSONResponse({"error": "grace_minutes must be an integer between 0 and 60"}, status_code=400)
+            
+            # Update configuration
+            config = request.app.state.config
+            if "enabled" in data:
+                config.night_mode.enabled = bool(data["enabled"])
+            if "start_time" in data:
+                config.night_mode.start_time = data["start_time"]
+            if "end_time" in data:
+                config.night_mode.end_time = data["end_time"]
+            if "brightness_factor" in data:
+                config.night_mode.brightness_factor = float(data["brightness_factor"])
+            if "grace_minutes" in data:
+                config.night_mode.grace_minutes = int(data["grace_minutes"])
+            
+            # Update night mode service
+            if hasattr(request.app.state.clients, 'night_mode'):
+                request.app.state.clients.night_mode.update_settings(
+                    start_time=config.night_mode.start_time,
+                    end_time=config.night_mode.end_time,
+                    brightness_factor=config.night_mode.brightness_factor,
+                    grace_minutes=config.night_mode.grace_minutes
+                )
+            
+            # Save configuration
+            save_config(config, "config.yaml")
+            
+            logger.info("Night mode config updated: %s", data)
+            return JSONResponse({
+                "enabled": config.night_mode.enabled,
+                "start_time": config.night_mode.start_time,
+                "end_time": config.night_mode.end_time,
+                "brightness_factor": config.night_mode.brightness_factor,
+                "grace_minutes": config.night_mode.grace_minutes
+            })
+        except Exception as e:
+            logger.error("Failed to update night mode config: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
+
+    @router.get("/config/event-log")
+    async def get_event_log_config(request: Request) -> JSONResponse:
+        """Get current event log configuration."""
+        config = request.app.state.config.event_log
+        stats = {}
+        
+        if hasattr(request.app.state.clients, 'event_log'):
+            stats = {
+                "current_entries": request.app.state.clients.event_log.get_event_count(),
+                "max_entries": config.max_entries,
+                "retention_days": config.retention_days
+            }
+        
+        return JSONResponse({
+            "enabled": config.enabled,
+            "max_entries": config.max_entries,
+            "retention_days": config.retention_days,
+            "persist_to_file": config.persist_to_file,
+            "file_path": config.file_path,
+            "stats": stats
+        })
+
+    @router.put("/config/event-log")
+    async def update_event_log_config(request: Request) -> JSONResponse:
+        """Update event log configuration."""
+        try:
+            data = await request.json()
+            
+            # Validate input
+            if "max_entries" in data:
+                max_entries = data["max_entries"]
+                if not isinstance(max_entries, int) or max_entries < 10 or max_entries > 10000:
+                    return JSONResponse({"error": "max_entries must be an integer between 10 and 10000"}, status_code=400)
+            
+            if "retention_days" in data:
+                retention = data["retention_days"]
+                if not isinstance(retention, int) or retention < 1 or retention > 365:
+                    return JSONResponse({"error": "retention_days must be an integer between 1 and 365"}, status_code=400)
+            
+            # Update configuration
+            config = request.app.state.config
+            if "enabled" in data:
+                config.event_log.enabled = bool(data["enabled"])
+            if "max_entries" in data:
+                config.event_log.max_entries = data["max_entries"]
+            if "retention_days" in data:
+                config.event_log.retention_days = data["retention_days"]
+            if "persist_to_file" in data:
+                config.event_log.persist_to_file = bool(data["persist_to_file"])
+            
+            # Save configuration
+            save_config(config, "config.yaml")
+            
+            logger.info("Event log config updated: %s", data)
+            return JSONResponse({
+                "enabled": config.event_log.enabled,
+                "max_entries": config.event_log.max_entries,
+                "retention_days": config.event_log.retention_days,
+                "persist_to_file": config.event_log.persist_to_file,
+                "file_path": config.event_log.file_path
+            })
+        except Exception as e:
+            logger.error("Failed to update event log config: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
+
     @router.post("/test/event/{event_type}")
     async def test_event(event_type: str, request: Request) -> JSONResponse:
         if event_type not in ("ring", "ring_to_open", "door_opened"):

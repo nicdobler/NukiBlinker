@@ -11,7 +11,10 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Voice announcements**: TTS via gTTS on Google Nest (Chromecast) and Apple HomePod (AirPlay 2)
 - **Chime sounds**: bundled audio files for door-opened events
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices
-- **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules
+- **Event validation**: configurable timestamp validation to reject stale events
+- **Event logging**: comprehensive event history with detailed action tracking and CSV export
+- **Night mode**: time-based notification adjustments (no audio, dimmer lights)
+- **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules, event log viewer
 - **Auto-discovery**: Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers
 - **Graceful lifecycle**: shutdown deregisters Nuki callback, pause/resume via web UI
 
@@ -98,8 +101,35 @@ The web UI provides a tabbed interface covering all configuration:
 | **Speakers** | Chromecast & AirPlay names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |
 | **Events** | Per-event blink (alert/custom HSB), audio (TTS/chime), HomeKit toggle |
+| **Event Log** | View event history, export CSV, clear log |
+| **Event Validation** | Configure timestamp validation to reject stale events |
+| **Night Mode** | Set quiet hours with reduced notifications |
 
 Mandatory fields are marked with a red `*`. Changes are saved to `config.yaml` via the fixed save bar.
+
+### New Features
+
+#### Event Validation
+Prevents stale events from triggering notifications by checking event timestamps:
+- Configurable maximum delay (default: 60 seconds)
+- Handles missing or future timestamps gracefully
+- Rejects events older than the threshold with detailed logging
+
+#### Event Logging
+Comprehensive event history for monitoring and troubleshooting:
+- In-memory storage with configurable retention
+- Optional file persistence for durability
+- Detailed action tracking with processing times
+- CSV export for analysis
+- Web UI viewer with pagination and search
+
+#### Night Mode
+Reduces notifications during specified hours:
+- Configurable time windows (default: 22:00-07:00)
+- Grace periods for smooth transitions
+- Audio suppression during night hours
+- Reduced light brightness (configurable factor)
+- HomeKit notifications preserved for security
 
 ## Configuration
 
@@ -110,7 +140,39 @@ See `config.example.yaml` for all options. Key sections:
 - **speakers** — Chromecast and AirPlay speaker names, volume
 - **homekit** — Enable/disable, setup code
 - **events** — Per-event rules (ring, ring_to_open, door_opened)
+- **event_validation** — Timestamp validation settings
+- **night_mode** — Quiet hours and notification adjustments
+- **event_log** — Logging configuration and retention
 - **server** — Host and port
+
+### New Configuration Options
+
+#### Event Validation
+```yaml
+event_validation:
+  enabled: true
+  max_delay_seconds: 60  # Reject events older than 60 seconds
+```
+
+#### Night Mode
+```yaml
+night_mode:
+  enabled: true
+  start_time: "22:00"
+  end_time: "07:00"
+  brightness_factor: 0.3  # Reduce light brightness to 30%
+  grace_minutes: 5        # Grace period around boundaries
+```
+
+#### Event Logging
+```yaml
+event_log:
+  enabled: true
+  max_entries: 1000       # Maximum events in memory
+  retention_days: 7       # How long to keep events
+  persist_to_file: true   # Save to disk for durability
+  file_path: "logs/event_log.json"
+```
 
 ### Getting API Keys
 
@@ -136,6 +198,12 @@ See `config.example.yaml` for all options. Key sections:
 | `/api/pause` | POST | Pause service |
 | `/api/resume` | POST | Resume service |
 | `/api/test/event/{type}` | POST | Fire test event |
+| `/api/events/log` | GET | Get paginated event log |
+| `/api/events/export` | GET | Export event log as CSV |
+| `/api/events/clear` | POST | Clear all event log entries |
+| `/api/config/event-validation` | GET/PUT | Event validation configuration |
+| `/api/config/night-mode` | GET/PUT | Night mode configuration |
+| `/api/config/event-log` | GET/PUT | Event logging configuration |
 
 ## Deployment (Mini PC)
 

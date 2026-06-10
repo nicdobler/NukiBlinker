@@ -7,16 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **#56**: Night mode - configurable quiet hours with reduced notifications (no audio, dimmer lights)
+- **#57**: Event log viewer - comprehensive event history with detailed action tracking and CSV export
+- **#59**: Event timestamp validation - configurable validation to reject stale events
+- Event validation service with configurable delay threshold (default: 60 seconds)
+- Event logging service with in-memory storage, file persistence, and cleanup
+- Night mode service with time-based notifications and grace periods
+- New web UI "Event Log" tab for viewing event history with pagination
+- New configuration sections in Events tab for validation, night mode, and logging
+- Enhanced event pipeline with detailed action tracking and processing times
+- New API endpoints: `/api/events/log`, `/api/events/export`, `/api/events/clear`
+- New configuration endpoints: `/api/config/event-validation`, `/api/config/night-mode`, `/api/config/event-log`
+- Thread-safe event logging with concurrent access support
+- CSV export functionality for event analysis
+- Real-time night mode status indicators in web UI
+- Event validation with graceful handling of missing/future timestamps
+
+### Changed
+- Enhanced notifier to return detailed action results for logging
+- Updated event router to support validation and night mode integration
+- Modified server callback handler to include event validation and logging
+- Improved error handling throughout the event pipeline
+- Enhanced web UI save/load to include new feature configurations
+
 ### Fixed
 - **#35**: AirPlay audio now plays correctly on HomePod — fixed missing `await` on `atv.close()` and added playback completion wait.
 - **#38**: Hue groups now blink correctly in custom blink mode — `trigger_custom_blink()` now accepts and processes `group_ids` parameter.
-
-### Added
-- Hue Bridge connection status indicator in the web UI Hue tab — shows connected/disconnected/not paired with bridge name and API version.
-- `GET /api/hue/status` endpoint — checks Hue Bridge reachability and API key validity.
-- "Check Status" button in the Hue tab to verify registration on demand.
-- Smart pairing: `POST /api/hue/pair` now validates the existing API key first before attempting a new press-button pairing flow.
-- `HueClient.check_connection()` method — verifies API key against the bridge config endpoint.
 
 ### Changed
 - Switched from GHCR image pull to local Docker build on Mini PC (`docker compose build`).

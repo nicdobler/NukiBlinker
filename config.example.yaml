@@ -58,3 +58,24 @@ server:
   host: "0.0.0.0"
   port: 8080
   public_host: ""                  # LAN IP for URLs (required in Docker, e.g. "192.168.86.50")
+
+# Event timestamp validation - rejects events older than threshold
+event_validation:
+  enabled: true
+  max_delay_seconds: 60            # Reject events older than 60 seconds
+
+# Night mode - reduces notifications during specified hours
+night_mode:
+  enabled: false
+  start_time: "22:00"              # 10 PM
+  end_time: "07:00"                # 7 AM
+  brightness_factor: 0.3           # 30% of normal brightness
+  grace_minutes: 5                 # 5-minute buffer around boundaries
+
+# Event logging - maintains event history for troubleshooting
+event_log:
+  enabled: true
+  max_entries: 1000                # Maximum entries in memory
+  retention_days: 7                # Keep entries for 7 days
+  persist_to_file: true
+  file_path: "logs/event_log.json"
