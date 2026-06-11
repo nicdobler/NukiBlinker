@@ -83,7 +83,10 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
             if attempt < _RESOLVE_PERSON_ATTEMPTS - 1:
                 await asyncio.sleep(_RESOLVE_PERSON_RETRY_SECONDS)
         if not name:
-            logger.warning("No name in bridge log for nukiId=%s after %d attempts — using fallback", nuki_id, _RESOLVE_PERSON_ATTEMPTS)
+            logger.warning(
+                "No name in bridge log for nukiId=%s after %d attempts — using fallback",
+                nuki_id, _RESOLVE_PERSON_ATTEMPTS,
+            )
             name = fallback_name
         logger.info("Resolved person: %s (nukiId=%s)", name, nuki_id)
         return {"name": name}
