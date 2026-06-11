@@ -14,14 +14,14 @@ logger = get_logger("homekit")
 try:
     from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_SENSOR
+    from pyhap.const import CATEGORY_PROGRAMMABLE_SWITCH
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
     logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_SENSOR = None  # type: ignore[assignment]
+    CATEGORY_PROGRAMMABLE_SWITCH = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 
@@ -105,7 +105,7 @@ class HomeKitService:
         )
 
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
-        self._accessory.category = CATEGORY_SENSOR
+        self._accessory.category = CATEGORY_PROGRAMMABLE_SWITCH
         doorbell = self._accessory.add_preload_service("Doorbell")
         doorbell.is_primary_service = True
         # Programmable button: usable as an automation trigger in the Home
@@ -179,7 +179,7 @@ class HomeKitService:
             import base36
 
             digits = self._setup_code.replace("-", "")
-            category = 10  # CATEGORY_SENSOR value
+            category = 15  # CATEGORY_PROGRAMMABLE_SWITCH value
 
             # Use the setup_id from driver state when available so the QR URI
             # matches exactly what HAP-python has advertised.

@@ -112,16 +112,16 @@ class TestStart:
         assert mock_driver_cls.call_args.kwargs["address"] is None
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.CATEGORY_SENSOR", 10)
+    @patch("nukiblinker.homekit_service.CATEGORY_PROGRAMMABLE_SWITCH", 15)
     @patch("nukiblinker.homekit_service.AccessoryDriver")
     @patch("nukiblinker.homekit_service.Accessory")
-    def test_category_is_not_video_doorbell(self, mock_acc_cls, mock_driver_cls, tmp_path):
-        """Regression: VIDEO_DOOR_BELL category without camera stream breaks iOS pairing."""
+    def test_category_is_programmable_switch(self, mock_acc_cls, mock_driver_cls, tmp_path):
+        """Regression: PROGRAMMABLE_SWITCH category is required for StatelessProgrammableSwitch service."""
         mock_acc = MagicMock()
         mock_acc_cls.return_value = mock_acc
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         svc.start()
-        assert mock_acc.category == 10
+        assert mock_acc.category == 15
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", False)
     def test_skips_when_hap_not_available(self, tmp_path):
