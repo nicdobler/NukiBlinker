@@ -13,7 +13,7 @@ class TestHapImports:
         from nukiblinker import homekit_service
 
         assert homekit_service._HAP_AVAILABLE is True
-        assert homekit_service.CATEGORY_DOOR_BELL is not None
+        assert homekit_service.CATEGORY_VIDEO_DOOR_BELL is not None
         assert homekit_service.CATEGORY_PROGRAMMABLE_SWITCH is not None
         assert homekit_service.Bridge is not None
 
@@ -113,7 +113,7 @@ class TestStart:
         assert mock_driver_cls.call_args.kwargs["address"] is None
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.CATEGORY_DOOR_BELL", 18)
+    @patch("nukiblinker.homekit_service.CATEGORY_VIDEO_DOOR_BELL", 18)
     @patch("nukiblinker.homekit_service.CATEGORY_PROGRAMMABLE_SWITCH", 15)
     @patch("nukiblinker.homekit_service.Bridge")
     @patch("nukiblinker.homekit_service.AccessoryDriver")
@@ -125,7 +125,7 @@ class TestStart:
         mock_acc_cls.side_effect = [doorbell_acc, switch_acc]
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         svc.start()
-        assert doorbell_acc.category == 18   # CATEGORY_DOOR_BELL
+        assert doorbell_acc.category == 18   # CATEGORY_VIDEO_DOOR_BELL
         assert switch_acc.category == 15     # CATEGORY_PROGRAMMABLE_SWITCH
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", False)
