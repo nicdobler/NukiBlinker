@@ -378,7 +378,9 @@ Discovery uses mDNS (UDP 5353), but **pairing connects over TCP to the HAP port 
    ```
    Verify with `dns-sd -B _hap._tcp` (macOS) or the "Discovery" iOS app — the advertised address must be your LAN IP.
 
-3. **Stale pairing state**: after failed pairing attempts, delete the persist state and retry:
+3. **"Incorrect setup code"**: enter the 8 digits of the `XXX-XX-XXX` code shown in the startup log (dashes are not typed on iOS). The auto-generated code is persisted in `{persist_dir}/setup_code` and stays stable across restarts. Apple also rejects trivial codes (`123-45-678`, `111-11-111`, …) — don't configure one of those as `setup_code`.
+
+4. **Stale pairing state**: after failed pairing attempts, delete the persist state and retry:
    ```sh
    rm -rf ./homekit/*   # the mounted persist_dir
    docker compose restart

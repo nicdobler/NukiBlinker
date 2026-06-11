@@ -25,6 +25,23 @@ except ImportError as _exc:
     _HAP_AVAILABLE = False
 
 
+# Setup codes Apple rejects as too trivial (HAP spec).
+_FORBIDDEN_CODES = {
+    "000-00-000",
+    "111-11-111",
+    "222-22-222",
+    "333-33-333",
+    "444-44-444",
+    "555-55-555",
+    "666-66-666",
+    "777-77-777",
+    "888-88-888",
+    "999-99-999",
+    "123-45-678",
+    "876-54-321",
+}
+
+
 class HomeKitService:
     """Exposes a virtual HomeKit doorbell accessory."""
 
@@ -34,19 +51,41 @@ class HomeKitService:
         persist_dir: str = ".homekit",
         address: str = "",
     ) -> None:
-        self._setup_code = setup_code or self._generate_code()
         self._address = address
         self._persist_dir = Path(persist_dir)
         self._persist_dir.mkdir(parents=True, exist_ok=True)
+        self._setup_code = setup_code or self._load_or_create_code()
         self._driver: AccessoryDriver | None = None
         self._accessory: Accessory | None = None
         self._thread: threading.Thread | None = None
 
+    def _load_or_create_code(self) -> str:
+        """Reuse the persisted setup code, or generate and persist a new one.
+
+        HAP-python persists the pincode inside accessory.state, so the code
+        must stay stable across restarts — otherwise the logged code diverges
+        from the one the accessory actually accepts.
+        """
+        code_file = self._persist_dir / "setup_code"
+        if code_file.exists():
+            code = code_file.read_text().strip()
+            if len(code) == 10 and code not in _FORBIDDEN_CODES:
+                return code
+        code = self._generate_code()
+        code_file.write_text(code)
+        return code
+
     @staticmethod
     def _generate_code() -> str:
-        """Generate a random 8-digit HomeKit setup code (XXX-XX-XXX format)."""
-        digits = "".join(random.choices(string.digits, k=8))
-        return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+        """Generate a random 8-digit HomeKit setup code (XXX-XX-XXX format).
+
+        Re-rolls if the code is one of the trivial codes Apple rejects.
+        """
+        while True:
+            digits = "".join(random.choices(string.digits, k=8))
+            code = f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+            if code not in _FORBIDDEN_CODES:
+                return code
 
     def start(self) -> bool:
         """Start the HAP accessory driver in a background thread.

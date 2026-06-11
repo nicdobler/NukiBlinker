@@ -96,3 +96,17 @@
 - [x] Docs: tech-spec, README troubleshooting (TCP 51826, advertised IP, stale state), CHANGELOG, config.example.yaml
 - [ ] Validate on Mac (`make test` + `make lint`)
 - [ ] User confirms pairing works on Mini PC
+
+---
+
+## Fix HomeKit incorrect setup code
+
+**Branch**: `fix/homekit-setup-code` | **PR**: pending
+
+- [x] Root cause: random setup code regenerated on every restart while HAP-python persists the original pincode in accessory.state -> logged code != accepted code
+- [x] Persist generated code to `{persist_dir}/setup_code` and reuse across restarts
+- [x] Skip Apple-forbidden trivial codes (000-00-000..., 123-45-678, 876-54-321) in generation and persisted-code validation
+- [x] Regression tests (persistence, precedence, forbidden re-roll); tests isolated to tmp_path
+- [x] Docs: tech-spec, README troubleshooting, CHANGELOG
+- [ ] Validate on Mac (`make test` + `make lint`), merge
+- [ ] User pairs successfully on Mini PC
