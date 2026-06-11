@@ -312,7 +312,7 @@ Exposes a virtual HomeKit doorbell accessory:
 - The HAP driver binds and advertises on the LAN address resolved by `get_public_host()` (`server.public_host` config, or auto-detect) — the same IP used for the Nuki callback URL. On multi-interface hosts (WSL2/Docker), zeroconf auto-selection may advertise an unreachable internal IP, which makes discovery or pairing fail.
 - **`start()`** — Starts the HAP accessory driver (runs in a background thread).
 - **`trigger_ring()`** — Fires the doorbell `ProgrammableSwitchEvent` → all paired Apple devices receive a notification.
-- **`get_setup_code()`** — Returns the 8-digit setup code for pairing.
+- **`get_setup_code()`** — Returns the 8-digit setup code for pairing. When not set in config, the generated code is persisted to `{persist_dir}/setup_code` and reused on every restart (HAP-python stores the pincode in `accessory.state`, so the code must be stable). Generated codes skip the trivial codes Apple rejects (`000-00-000` … `999-99-999`, `123-45-678`, `876-54-321`).
 - **`get_qr_code()`** — Returns QR code data (base64 PNG) for the web UI.
 - **`is_paired()`** — Whether any Apple device has paired.
 

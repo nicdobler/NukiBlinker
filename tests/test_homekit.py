@@ -17,17 +17,48 @@ class TestHapImports:
 
 
 class TestSetupCode:
-    def test_generates_valid_format(self):
-        svc = HomeKitService()
+    def test_generates_valid_format(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         code = svc.get_setup_code()
         assert len(code) == 10  # XXX-XX-XXX
         assert code[3] == "-" and code[6] == "-"
         digits = code.replace("-", "")
         assert digits.isdigit() and len(digits) == 8
 
-    def test_uses_provided_code(self):
-        svc = HomeKitService(setup_code="123-45-678")
+    def test_uses_provided_code(self, tmp_path):
+        svc = HomeKitService(setup_code="123-45-678", persist_dir=str(tmp_path / "hk"))
         assert svc.get_setup_code() == "123-45-678"
+
+    def test_generated_code_persists_across_restarts(self, tmp_path):
+        """Regression: random code per start diverged from the pincode
+        HAP-python persisted in accessory.state — pairing always failed."""
+        persist = str(tmp_path / "hk")
+        first = HomeKitService(persist_dir=persist).get_setup_code()
+        second = HomeKitService(persist_dir=persist).get_setup_code()
+        assert first == second
+        assert (tmp_path / "hk" / "setup_code").read_text().strip() == first
+
+    def test_provided_code_takes_precedence_over_persisted(self, tmp_path):
+        persist = tmp_path / "hk"
+        persist.mkdir()
+        (persist / "setup_code").write_text("111-22-333")
+        svc = HomeKitService(setup_code="444-55-666", persist_dir=str(persist))
+        assert svc.get_setup_code() == "444-55-666"
+
+    def test_invalid_persisted_code_is_regenerated(self, tmp_path):
+        persist = tmp_path / "hk"
+        persist.mkdir()
+        (persist / "setup_code").write_text("123-45-678")  # Apple-forbidden
+        svc = HomeKitService(persist_dir=str(persist))
+        assert svc.get_setup_code() != "123-45-678"
+
+    def test_generator_skips_forbidden_codes(self):
+        """Regression: iOS rejects trivial codes like 123-45-678."""
+        with patch("nukiblinker.homekit_service.random.choices") as mock_choices:
+            mock_choices.side_effect = [list("12345678"), list("52941736")]
+            code = HomeKitService._generate_code()
+        assert code == "529-41-736"
+        assert mock_choices.call_count == 2
 
 
 class TestStart:
@@ -90,8 +121,8 @@ class TestStart:
 
 
 class TestStop:
-    def test_stops_driver(self):
-        svc = HomeKitService()
+    def test_stops_driver(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         svc._driver = MagicMock()
         svc.stop()
         svc._driver.stop.assert_called_once()
@@ -99,8 +130,8 @@ class TestStop:
 
 class TestTriggerRing:
     @pytest.mark.asyncio
-    async def test_fires_switch_event(self):
-        svc = HomeKitService()
+    async def test_fires_switch_event(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         mock_acc = MagicMock()
         mock_service = MagicMock()
         mock_char = MagicMock()
@@ -112,18 +143,18 @@ class TestTriggerRing:
         mock_char.set_value.assert_called_once_with(0)
 
     @pytest.mark.asyncio
-    async def test_no_crash_when_not_started(self):
-        svc = HomeKitService()
+    async def test_no_crash_when_not_started(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         await svc.trigger_ring()  # Should not raise
 
 
 class TestIsPaired:
-    def test_not_paired_when_no_driver(self):
-        svc = HomeKitService()
+    def test_not_paired_when_no_driver(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         assert svc.is_paired() is False
 
-    def test_paired_with_clients(self):
-        svc = HomeKitService()
+    def test_paired_with_clients(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         svc._driver = MagicMock()
         svc._driver.state.paired_clients = {"client1": {}}
         assert svc.is_paired() is True
