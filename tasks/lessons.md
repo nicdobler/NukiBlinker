@@ -14,3 +14,7 @@
 ## 2026-06-12 — Added redundant config option (homekit.address)
 - **Mistake**: Added a new `homekit.address` config field when `server.public_host` + `get_public_host()` already expressed the same intent (LAN IP for externally-reachable endpoints).
 - **Rule**: Before adding a config field, scan `config.py` for an existing option covering the same concept and reuse it. One concept = one config knob.
+
+## 2026-06-12 - HomeKit service changes on a paired standalone accessory
+- **Mistake**: Added a second ProgrammableSwitchEvent service (StatelessProgrammableSwitch) without ServiceLabelIndex; iOS paired OK, then rejected the attribute DB and silently dropped the accessory. Also assumed iOS would treat a service-list change as an in-place update; it dropped the accessory instead, leaving an orphaned pairing (paired_clients set, no QR shown).
+- **Rule**: When an accessory has 2+ services with ProgrammableSwitchEvent, set ServiceLabelIndex on the switch and mark the main service primary. Before deploying service-list changes to a paired accessory, remove it from the Home app first (protocol unpair), then deploy and re-pair.

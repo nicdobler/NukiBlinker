@@ -83,6 +83,13 @@ class TestStart:
             "Doorbell",
             "StatelessProgrammableSwitch",
         ]
+        # Regression: iOS dropped the accessory right after pairing when the
+        # two ProgrammableSwitchEvent services were not disambiguated.
+        mock_service = mock_acc.add_preload_service.return_value
+        assert mock_service.is_primary_service is True
+        switch_call = mock_acc.add_preload_service.call_args_list[1]
+        assert switch_call.kwargs == {"chars": ["ServiceLabelIndex"]}
+        mock_service.configure_char.assert_called_once_with("ServiceLabelIndex", value=1)
         mock_driver.add_accessory.assert_called_once()
         # Thread started
         assert svc._thread is not None

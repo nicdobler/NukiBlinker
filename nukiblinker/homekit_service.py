@@ -106,10 +106,17 @@ class HomeKitService:
 
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
         self._accessory.category = CATEGORY_SENSOR
-        self._accessory.add_preload_service("Doorbell")
+        doorbell = self._accessory.add_preload_service("Doorbell")
+        doorbell.is_primary_service = True
         # Programmable button: usable as an automation trigger in the Home
         # app (bare Doorbell events cannot trigger automations).
-        self._accessory.add_preload_service("StatelessProgrammableSwitch")
+        # ServiceLabelIndex is required to disambiguate the two
+        # ProgrammableSwitchEvent services — without it iOS rejects the
+        # attribute database right after pairing and drops the accessory.
+        switch = self._accessory.add_preload_service(
+            "StatelessProgrammableSwitch", chars=["ServiceLabelIndex"]
+        )
+        switch.configure_char("ServiceLabelIndex", value=1)
         self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- HomeKit accessory silently dropped by iOS right after a successful pairing: the `StatelessProgrammableSwitch` now carries `ServiceLabelIndex=1` to disambiguate the two `ProgrammableSwitchEvent` services, and the Doorbell is marked as primary service
 - HomeKit "incorrect setup code": auto-generated setup codes are now persisted in `persist_dir/setup_code` and reused across restarts (previously a new random code was logged on every start while HAP-python kept the original pincode), and generation skips the trivial codes Apple rejects
 - HomeKit pairing failures: accessory category changed from `VIDEO_DOOR_BELL` to `SENSOR` (iOS rejects video doorbells without a camera stream), and the HAP driver now binds/advertises on the LAN IP resolved by `server.public_host` / auto-detect instead of letting zeroconf pick an interface
 
