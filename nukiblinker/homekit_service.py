@@ -12,17 +12,14 @@ from nukiblinker.logging_config import get_logger
 logger = get_logger("homekit")
 
 try:
-    from pyhap.accessory import Accessory, Bridge
+    from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_PROGRAMMABLE_SWITCH
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
     logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
-    Bridge = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_PROGRAMMABLE_SWITCH = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 
@@ -57,9 +54,7 @@ class HomeKitService:
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._setup_code = setup_code or self._load_or_create_code()
         self._driver: AccessoryDriver | None = None
-        self._bridge: Bridge | None = None
-        self._doorbell_acc: Accessory | None = None
-        self._switch_acc: Accessory | None = None
+        self._accessory: Accessory | None = None
         self._thread: threading.Thread | None = None
 
     def _load_or_create_code(self) -> str:
@@ -107,25 +102,9 @@ class HomeKitService:
             pincode=self._setup_code.encode(),
         )
 
-        # Bridge groups both accessories under a single pairing.
-        self._bridge = Bridge(self._driver, "NukiBlinker")
-
-        # Accessory 1: Doorbell — sends push notifications to paired iPhones.
-        self._doorbell_acc = Accessory(self._driver, "NukiBlinker Doorbell")
-        self._doorbell_acc.category = CATEGORY_PROGRAMMABLE_SWITCH
-        self._doorbell_acc.add_preload_service("Doorbell")
-        self._bridge.add_accessory(self._doorbell_acc)
-
-        # Accessory 2: Programmable switch — visible in Home automations.
-        self._switch_acc = Accessory(self._driver, "NukiBlinker Button")
-        self._switch_acc.category = CATEGORY_PROGRAMMABLE_SWITCH
-        switch_svc = self._switch_acc.add_preload_service(
-            "StatelessProgrammableSwitch", chars=["ServiceLabelIndex"]
-        )
-        switch_svc.configure_char("ServiceLabelIndex", value=1)
-        self._bridge.add_accessory(self._switch_acc)
-
-        self._driver.add_accessory(self._bridge)
+        self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
+        self._accessory.add_preload_service("Doorbell")
+        self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)
         self._thread.start()
@@ -159,26 +138,16 @@ class HomeKitService:
             logger.info("HomeKit doorbell stopped")
 
     async def trigger_ring(self) -> None:
-        """Fire a doorbell ring event to all paired Apple devices.
-
-        Fires on the Doorbell accessory (push notification) and the
-        StatelessProgrammableSwitch accessory (automation trigger).
-        """
-        if not self._bridge:
-            logger.warning("HomeKit bridge not started — cannot trigger ring")
+        """Fire a doorbell ring event to all paired Apple devices."""
+        if not self._accessory:
+            logger.warning("HomeKit accessory not started — cannot trigger ring")
             return
 
-        for acc, svc_name in (
-            (self._doorbell_acc, "Doorbell"),
-            (self._switch_acc, "StatelessProgrammableSwitch"),
-        ):
-            if acc is None:
-                continue
-            service = acc.get_service(svc_name)
-            if service:
-                char = service.get_characteristic("ProgrammableSwitchEvent")
-                if char:
-                    char.set_value(0)  # Single press
+        service = self._accessory.get_service("Doorbell")
+        if service:
+            char = service.get_characteristic("ProgrammableSwitchEvent")
+            if char:
+                char.set_value(0)  # Single press
         logger.info("HomeKit doorbell ring triggered")
 
     def get_setup_code(self) -> str:
@@ -192,7 +161,7 @@ class HomeKitService:
             import base36
 
             digits = self._setup_code.replace("-", "")
-            category = 15  # CATEGORY_PROGRAMMABLE_SWITCH value
+            category = 10  # CATEGORY_SENSOR value
 
             # Use the setup_id from driver state when available so the QR URI
             # matches exactly what HAP-python has advertised.
@@ -210,7 +179,7 @@ class HomeKitService:
             return None
 
     def is_paired(self) -> bool:
-        """Whether any Apple device has paired with the bridge."""
+        """Whether any Apple device has paired with the accessory."""
         if self._driver and hasattr(self._driver, "state"):
             return bool(self._driver.state.paired_clients)
         return False

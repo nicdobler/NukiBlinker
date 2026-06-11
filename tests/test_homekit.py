@@ -13,8 +13,8 @@ class TestHapImports:
         from nukiblinker import homekit_service
 
         assert homekit_service._HAP_AVAILABLE is True
-        assert homekit_service.CATEGORY_PROGRAMMABLE_SWITCH is not None
-        assert homekit_service.Bridge is not None
+        assert homekit_service.Accessory is not None
+        assert homekit_service.AccessoryDriver is not None
 
 
 class TestSetupCode:
@@ -64,16 +64,13 @@ class TestSetupCode:
 
 class TestStart:
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.Bridge")
     @patch("nukiblinker.homekit_service.AccessoryDriver")
     @patch("nukiblinker.homekit_service.Accessory")
-    def test_starts_driver_in_thread(self, mock_acc_cls, mock_driver_cls, mock_bridge_cls, tmp_path):
+    def test_starts_driver_in_thread(self, mock_acc_cls, mock_driver_cls, tmp_path):
         mock_driver = MagicMock()
         mock_driver_cls.return_value = mock_driver
         mock_acc = MagicMock()
         mock_acc_cls.return_value = mock_acc
-        mock_bridge = MagicMock()
-        mock_bridge_cls.return_value = mock_bridge
 
         svc = HomeKitService(setup_code="111-22-333", persist_dir=str(tmp_path / "hk"))
         result = svc.start()
@@ -81,50 +78,32 @@ class TestStart:
         assert result is True
         # Regression #72: pincode must keep XXX-XX-XXX format (dashes included)
         assert mock_driver_cls.call_args.kwargs["pincode"] == b"111-22-333"
-        # Two child accessories created: Doorbell + StatelessProgrammableSwitch
-        acc_names = [c.args[1] for c in mock_acc_cls.call_args_list]
-        assert "NukiBlinker Doorbell" in acc_names
-        assert "NukiBlinker Button" in acc_names
-        # Both added to bridge
-        assert mock_bridge.add_accessory.call_count == 2
-        # Bridge added to driver
-        mock_driver.add_accessory.assert_called_once_with(mock_bridge)
+        # Single Doorbell accessory created
+        mock_acc_cls.assert_called_once()
+        assert mock_acc_cls.call_args.args[1] == "NukiBlinker Doorbell"
+        # Doorbell service preloaded
+        mock_acc.add_preload_service.assert_called_once_with("Doorbell")
+        # Accessory added to driver
+        mock_driver.add_accessory.assert_called_once_with(mock_acc)
         # Thread started
         assert svc._thread is not None
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.Bridge")
     @patch("nukiblinker.homekit_service.AccessoryDriver")
     @patch("nukiblinker.homekit_service.Accessory")
-    def test_binds_to_explicit_address(self, mock_acc_cls, mock_driver_cls, mock_bridge_cls, tmp_path):
+    def test_binds_to_explicit_address(self, mock_acc_cls, mock_driver_cls, tmp_path):
         """Regression: pairing failed because zeroconf advertised the wrong interface."""
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"), address="192.168.1.50")
         svc.start()
         assert mock_driver_cls.call_args.kwargs["address"] == "192.168.1.50"
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.Bridge")
     @patch("nukiblinker.homekit_service.AccessoryDriver")
     @patch("nukiblinker.homekit_service.Accessory")
-    def test_auto_address_when_empty(self, mock_acc_cls, mock_driver_cls, mock_bridge_cls, tmp_path):
+    def test_auto_address_when_empty(self, mock_acc_cls, mock_driver_cls, tmp_path):
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         svc.start()
         assert mock_driver_cls.call_args.kwargs["address"] is None
-
-    @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
-    @patch("nukiblinker.homekit_service.CATEGORY_PROGRAMMABLE_SWITCH", 15)
-    @patch("nukiblinker.homekit_service.Bridge")
-    @patch("nukiblinker.homekit_service.AccessoryDriver")
-    @patch("nukiblinker.homekit_service.Accessory")
-    def test_accessory_categories(self, mock_acc_cls, mock_driver_cls, mock_bridge_cls, tmp_path):
-        """Both child accessories must use CATEGORY_PROGRAMMABLE_SWITCH."""
-        doorbell_acc = MagicMock()
-        switch_acc = MagicMock()
-        mock_acc_cls.side_effect = [doorbell_acc, switch_acc]
-        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
-        svc.start()
-        assert doorbell_acc.category == 15   # CATEGORY_PROGRAMMABLE_SWITCH
-        assert switch_acc.category == 15     # CATEGORY_PROGRAMMABLE_SWITCH
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", False)
     def test_skips_when_hap_not_available(self, tmp_path):
@@ -144,36 +123,26 @@ class TestStop:
 
 class TestTriggerRing:
     @pytest.mark.asyncio
-    async def test_fires_switch_event_on_both_accessories(self, tmp_path):
-        """Ring fires on Doorbell accessory (notification) and
-        StatelessProgrammableSwitch accessory (automation trigger)."""
+    async def test_fires_doorbell_event(self, tmp_path):
+        """Ring fires ProgrammableSwitchEvent on the Doorbell service."""
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         mock_char = MagicMock()
         mock_service = MagicMock()
         mock_service.get_characteristic.return_value = mock_char
-
-        mock_doorbell = MagicMock()
-        mock_doorbell.get_service.return_value = mock_service
-        mock_switch = MagicMock()
-        mock_switch.get_service.return_value = mock_service
-
-        svc._bridge = MagicMock()
-        svc._doorbell_acc = mock_doorbell
-        svc._switch_acc = mock_switch
+        mock_acc = MagicMock()
+        mock_acc.get_service.return_value = mock_service
+        svc._accessory = mock_acc
 
         await svc.trigger_ring()
-        mock_doorbell.get_service.assert_called_once_with("Doorbell")
-        mock_switch.get_service.assert_called_once_with("StatelessProgrammableSwitch")
-        assert mock_char.set_value.call_args_list == [((0,),), ((0,),)]
+        mock_acc.get_service.assert_called_once_with("Doorbell")
+        mock_char.set_value.assert_called_once_with(0)
 
     @pytest.mark.asyncio
     async def test_missing_service_does_not_crash(self, tmp_path):
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         mock_acc = MagicMock()
         mock_acc.get_service.return_value = None
-        svc._bridge = MagicMock()
-        svc._doorbell_acc = mock_acc
-        svc._switch_acc = mock_acc
+        svc._accessory = mock_acc
         await svc.trigger_ring()  # Should not raise
 
     @pytest.mark.asyncio
