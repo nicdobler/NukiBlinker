@@ -10,3 +10,7 @@
 
 ## 2026-06-11 — pytest -rP output misread as failures
 - **Note**: `pytest -rP` prints captured logs of *passing* tests; ERROR/WARNING lines from negative-path tests are expected. Check the final summary line (`N passed`) before assuming failures.
+
+## 2026-06-12 — Added redundant config option (homekit.address)
+- **Mistake**: Added a new `homekit.address` config field when `server.public_host` + `get_public_host()` already expressed the same intent (LAN IP for externally-reachable endpoints).
+- **Rule**: Before adding a config field, scan `config.py` for an existing option covering the same concept and reuse it. One concept = one config knob.

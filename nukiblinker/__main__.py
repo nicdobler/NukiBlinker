@@ -64,7 +64,7 @@ def _build_clients(config: AppConfig) -> Clients:
         clients.homekit = HomeKitService(
             setup_code=config.homekit.setup_code,
             persist_dir=config.homekit.persist_dir,
-            address=config.homekit.address or get_public_host(config),
+            address=get_public_host(config),
         )
 
     from nukiblinker.event_log import EventLog

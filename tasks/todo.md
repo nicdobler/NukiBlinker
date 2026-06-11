@@ -90,7 +90,8 @@
 
 - [x] Diagnose: discovery fixed by firewall (UDP 5353); pairing still failed
 - [x] Change accessory category VIDEO_DOOR_BELL -> SENSOR (iOS rejects video doorbell without camera stream)
-- [x] Bind HAP driver to explicit LAN address (`homekit.address` config, default `get_public_host()`) - Homebridge `bind` pattern
+- [x] Bind HAP driver to explicit LAN address via `get_public_host()` (reuses `server.public_host`) - Homebridge `bind` pattern
+- [x] Removed redundant `homekit.address` option after user review - reuse existing `server.public_host`
 - [x] Regression tests (address bind, auto address, category)
 - [x] Docs: tech-spec, README troubleshooting (TCP 51826, advertised IP, stale state), CHANGELOG, config.example.yaml
 - [ ] Validate on Mac (`make test` + `make lint`)

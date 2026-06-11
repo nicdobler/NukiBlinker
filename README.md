@@ -371,10 +371,10 @@ Discovery uses mDNS (UDP 5353), but **pairing connects over TCP to the HAP port 
    New-NetFirewallRule -DisplayName "NukiBlinker HAP" -Direction Inbound -Protocol TCP -LocalPort 51826 -Action Allow
    ```
 
-2. **Wrong advertised IP**: on multi-interface hosts (WSL2/Docker), zeroconf may advertise an internal IP (e.g. `172.x`) that the iPhone can't reach. NukiBlinker binds the HAP driver to the detected LAN IP (`server.public_host` / auto-detect). Override it explicitly if needed:
+2. **Wrong advertised IP**: on multi-interface hosts (WSL2/Docker), zeroconf may advertise an internal IP (e.g. `172.x`) that the iPhone can't reach. NukiBlinker binds the HAP driver to the same LAN IP used for the Nuki callback. If auto-detection picks the wrong interface, set it explicitly:
    ```yaml
-   homekit:
-     address: "192.168.1.50"   # your host's LAN IP
+   server:
+     public_host: "192.168.1.50"   # your host's LAN IP
    ```
    Verify with `dns-sd -B _hap._tcp` (macOS) or the "Discovery" iOS app — the advertised address must be your LAN IP.
 

@@ -20,7 +20,6 @@ homekit:
   enabled: false
   # setup_code: "123-45-678"      # auto-generated if empty
   # persist_dir: ".homekit"
-  # address: "192.168.1.50"       # LAN IP to advertise; defaults to server.public_host / auto-detect
 
 events:
   ring:

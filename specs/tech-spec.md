@@ -309,7 +309,7 @@ Manages Apple HomePod / AirPlay 2 speakers:
 Exposes a virtual HomeKit doorbell accessory:
 
 - Uses `HAP-python` to create a `Doorbell` accessory with category `CATEGORY_SENSOR` — **not** `CATEGORY_VIDEO_DOOR_BELL`, since iOS refuses to pair a video doorbell that lacks a camera RTP stream service (same pattern as Homebridge doorbell plugins without camera).
-- The HAP driver binds and advertises on an explicit LAN address (`config.homekit.address`, defaulting to `get_public_host()`). On multi-interface hosts (WSL2/Docker), zeroconf auto-selection may advertise an unreachable internal IP, which makes discovery or pairing fail.
+- The HAP driver binds and advertises on the LAN address resolved by `get_public_host()` (`server.public_host` config, or auto-detect) — the same IP used for the Nuki callback URL. On multi-interface hosts (WSL2/Docker), zeroconf auto-selection may advertise an unreachable internal IP, which makes discovery or pairing fail.
 - **`start()`** — Starts the HAP accessory driver (runs in a background thread).
 - **`trigger_ring()`** — Fires the doorbell `ProgrammableSwitchEvent` → all paired Apple devices receive a notification.
 - **`get_setup_code()`** — Returns the 8-digit setup code for pairing.
