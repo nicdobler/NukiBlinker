@@ -14,16 +14,14 @@ logger = get_logger("homekit")
 try:
     from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_DOORBELL
-    from pyhap import loader as service_loader
+    from pyhap.const import CATEGORY_VIDEO_DOOR_BELL
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
     logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_DOORBELL = None  # type: ignore[assignment]
-    service_loader = None  # type: ignore[assignment]
+    CATEGORY_VIDEO_DOOR_BELL = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 
@@ -57,12 +55,12 @@ class HomeKitService:
         self._driver = AccessoryDriver(
             port=51826,
             persist_file=str(persist_file),
-            pincode=self._setup_code.replace("-", "").encode(),
+            pincode=self._setup_code.encode(),
         )
 
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
-        doorbell_service = service_loader.get_serv_loader().get_service("Doorbell")
-        self._accessory.add_service(doorbell_service)
+        self._accessory.category = CATEGORY_VIDEO_DOOR_BELL
+        self._accessory.add_preload_service("Doorbell")
         self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)

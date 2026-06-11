@@ -52,7 +52,7 @@ class TestNukiCallback:
         assert r.json()["event"] == "ring_to_open"
 
     def test_door_opened_event(self, client):
-        payload = {"deviceType": 0, "nukiId": 200, "state": 3}
+        payload = {"deviceType": 0, "nukiId": 200, "state": 5}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
         assert r.json()["event"] == "door_opened"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from nukiblinker.logging_config import get_logger
@@ -16,8 +17,13 @@ _OPENER_STATE_RING_TO_OPEN = 7  # opening
 _OPENER_STATE_RING = 1  # online — ring detected, door stays closed
 
 # Nuki Smart Lock states (deviceType=0)
-_LOCK_STATE_UNLOCKED = 3
+# Note: state 3 (unlocked) is deliberately NOT treated as door_opened —
+# unlocking without opening must not trigger notifications (#60).
 _LOCK_STATE_UNLATCHED = 5
+
+# Person resolution retry — the bridge log lags behind the callback
+_RESOLVE_PERSON_ATTEMPTS = 3
+_RESOLVE_PERSON_RETRY_SECONDS = 1.0
 
 
 def classify(payload: dict, config: AppConfig) -> str | None:
@@ -46,7 +52,7 @@ def classify(payload: dict, config: AppConfig) -> str | None:
         if config.nuki.lock_id is not None and nuki_id != config.nuki.lock_id:
             logger.debug("Ignoring Smart Lock %s (filter: %s)", nuki_id, config.nuki.lock_id)
             return None
-        if state in (_LOCK_STATE_UNLOCKED, _LOCK_STATE_UNLATCHED):
+        if state == _LOCK_STATE_UNLATCHED:
             logger.info("Event classified: door_opened (Lock %s, state=%s)", nuki_id, state)
             return "door_opened"
         logger.debug("Ignoring Smart Lock state %s (nukiId=%s)", state, nuki_id)
@@ -65,8 +71,16 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
     if nuki_id is None or nuki_client is None:
         return {"name": fallback_name}
     try:
-        log_entry = await nuki_client.get_last_log(nuki_id)
-        name = log_entry.get("name", "") if log_entry else ""
+        name = ""
+        # The bridge writes the activity log slightly after firing the
+        # callback — retry briefly so the user name is available (#60).
+        for attempt in range(_RESOLVE_PERSON_ATTEMPTS):
+            log_entry = await nuki_client.get_last_log(nuki_id)
+            name = log_entry.get("name", "") if log_entry else ""
+            if name:
+                break
+            if attempt < _RESOLVE_PERSON_ATTEMPTS - 1:
+                await asyncio.sleep(_RESOLVE_PERSON_RETRY_SECONDS)
         if not name:
             name = fallback_name
         logger.info("Resolved person: %s (nukiId=%s)", name, nuki_id)

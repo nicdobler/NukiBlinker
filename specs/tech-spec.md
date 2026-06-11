@@ -350,7 +350,7 @@ def classify(payload: dict) -> str | None:
         # state=7 → ring_to_open; ring without opening → ring
         ...
     elif device_type == 0:   # Smart Lock
-        # state=3 (unlocked) or state=5 (unlatched) → door_opened
+        # state=5 (unlatched) → door_opened (state=3 unlocked is ignored — #60)
         ...
     return None              # unknown device type
 
@@ -482,7 +482,7 @@ Key fields:
 
 **Smart Lock states** (deviceType=0):
   - `1` = locked
-  - `3` = unlocked → event: **door_opened**
+  - `3` = unlocked → ignored (unlocking without opening must not notify — #60)
   - `5` = unlatched → event: **door_opened**
   - `7` = unlatched (lock’n’go)
 
@@ -501,7 +501,7 @@ flowchart TD
     E -->|Other| C
     J -->|Mismatch| C
     J -->|Match or no filter| K{state}
-    K -->|3 unlocked / 5 unlatched| L[Event: door_opened]
+    K -->|5 unlatched| L[Event: door_opened]
     K -->|Other| C
     F --> H[Dispatch ring_to_open rule]
     G --> I[Dispatch ring rule]
