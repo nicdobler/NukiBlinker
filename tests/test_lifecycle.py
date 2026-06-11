@@ -54,6 +54,17 @@ class TestBuildClients:
         clients = _build_clients(cfg)
         assert clients.homekit is None
 
+    def test_event_pipeline_services_always_created(self, tmp_path):
+        """Regression #73: event_log, event_validator and night_mode must be built."""
+        cfg = AppConfig()
+        cfg.event_log.file_path = str(tmp_path / "event_log.json")
+        clients = _build_clients(cfg)
+        assert clients.event_log is not None
+        assert clients.event_validator is not None
+        assert clients.night_mode is not None
+        assert clients.event_log.max_entries == cfg.event_log.max_entries
+        assert clients.event_validator.max_delay_seconds == cfg.event_validation.max_delay_seconds
+
 
 class TestResolveCallbackUrl:
     def test_uses_explicit_host(self):

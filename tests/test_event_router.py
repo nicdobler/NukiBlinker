@@ -44,9 +44,10 @@ class TestClassifyOpener:
 class TestClassifySmartLock:
     """Smart Lock events (deviceType=0)."""
 
-    def test_unlocked(self):
+    def test_unlocked_ignored(self):
+        """Regression #60: unlocking without opening must NOT fire door_opened."""
         payload = {"deviceType": 0, "nukiId": 200, "state": 3}
-        assert classify(payload, AppConfig()) == "door_opened"
+        assert classify(payload, AppConfig()) is None
 
     def test_unlatched(self):
         payload = {"deviceType": 0, "nukiId": 200, "state": 5}
@@ -59,13 +60,13 @@ class TestClassifySmartLock:
     def test_lock_id_filter_match(self):
         cfg = AppConfig()
         cfg.nuki.lock_id = 200
-        payload = {"deviceType": 0, "nukiId": 200, "state": 3}
+        payload = {"deviceType": 0, "nukiId": 200, "state": 5}
         assert classify(payload, cfg) == "door_opened"
 
     def test_lock_id_filter_mismatch(self):
         cfg = AppConfig()
         cfg.nuki.lock_id = 300
-        payload = {"deviceType": 0, "nukiId": 200, "state": 3}
+        payload = {"deviceType": 0, "nukiId": 200, "state": 5}
         assert classify(payload, cfg) is None
 
 
@@ -89,6 +90,10 @@ class TestClassifyOther:
 class TestResolvePerson:
     """Person name resolution from Nuki /log endpoint."""
 
+    @pytest.fixture(autouse=True)
+    def _no_retry_delay(self, monkeypatch):
+        monkeypatch.setattr("nukiblinker.event_router._RESOLVE_PERSON_RETRY_SECONDS", 0)
+
     @pytest.mark.asyncio
     async def test_resolves_name_from_log(self):
         nuki = AsyncMock()
@@ -104,6 +109,15 @@ class TestResolvePerson:
         nuki.get_last_log.return_value = {"name": "", "action": 3}
         result = await resolve_person({"nukiId": 100}, nuki)
         assert result == {"name": "Alguien"}
+
+    @pytest.mark.asyncio
+    async def test_retries_until_log_has_name(self):
+        """Regression #60: bridge log lags behind the callback — retry resolves the name."""
+        nuki = AsyncMock()
+        nuki.get_last_log.side_effect = [None, {"name": "Elena", "action": 6}]
+        result = await resolve_person({"nukiId": 100}, nuki)
+        assert result == {"name": "Elena"}
+        assert nuki.get_last_log.call_count == 2
 
     @pytest.mark.asyncio
     async def test_fallback_on_exception(self):

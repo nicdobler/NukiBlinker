@@ -546,7 +546,7 @@ function collectEventRule(prefix) {
     };
 }
 
-async function loadConfig() {
+async function loadBaseConfig() {
     try {
         const d = await (await fetch(`${API}/config`)).json();
         setVal('nukiIp', d.nuki?.bridge_ip); setVal('nukiPort', d.nuki?.bridge_port || 8080);
@@ -568,7 +568,7 @@ async function loadConfig() {
     } catch (e) { console.error(e); showMsg('Failed to load config', false); }
 }
 
-async function saveConfig() {
+async function saveBaseConfig() {
     const body = {
         nuki: { bridge_ip: val('nukiIp'), bridge_port: parseInt(val('nukiPort')) || 8080,
             api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId') },
@@ -585,7 +585,8 @@ async function saveConfig() {
     try {
         const d = await (await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();
         showMsg(d.status === 'saved' ? 'Configuration saved!' : 'Error: ' + (d.error || 'unknown'), d.status === 'saved');
-    } catch (e) { showMsg('Save failed', false); }
+        return d.status === 'saved';
+    } catch (e) { showMsg('Save failed', false); return false; }
 }
 
 /* --- Nuki Discovery & Pairing --- */
@@ -987,11 +988,8 @@ async function clearEventLog() {
 
 // Enhanced saveConfig to include new features
 async function saveConfig() {
-    const originalSaveConfig = window.saveConfig;
-    if (typeof originalSaveConfig === 'function') {
-        const result = await originalSaveConfig();
-        if (!result) return false;
-    }
+    const result = await saveBaseConfig();
+    if (!result) return false;
     
     // Save new feature configs
     const results = await Promise.all([
@@ -1014,10 +1012,7 @@ async function saveConfig() {
 
 // Enhanced loadConfig to include new features
 async function loadConfig() {
-    const originalLoadConfig = window.loadConfig;
-    if (typeof originalLoadConfig === 'function') {
-        await originalLoadConfig();
-    }
+    await loadBaseConfig();
     
     // Load new feature configs
     await Promise.all([

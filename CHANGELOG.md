@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced web UI save/load to include new feature configurations
 
 ### Fixed
+- **#73**: Event log API returned 500 — `event_log`, `event_validator` and `night_mode` services are now instantiated in the clients container at startup.
+- **#74**: Web UI config neither loaded nor saved — removed infinite recursion caused by duplicate `loadConfig`/`saveConfig` declarations in `index.html`.
+- **#72/#35**: HomeKit failed to initialize — fixed imports against the real HAP-python API (`CATEGORY_VIDEO_DOOR_BELL`, `add_preload_service`) and kept the `XXX-XX-XXX` pincode format.
+- **#60**: Unlocking the Smart Lock without opening no longer fires `door_opened` (state 3 removed from classification; only state 5 unlatched triggers it). Person name resolution now retries briefly to compensate for bridge log lag.
 - **#35**: AirPlay audio now plays correctly on HomePod — fixed missing `await` on `atv.close()` and added playback completion wait.
 - **#38**: Hue groups now blink correctly in custom blink mode — `trigger_custom_blink()` now accepts and processes `group_ids` parameter.
 

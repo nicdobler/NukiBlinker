@@ -32,6 +32,9 @@ class Clients:
     chromecast: object = None
     airplay: object = None
     homekit: object = None
+    event_validator: object = None
+    event_log: object = None
+    night_mode: object = None
 
 
 def _build_clients(config: AppConfig) -> Clients:
@@ -61,6 +64,26 @@ def _build_clients(config: AppConfig) -> Clients:
             setup_code=config.homekit.setup_code,
             persist_dir=config.homekit.persist_dir,
         )
+
+    from nukiblinker.event_log import EventLog
+    from nukiblinker.event_validator import EventValidator
+    from nukiblinker.night_mode import NightMode
+
+    clients.event_validator = EventValidator(
+        max_delay_seconds=config.event_validation.max_delay_seconds,
+    )
+    clients.event_log = EventLog(
+        max_entries=config.event_log.max_entries,
+        retention_days=config.event_log.retention_days,
+        persist_to_file=config.event_log.persist_to_file,
+        file_path=config.event_log.file_path,
+    )
+    clients.night_mode = NightMode(
+        start_time=config.night_mode.start_time,
+        end_time=config.night_mode.end_time,
+        brightness_factor=config.night_mode.brightness_factor,
+        grace_minutes=config.night_mode.grace_minutes,
+    )
 
     return clients
 

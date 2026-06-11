@@ -7,6 +7,15 @@ import pytest
 from nukiblinker.homekit_service import HomeKitService
 
 
+class TestHapImports:
+    def test_hap_imports_succeed(self):
+        """Regression #72/#35: imports must resolve against the installed HAP-python."""
+        from nukiblinker import homekit_service
+
+        assert homekit_service._HAP_AVAILABLE is True
+        assert homekit_service.CATEGORY_VIDEO_DOOR_BELL is not None
+
+
 class TestSetupCode:
     def test_generates_valid_format(self):
         svc = HomeKitService()
@@ -25,19 +34,20 @@ class TestStart:
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
     @patch("nukiblinker.homekit_service.AccessoryDriver")
     @patch("nukiblinker.homekit_service.Accessory")
-    @patch("nukiblinker.homekit_service.service_loader")
-    def test_starts_driver_in_thread(self, mock_loader, mock_acc_cls, mock_driver_cls, tmp_path):
+    def test_starts_driver_in_thread(self, mock_acc_cls, mock_driver_cls, tmp_path):
         mock_driver = MagicMock()
         mock_driver_cls.return_value = mock_driver
         mock_acc = MagicMock()
         mock_acc_cls.return_value = mock_acc
-        mock_service = MagicMock()
-        mock_loader.get_serv_loader.return_value.get_service.return_value = mock_service
 
         svc = HomeKitService(setup_code="111-22-333", persist_dir=str(tmp_path / "hk"))
         result = svc.start()
 
         assert result is True
+        # Regression #72: pincode must keep XXX-XX-XXX format (dashes included)
+        assert mock_driver_cls.call_args.kwargs["pincode"] == b"111-22-333"
+        # Regression #72: Doorbell service preloaded via the real pyhap API
+        mock_acc.add_preload_service.assert_called_once_with("Doorbell")
         mock_driver.add_accessory.assert_called_once()
         # Thread started
         assert svc._thread is not None
