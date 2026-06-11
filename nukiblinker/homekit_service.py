@@ -14,7 +14,7 @@ logger = get_logger("homekit")
 try:
     from pyhap.accessory import Accessory, Bridge
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_VIDEO_DOOR_BELL, CATEGORY_PROGRAMMABLE_SWITCH
+    from pyhap.const import CATEGORY_PROGRAMMABLE_SWITCH
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
@@ -22,7 +22,6 @@ except ImportError as _exc:
     Accessory = None  # type: ignore[assignment,misc]
     Bridge = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_VIDEO_DOOR_BELL = None  # type: ignore[assignment]
     CATEGORY_PROGRAMMABLE_SWITCH = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
@@ -113,7 +112,7 @@ class HomeKitService:
 
         # Accessory 1: Doorbell — sends push notifications to paired iPhones.
         self._doorbell_acc = Accessory(self._driver, "NukiBlinker Doorbell")
-        self._doorbell_acc.category = CATEGORY_VIDEO_DOOR_BELL
+        self._doorbell_acc.category = CATEGORY_PROGRAMMABLE_SWITCH
         self._doorbell_acc.add_preload_service("Doorbell")
         self._bridge.add_accessory(self._doorbell_acc)
 
