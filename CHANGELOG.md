@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- HomeKit pairing failures: accessory category changed from `VIDEO_DOOR_BELL` to `SENSOR` (iOS rejects video doorbells without a camera stream), and the HAP driver now binds/advertises on the LAN IP resolved by `server.public_host` / auto-detect instead of letting zeroconf pick an interface
+
 ### Added
 - **#56**: Night mode - configurable quiet hours with reduced notifications (no audio, dimmer lights)
 - **#57**: Event log viewer - comprehensive event history with detailed action tracking and CSV export

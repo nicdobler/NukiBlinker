@@ -14,22 +14,28 @@ logger = get_logger("homekit")
 try:
     from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_VIDEO_DOOR_BELL
+    from pyhap.const import CATEGORY_SENSOR
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
     logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_VIDEO_DOOR_BELL = None  # type: ignore[assignment]
+    CATEGORY_SENSOR = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 
 class HomeKitService:
     """Exposes a virtual HomeKit doorbell accessory."""
 
-    def __init__(self, setup_code: str = "", persist_dir: str = ".homekit") -> None:
+    def __init__(
+        self,
+        setup_code: str = "",
+        persist_dir: str = ".homekit",
+        address: str = "",
+    ) -> None:
         self._setup_code = setup_code or self._generate_code()
+        self._address = address
         self._persist_dir = Path(persist_dir)
         self._persist_dir.mkdir(parents=True, exist_ok=True)
         self._driver: AccessoryDriver | None = None
@@ -53,19 +59,24 @@ class HomeKitService:
 
         persist_file = self._persist_dir / "accessory.state"
         self._driver = AccessoryDriver(
+            address=self._address or None,
             port=51826,
             persist_file=str(persist_file),
             pincode=self._setup_code.encode(),
         )
 
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
-        self._accessory.category = CATEGORY_VIDEO_DOOR_BELL
+        self._accessory.category = CATEGORY_SENSOR
         self._accessory.add_preload_service("Doorbell")
         self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)
         self._thread.start()
-        logger.info("HomeKit doorbell started (setup code: %s)", self._setup_code)
+        logger.info(
+            "HomeKit doorbell started (setup code: %s, address: %s)",
+            self._setup_code,
+            self._address or "auto",
+        )
         return True
 
     def _run_driver(self) -> None:
