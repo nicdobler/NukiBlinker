@@ -87,7 +87,7 @@ class NightMode:
             return rule
 
         # Create a deep copy of the rule
-        night_rule = rule.copy(deep=True)
+        night_rule = rule.model_copy(deep=True)
 
         # Disable audio notifications completely
         if night_rule.audio.enabled:
