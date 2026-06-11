@@ -123,3 +123,15 @@
 - [x] Docs: tech-spec, README features, CHANGELOG
 - [ ] Validate on Mac (`make test` + `make lint`), merge
 - [ ] User creates automation in Home app (may need to remove/re-add accessory to see the new button)
+
+---
+
+## Fix HomeKit accessory dropped after pairing
+
+**Branch**: `fix/homekit-service-label` | **PR**: pending
+
+- [x] Root cause: two ProgrammableSwitchEvent services without ServiceLabelIndex -> iOS pairs, then rejects attribute DB and drops the accessory
+- [x] Add ServiceLabelIndex=1 to StatelessProgrammableSwitch; mark Doorbell as primary service
+- [x] Regression test (chars kwarg, configure_char, is_primary_service)
+- [x] Docs: tech-spec, CHANGELOG; lesson captured in lessons.md
+- [ ] Validate on Mac, merge, deploy, clear ./homekit/*, re-pair, verify accessory persists in Home
