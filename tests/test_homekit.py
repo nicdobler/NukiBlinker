@@ -77,8 +77,12 @@ class TestStart:
         assert result is True
         # Regression #72: pincode must keep XXX-XX-XXX format (dashes included)
         assert mock_driver_cls.call_args.kwargs["pincode"] == b"111-22-333"
-        # Regression #72: Doorbell service preloaded via the real pyhap API
-        mock_acc.add_preload_service.assert_called_once_with("Doorbell")
+        # Regression #72: services preloaded via the real pyhap API.
+        # StatelessProgrammableSwitch enables Home app automations.
+        assert [c.args[0] for c in mock_acc.add_preload_service.call_args_list] == [
+            "Doorbell",
+            "StatelessProgrammableSwitch",
+        ]
         mock_driver.add_accessory.assert_called_once()
         # Thread started
         assert svc._thread is not None
@@ -130,7 +134,9 @@ class TestStop:
 
 class TestTriggerRing:
     @pytest.mark.asyncio
-    async def test_fires_switch_event(self, tmp_path):
+    async def test_fires_switch_event_on_both_services(self, tmp_path):
+        """Ring fires on Doorbell (notification) and
+        StatelessProgrammableSwitch (automation trigger)."""
         svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
         mock_acc = MagicMock()
         mock_service = MagicMock()
@@ -140,7 +146,19 @@ class TestTriggerRing:
         svc._accessory = mock_acc
 
         await svc.trigger_ring()
-        mock_char.set_value.assert_called_once_with(0)
+        assert [c.args[0] for c in mock_acc.get_service.call_args_list] == [
+            "Doorbell",
+            "StatelessProgrammableSwitch",
+        ]
+        assert mock_char.set_value.call_args_list == [((0,),), ((0,),)]
+
+    @pytest.mark.asyncio
+    async def test_missing_switch_service_does_not_crash(self, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
+        mock_acc = MagicMock()
+        mock_acc.get_service.return_value = None
+        svc._accessory = mock_acc
+        await svc.trigger_ring()  # Should not raise
 
     @pytest.mark.asyncio
     async def test_no_crash_when_not_started(self, tmp_path):

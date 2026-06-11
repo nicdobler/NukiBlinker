@@ -110,3 +110,16 @@
 - [x] Docs: tech-spec, README troubleshooting, CHANGELOG
 - [ ] Validate on Mac (`make test` + `make lint`), merge
 - [ ] User pairs successfully on Mini PC
+
+---
+
+## HomeKit automation trigger (StatelessProgrammableSwitch)
+
+**Branch**: `feat/homekit-automation-switch` | **PR**: pending
+
+- [x] Add StatelessProgrammableSwitch service alongside Doorbell (Homebridge pattern - bare Doorbell events cannot trigger Home app automations)
+- [x] trigger_ring() fires ProgrammableSwitchEvent on both services
+- [x] Tests updated (both services preloaded, ring fires twice, missing service no-crash)
+- [x] Docs: tech-spec, README features, CHANGELOG
+- [ ] Validate on Mac (`make test` + `make lint`), merge
+- [ ] User creates automation in Home app (may need to remove/re-add accessory to see the new button)

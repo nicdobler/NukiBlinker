@@ -107,6 +107,9 @@ class HomeKitService:
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
         self._accessory.category = CATEGORY_SENSOR
         self._accessory.add_preload_service("Doorbell")
+        # Programmable button: usable as an automation trigger in the Home
+        # app (bare Doorbell events cannot trigger automations).
+        self._accessory.add_preload_service("StatelessProgrammableSwitch")
         self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)
@@ -141,17 +144,22 @@ class HomeKitService:
             logger.info("HomeKit doorbell stopped")
 
     async def trigger_ring(self) -> None:
-        """Fire a doorbell ring event to all paired Apple devices."""
+        """Fire a doorbell ring event to all paired Apple devices.
+
+        Fires on both the Doorbell service (push notification) and the
+        StatelessProgrammableSwitch service (automation trigger).
+        """
         if not self._accessory:
             logger.warning("HomeKit accessory not started — cannot trigger ring")
             return
 
-        doorbell = self._accessory.get_service("Doorbell")
-        if doorbell:
-            switch_event = doorbell.get_characteristic("ProgrammableSwitchEvent")
-            if switch_event:
-                switch_event.set_value(0)  # Single press
-                logger.info("HomeKit doorbell ring triggered")
+        for service_name in ("Doorbell", "StatelessProgrammableSwitch"):
+            service = self._accessory.get_service(service_name)
+            if service:
+                switch_event = service.get_characteristic("ProgrammableSwitchEvent")
+                if switch_event:
+                    switch_event.set_value(0)  # Single press
+        logger.info("HomeKit doorbell ring triggered")
 
     def get_setup_code(self) -> str:
         """Return the 8-digit setup code for pairing."""
