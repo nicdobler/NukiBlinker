@@ -13,7 +13,7 @@ class TestHapImports:
         from nukiblinker import homekit_service
 
         assert homekit_service._HAP_AVAILABLE is True
-        assert homekit_service.CATEGORY_SENSOR is not None
+        assert homekit_service.CATEGORY_PROGRAMMABLE_SWITCH is not None
 
 
 class TestSetupCode:
