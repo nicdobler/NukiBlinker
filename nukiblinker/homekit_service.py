@@ -172,6 +172,30 @@ class HomeKitService:
         """Return the 8-digit setup code for pairing."""
         return self._setup_code
 
+    def get_qr_code(self) -> str | None:
+        """Return an SVG QR code for the HomeKit setup URI, or None if unavailable."""
+        try:
+            import pyqrcode
+            import base36
+
+            digits = self._setup_code.replace("-", "")
+            category = 10  # CATEGORY_SENSOR value
+
+            # Use the setup_id from driver state when available so the QR URI
+            # matches exactly what HAP-python has advertised.
+            setup_id = "0000"
+            if self._driver and hasattr(self._driver, "state"):
+                sid = getattr(self._driver.state, "setup_id", None)
+                if sid:
+                    setup_id = sid
+
+            uri = f"X-HM://{base36.dumps(int(digits) | (category << 31)):>09}{setup_id}"
+            qr = pyqrcode.create(uri, error="M")
+            return qr.svg(scale=4, xmldecl=False, omithw=True)
+        except Exception as exc:
+            logger.warning("QR code generation failed: %s", exc)
+            return None
+
     def is_paired(self) -> bool:
         """Whether any Apple device has paired with the accessory."""
         if self._driver and hasattr(self._driver, "state"):

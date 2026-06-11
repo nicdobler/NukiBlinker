@@ -233,6 +233,15 @@
                 <div class="pair-box" style="margin-top:1rem;border-color:#713f12">
                     <p style="font-size:0.8rem;color:#fef08a"><strong>Docker note:</strong> HomeKit uses mDNS/Bonjour for discovery. If running in Docker, you must use <code style="background:#334155;padding:0.1rem 0.3rem;border-radius:3px">network_mode: host</code> in your docker-compose.yml, otherwise Apple Home won't find the accessory.</p>
                 </div>
+                <div class="section">
+                    <h3>Pairing QR Code</h3>
+                    <div class="pair-box" id="hkQrBox" style="text-align:center;min-height:4rem">
+                        <p style="font-size:0.8rem;color:#64748b">Click "Show QR" to display the pairing code.</p>
+                    </div>
+                    <div class="btn-row" style="margin-top:0.5rem">
+                        <button class="btn-primary btn-sm" onclick="loadHkQr()">Show QR</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1020,6 +1029,22 @@ async function loadConfig() {
         loadNightModeConfig(),
         loadEventLogConfig()
     ]);
+}
+
+async function loadHkQr() {
+    const box = document.getElementById('hkQrBox');
+    box.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Loading...</p>';
+    try {
+        const d = await (await fetch(`${API}/homekit/qr`)).json();
+        if (d.error) { box.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${d.error}</p>`; return; }
+        const pairedBadge = d.paired
+            ? '<span class="badge badge-ok" style="margin-bottom:0.75rem;display:inline-block">Paired</span>'
+            : '<span class="badge badge-warn" style="margin-bottom:0.75rem;display:inline-block">Not paired</span>';
+        const qr = d.qr_svg
+            ? `<div style="display:inline-block;background:white;padding:12px;border-radius:8px;margin-bottom:0.75rem">${d.qr_svg}</div>`
+            : '';
+        box.innerHTML = `${pairedBadge}<br>${qr}<p style="font-family:monospace;font-size:1.1rem;letter-spacing:3px;color:#f1f5f9;margin-top:0.25rem">${d.setup_code}</p><p style="font-size:0.75rem;color:#64748b;margin-top:0.25rem">Scan with iPhone Camera or enter code manually in Apple Home</p>`;
+    } catch (e) { box.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed to load QR</p>'; }
 }
 
 loadStatus();
