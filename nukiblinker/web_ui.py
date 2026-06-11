@@ -664,6 +664,19 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             logger.error("Failed to update event log config: %s", e, exc_info=True)
             return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
 
+    @router.get("/homekit/qr")
+    async def homekit_qr(request: Request) -> JSONResponse:
+        """Return HomeKit setup code and SVG QR code for pairing."""
+        homekit = getattr(request.app.state.clients, "homekit", None)
+        if homekit is None:
+            return JSONResponse({"error": "HomeKit is not enabled"}, status_code=404)
+        svg = homekit.get_qr_code()
+        return JSONResponse({
+            "setup_code": homekit.get_setup_code(),
+            "paired": homekit.is_paired(),
+            "qr_svg": svg,
+        })
+
     @router.post("/test/event/{event_type}")
     async def test_event(event_type: str, request: Request) -> JSONResponse:
         if event_type not in ("ring", "ring_to_open", "door_opened"):
