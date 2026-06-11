@@ -86,7 +86,7 @@
 
 ## Fix HomeKit pairing failure (lessons from Homebridge)
 
-**Branch**: `fix/homekit-pairing` | **PR**: pending
+**Branch**: `fix/homekit-pairing` | **PR**: #79
 
 - [x] Diagnose: discovery fixed by firewall (UDP 5353); pairing still failed
 - [x] Change accessory category VIDEO_DOOR_BELL -> SENSOR (iOS rejects video doorbell without camera stream)
