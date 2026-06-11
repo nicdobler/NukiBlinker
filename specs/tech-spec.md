@@ -309,9 +309,10 @@ Manages Apple HomePod / AirPlay 2 speakers:
 Exposes a virtual HomeKit doorbell accessory:
 
 - Uses `HAP-python` to create a `Doorbell` accessory with category `CATEGORY_SENSOR` — **not** `CATEGORY_VIDEO_DOOR_BELL`, since iOS refuses to pair a video doorbell that lacks a camera RTP stream service (same pattern as Homebridge doorbell plugins without camera).
+- The accessory exposes two services: `Doorbell` (push notification on ring) and `StatelessProgrammableSwitch` (programmable button — bare Doorbell events cannot trigger Home app automations, the switch can). `trigger_ring()` fires `ProgrammableSwitchEvent` (single press) on both.
 - The HAP driver binds and advertises on the LAN address resolved by `get_public_host()` (`server.public_host` config, or auto-detect) — the same IP used for the Nuki callback URL. On multi-interface hosts (WSL2/Docker), zeroconf auto-selection may advertise an unreachable internal IP, which makes discovery or pairing fail.
 - **`start()`** — Starts the HAP accessory driver (runs in a background thread).
-- **`trigger_ring()`** — Fires the doorbell `ProgrammableSwitchEvent` → all paired Apple devices receive a notification.
+- **`trigger_ring()`** — Fires `ProgrammableSwitchEvent` on both services → paired Apple devices receive a notification and Home app automations bound to the button fire.
 - **`get_setup_code()`** — Returns the 8-digit setup code for pairing. When not set in config, the generated code is persisted to `{persist_dir}/setup_code` and reused on every restart (HAP-python stores the pincode in `accessory.state`, so the code must be stable). Generated codes skip the trivial codes Apple rejects (`000-00-000` … `999-99-999`, `123-45-678`, `876-54-321`).
 - **`get_qr_code()`** — Returns QR code data (base64 PNG) for the web UI.
 - **`is_paired()`** — Whether any Apple device has paired.

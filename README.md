@@ -10,7 +10,7 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Hue light blinks**: alert mode (built-in 15s) or custom (color, flash count, interval)
 - **Voice announcements**: TTS via gTTS on Google Nest (Chromecast) and Apple HomePod (AirPlay 2)
 - **Chime sounds**: bundled audio files for door-opened events
-- **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices
+- **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
 - **Event logging**: comprehensive event history with detailed action tracking and CSV export
 - **Night mode**: time-based notification adjustments (no audio, dimmer lights)
