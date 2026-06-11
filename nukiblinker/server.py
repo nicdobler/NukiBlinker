@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Request
@@ -39,15 +40,47 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         logger.info("Callback received: %s", payload)
 
+        # Event validation
+        validation_result = None
+        if app.state.config.event_validation.enabled:
+            validation_result = app.state.clients.event_validator.validate_event(payload)
+            if not validation_result.valid:
+                logger.warning("Event rejected by validation: %s", validation_result.reason)
+                # Log the rejected event
+                if app.state.config.event_log.enabled:
+                    app.state.clients.event_log.log_event(
+                        payload=payload,
+                        event_type=None,
+                        actions=[f"Rejected: {validation_result.reason}"],
+                        validation_result=validation_result
+                    )
+                return JSONResponse({"status": "rejected", "reason": validation_result.reason})
+
+        # Classify event
         event_type = event_router.classify(payload, app.state.config)
         if event_type is None:
             logger.debug("Event ignored (no matching rule)")
+            # Log the ignored event
+            if app.state.config.event_log.enabled:
+                app.state.clients.event_log.log_event(
+                    payload=payload,
+                    event_type=None,
+                    actions=["Ignored: no matching rule"],
+                    validation_result=validation_result or app.state.clients.event_validator.validate_event(payload)
+                )
             return JSONResponse({"status": "ignored"})
 
         app.state.last_event = {"type": event_type, "payload": payload}
 
         # Dispatch in background so we return 200 immediately
-        background_tasks.add_task(event_router.dispatch, event_type, payload, app.state.config, app.state.clients)
+        background_tasks.add_task(
+            _dispatch_with_logging,
+            event_type,
+            payload,
+            app.state.config,
+            app.state.clients,
+            validation_result
+        )
 
         return JSONResponse({"status": "ok", "event": event_type})
 
@@ -65,3 +98,48 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
         return JSONResponse({"error": "not found"}, status_code=404)
 
     return app
+
+
+async def _dispatch_with_logging(event_type: str, payload: dict, config, clients, validation_result):
+    """Dispatch event with logging and night mode support."""
+    start_time = time.time()
+
+    try:
+        # Apply night mode if enabled
+        rule = getattr(config.events, event_type)
+        if config.night_mode.enabled:
+            rule = clients.night_mode.apply_night_mode(rule)
+
+        # Dispatch the event
+        actions = await event_router.dispatch_with_actions(
+            event_type, payload, config, clients, rule
+        )
+
+        processing_time_ms = (time.time() - start_time) * 1000
+
+        # Log the successful event
+        if config.event_log.enabled:
+            clients.event_log.log_event(
+                payload=payload,
+                event_type=event_type,
+                actions=actions,
+                validation_result=validation_result or clients.event_validator.validate_event(payload),
+                processing_time_ms=processing_time_ms
+            )
+
+        logger.info("Event processed: %s -> %s (%.1fms)", event_type, actions, processing_time_ms)
+
+    except Exception as e:
+        processing_time_ms = (time.time() - start_time) * 1000
+
+        # Log the error
+        if config.event_log.enabled:
+            clients.event_log.log_event(
+                payload=payload,
+                event_type=event_type,
+                actions=[f"Error: {str(e)}"],
+                validation_result=validation_result or clients.event_validator.validate_event(payload),
+                processing_time_ms=processing_time_ms
+            )
+
+        logger.error("Event processing failed: %s", e)

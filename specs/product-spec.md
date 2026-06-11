@@ -227,6 +227,53 @@ Key settings:
 - No door-opening automation — NukiBlinker is notification only, it never opens or locks doors.
 - No remote access to the web UI from public IPs — private networks only (localhost, LAN).
 
+## New Features (v0.3.0)
+
+### Event Timestamp Validation (#59)
+
+**Problem**: Sometimes there can be significant delays between when an event occurs and when NukiBlinker processes it, leading to notifications that are no longer relevant.
+
+**Solution**: Add configurable timestamp validation that checks the time difference between event occurrence and processing. If the delay exceeds a configurable threshold (in seconds), the event is ignored and logged.
+
+**Configuration**:
+- New setting in web UI: "Maximum event delay (seconds)" with default 60 seconds
+- Per-event validation: can be enabled/disabled per event type
+- Events exceeding threshold are logged with warning but don't trigger notifications
+
+### Event Log Viewer (#57)
+
+**Problem**: When troubleshooting issues, there's no way to see what events were received, how they were processed, and what actions were taken.
+
+**Solution**: Implement a persistent event log accessible via the web UI that captures detailed information about each event.
+
+**Features**:
+- Web UI "Event Log" tab showing chronological list of events
+- Each log entry includes:
+  - Timestamp (when event was received)
+  - Event type (Ring, Ring to Open, Door Opened)
+  - Full Nuki callback payload
+  - Processing result (actions taken or skipped with reason)
+- Log retention: configurable (default 7 days, max 30 days)
+- Export functionality: download log as CSV
+- Real-time updates: new events appear automatically in the log
+
+**Storage**: In-memory with optional file persistence for crash recovery.
+
+### Night Mode (#56)
+
+**Problem**: During night hours, loud audio notifications and bright light blinks can be disruptive.
+
+**Solution**: Add configurable night mode that automatically adjusts notification behavior during specified hours.
+
+**Features**:
+- Web UI configuration: start time and end time (24-hour format)
+- Night mode behavior:
+  - Audio notifications: completely disabled
+  - Hue lights: reduced brightness (configurable, default 30% of normal)
+  - HomeKit notifications: remain enabled (silent push)
+- Per-event night mode settings: can be enabled/disabled per event type
+- Grace period: 5-minute buffer around configured times to avoid edge cases
+
 ## Future Considerations
 
 - Support for multiple Hue Bridges or light groups with different patterns.

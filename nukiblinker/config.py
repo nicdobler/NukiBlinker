@@ -102,6 +102,27 @@ class ServerConfig(BaseModel):
     public_host: str = ""
 
 
+class EventValidationConfig(BaseModel):
+    enabled: bool = True
+    max_delay_seconds: int = 60  # Reject events older than 60 seconds
+
+
+class NightModeConfig(BaseModel):
+    enabled: bool = False
+    start_time: str = "22:00"    # 10 PM
+    end_time: str = "07:00"      # 7 AM
+    brightness_factor: float = 0.3  # 30% of normal brightness
+    grace_minutes: int = 5       # 5-minute buffer
+
+
+class EventLogConfig(BaseModel):
+    enabled: bool = True
+    max_entries: int = 1000
+    retention_days: int = 7
+    persist_to_file: bool = True
+    file_path: str = "logs/event_log.json"
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -116,6 +137,9 @@ class AppConfig(BaseModel):
     homekit: HomeKitConfig = Field(default_factory=HomeKitConfig)
     events: EventRulesConfig = Field(default_factory=EventRulesConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    event_validation: EventValidationConfig = Field(default_factory=EventValidationConfig)
+    night_mode: NightModeConfig = Field(default_factory=NightModeConfig)
+    event_log: EventLogConfig = Field(default_factory=EventLogConfig)
 
 
 def get_public_host(config: AppConfig) -> str:

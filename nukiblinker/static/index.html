@@ -76,6 +76,7 @@
         <button class="tab" onclick="switchTab(this,'speakers')">Speakers</button>
         <button class="tab" onclick="switchTab(this,'homekit')">HomeKit</button>
         <button class="tab" onclick="switchTab(this,'events')">Events</button>
+        <button class="tab" onclick="switchTab(this,'event-log')">Event Log</button>
     </nav>
 
     <!-- STATUS -->
@@ -319,6 +320,110 @@
             </div>
             <div class="event-section"><h4>HomeKit</h4>
                 <div class="toggle"><input type="checkbox" id="doorHk"><label for="doorHk">Send doorbell notification</label></div>
+            </div>
+        </div>
+
+        <!-- NEW FEATURE CONFIGURATIONS -->
+        <div class="card">
+            <h2>Event Validation</h2>
+            <p class="help" style="margin-bottom:0.75rem">Reject events that are older than a configurable threshold to prevent stale notifications.</p>
+            <div class="toggle">
+                <input type="checkbox" id="eventValidationEnabled" checked>
+                <label for="eventValidationEnabled">Enable event timestamp validation</label>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Maximum Event Delay (seconds)</label>
+                    <input id="eventValidationMaxDelay" type="number" min="1" max="3600" value="60">
+                    <p class="help">Reject events older than this many seconds</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Night Mode</h2>
+            <p class="help" style="margin-bottom:0.75rem">Reduce notifications during specified hours (no audio, dimmer lights).</p>
+            <div class="toggle">
+                <input type="checkbox" id="nightModeEnabled">
+                <label for="nightModeEnabled">Enable night mode</label>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Start Time</label>
+                    <input id="nightModeStartTime" type="time" value="22:00">
+                    <p class="help">When night mode begins</p>
+                </div>
+                <div>
+                    <label>End Time</label>
+                    <input id="nightModeEndTime" type="time" value="07:00">
+                    <p class="help">When night mode ends</p>
+                </div>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Brightness Factor</label>
+                    <input id="nightModeBrightness" type="number" min="0.0" max="1.0" step="0.1" value="0.3">
+                    <p class="help">Light brightness during night mode (0.0-1.0)</p>
+                </div>
+                <div>
+                    <label>Grace Period (minutes)</label>
+                    <input id="nightModeGrace" type="number" min="0" max="60" value="5">
+                    <p class="help">Buffer time around boundaries</p>
+                </div>
+            </div>
+            <div id="nightModeStatus" class="discover-results"></div>
+        </div>
+
+        <div class="card">
+            <h2>Event Logging</h2>
+            <p class="help" style="margin-bottom:0.75rem">Maintain event history for troubleshooting and monitoring.</p>
+            <div class="toggle">
+                <input type="checkbox" id="eventLogEnabled" checked>
+                <label for="eventLogEnabled">Enable event logging</label>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Maximum Entries</label>
+                    <input id="eventLogMaxEntries" type="number" min="10" max="10000" value="1000">
+                    <p class="help">Maximum events to keep in memory</p>
+                </div>
+                <div>
+                    <label>Retention Days</label>
+                    <input id="eventLogRetention" type="number" min="1" max="365" value="7">
+                    <p class="help">How long to keep events</p>
+                </div>
+            </div>
+            <div class="toggle" style="margin-top:0.75rem;">
+                <input type="checkbox" id="eventLogPersist" checked>
+                <label for="eventLogPersist">Persist log to file</label>
+            </div>
+            <div id="eventLogStats" class="discover-results"></div>
+        </div>
+    </div>
+
+    <!-- EVENT LOG -->
+    <div id="panel-event-log" class="panel">
+        <div class="card">
+            <h2>Event Log Viewer</h2>
+            <p class="help" style="margin-bottom:0.75rem">View detailed history of all Nuki events and processing results.</p>
+            <div class="btn-row">
+                <button class="btn-secondary btn-sm" onclick="refreshEventLog()">Refresh</button>
+                <button class="btn-secondary btn-sm" onclick="exportEventLog()">Export CSV</button>
+                <button class="btn-secondary btn-sm" onclick="clearEventLog()">Clear Log</button>
+            </div>
+            <div id="eventLogStatus" class="discover-results"></div>
+        </div>
+        
+        <div class="card">
+            <h2>Recent Events</h2>
+            <div id="eventLogContainer">
+                <div style="text-align:center; color:#64748b; padding:2rem;">
+                    Loading event log...
+                </div>
+            </div>
+            <div class="btn-row" style="margin-top:1rem;">
+                <button class="btn-secondary btn-sm" onclick="loadMoreEvents()">Load More</button>
+                <span id="eventLogInfo" style="color:#64748b; font-size:0.8rem;"></span>
             </div>
         </div>
     </div>
@@ -625,6 +730,301 @@ function addSpeaker(tid, name) {
     const el = document.getElementById(tid);
     const existing = el.value.split('\n').map(s => s.trim()).filter(Boolean);
     if (!existing.includes(name)) { existing.push(name); el.value = existing.join('\n'); }
+}
+
+/* --- New Feature Functions --- */
+
+// Event Validation
+async function loadEventValidationConfig() {
+    try {
+        const config = await (await fetch(`${API}/config/event-validation`)).json();
+        document.getElementById('eventValidationEnabled').checked = config.enabled;
+        document.getElementById('eventValidationMaxDelay').value = config.max_delay_seconds;
+    } catch (e) {
+        console.error('Failed to load event validation config:', e);
+    }
+}
+
+async function saveEventValidationConfig() {
+    try {
+        const config = {
+            enabled: document.getElementById('eventValidationEnabled').checked,
+            max_delay_seconds: parseInt(document.getElementById('eventValidationMaxDelay').value)
+        };
+        const response = await fetch(`${API}/config/event-validation`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save config');
+        }
+        return true;
+    } catch (e) {
+        console.error('Failed to save event validation config:', e);
+        return false;
+    }
+}
+
+// Night Mode
+async function loadNightModeConfig() {
+    try {
+        const config = await (await fetch(`${API}/config/night-mode`)).json();
+        document.getElementById('nightModeEnabled').checked = config.enabled;
+        document.getElementById('nightModeStartTime').value = config.start_time;
+        document.getElementById('nightModeEndTime').value = config.end_time;
+        document.getElementById('nightModeBrightness').value = config.brightness_factor;
+        document.getElementById('nightModeGrace').value = config.grace_minutes;
+        
+        // Update status
+        const statusEl = document.getElementById('nightModeStatus');
+        if (config.status && config.status.enabled) {
+            const isActive = config.status.active ? 'ACTIVE' : 'INACTIVE';
+            const color = config.status.active ? '#22c55e' : '#64748b';
+            statusEl.innerHTML = `<span style="color:${color};font-size:0.8rem;">Night mode is ${isActive.toLowerCase()}</span>`;
+        } else {
+            statusEl.innerHTML = '';
+        }
+    } catch (e) {
+        console.error('Failed to load night mode config:', e);
+    }
+}
+
+async function saveNightModeConfig() {
+    try {
+        const config = {
+            enabled: document.getElementById('nightModeEnabled').checked,
+            start_time: document.getElementById('nightModeStartTime').value,
+            end_time: document.getElementById('nightModeEndTime').value,
+            brightness_factor: parseFloat(document.getElementById('nightModeBrightness').value),
+            grace_minutes: parseInt(document.getElementById('nightModeGrace').value)
+        };
+        const response = await fetch(`${API}/config/night-mode`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save config');
+        }
+        return true;
+    } catch (e) {
+        console.error('Failed to save night mode config:', e);
+        return false;
+    }
+}
+
+// Event Log Configuration
+async function loadEventLogConfig() {
+    try {
+        const config = await (await fetch(`${API}/config/event-log`)).json();
+        document.getElementById('eventLogEnabled').checked = config.enabled;
+        document.getElementById('eventLogMaxEntries').value = config.max_entries;
+        document.getElementById('eventLogRetention').value = config.retention_days;
+        document.getElementById('eventLogPersist').checked = config.persist_to_file;
+        
+        // Update stats
+        const statsEl = document.getElementById('eventLogStats');
+        if (config.stats) {
+            statsEl.innerHTML = `<span style="color:#64748b;font-size:0.8rem;">Current entries: ${config.stats.current_entries}/${config.stats.max_entries}</span>`;
+        } else {
+            statsEl.innerHTML = '';
+        }
+    } catch (e) {
+        console.error('Failed to load event log config:', e);
+    }
+}
+
+async function saveEventLogConfig() {
+    try {
+        const config = {
+            enabled: document.getElementById('eventLogEnabled').checked,
+            max_entries: parseInt(document.getElementById('eventLogMaxEntries').value),
+            retention_days: parseInt(document.getElementById('eventLogRetention').value),
+            persist_to_file: document.getElementById('eventLogPersist').checked
+        };
+        const response = await fetch(`${API}/config/event-log`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save config');
+        }
+        return true;
+    } catch (e) {
+        console.error('Failed to save event log config:', e);
+        return false;
+    }
+}
+
+// Event Log Viewer
+let eventLogOffset = 0;
+const EVENT_LOG_LIMIT = 50;
+
+async function refreshEventLog() {
+    eventLogOffset = 0;
+    await loadEventLog();
+}
+
+async function loadEventLog() {
+    const container = document.getElementById('eventLogContainer');
+    const statusEl = document.getElementById('eventLogStatus');
+    const infoEl = document.getElementById('eventLogInfo');
+    
+    try {
+        statusEl.innerHTML = '<span style="color:#94a3b8;font-size:0.8rem;">Loading...</span>';
+        
+        const response = await fetch(`${API}/events/log?limit=${EVENT_LOG_LIMIT}&offset=${eventLogOffset}`);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to load event log');
+        }
+        
+        const data = await response.json();
+        
+        if (data.events.length === 0 && eventLogOffset === 0) {
+            container.innerHTML = '<div style="text-align:center; color:#64748b; padding:2rem;">No events logged yet</div>';
+            infoEl.textContent = '';
+        } else {
+            container.innerHTML = data.events.map(renderEventLogEntry).join('');
+            infoEl.textContent = `Showing ${eventLogOffset + 1}-${eventLogOffset + data.events.length} of ${data.total_count}`;
+        }
+        
+        statusEl.innerHTML = '';
+    } catch (e) {
+        console.error('Failed to load event log:', e);
+        statusEl.innerHTML = `<span style="color:#ef4444;font-size:0.8rem;">Error: ${e.message}</span>`;
+        container.innerHTML = '<div style="text-align:center; color:#ef4444; padding:2rem;">Failed to load events</div>';
+    }
+}
+
+async function loadMoreEvents() {
+    eventLogOffset += EVENT_LOG_LIMIT;
+    await loadEventLog();
+}
+
+function renderEventLogEntry(entry) {
+    const timestamp = new Date(entry.timestamp).toLocaleString();
+    const eventType = entry.event_type || 'Unknown';
+    const validationClass = entry.validation_result.valid ? 'badge-ok' : 'badge-warn';
+    const validationText = entry.validation_result.valid ? 'Valid' : `Invalid: ${entry.validation_result.reason}`;
+    
+    const actionsHtml = entry.actions.length > 0 
+        ? entry.actions.map(action => `<div style="font-size:0.75rem;color:#94a3b8;">• ${action}</div>`).join('')
+        : '<div style="font-size:0.75rem;color:#64748b;">No actions</div>';
+    
+    const processingTime = entry.processing_time_ms 
+        ? `<span style="color:#64748b;font-size:0.75rem;">(${entry.processing_time_ms.toFixed(1)}ms)</span>`
+        : '';
+    
+    return `
+        <div class="card" style="margin-bottom:0.75rem; padding:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
+                <div>
+                    <strong>${eventType}</strong> ${processingTime}
+                    <div style="font-size:0.75rem;color:#64748b;">${timestamp}</div>
+                </div>
+                <span class="badge ${validationClass}" style="font-size:0.7rem;">${validationText}</span>
+            </div>
+            <div style="font-size:0.8rem;margin-bottom:0.5rem;">
+                <strong>Actions:</strong>
+                ${actionsHtml}
+            </div>
+            <details style="margin-top:0.5rem;">
+                <summary style="cursor:pointer;font-size:0.75rem;color:#64748b;">View payload</summary>
+                <pre style="font-size:0.7rem;color:#94a3b8;background:#0f172a;padding:0.5rem;border-radius:4px;margin-top:0.5rem;overflow-x:auto;">${JSON.stringify(entry.payload, null, 2)}</pre>
+            </details>
+        </div>
+    `;
+}
+
+async function exportEventLog() {
+    try {
+        const response = await fetch(`${API}/events/export`);
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to export');
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'nukiblinker_events.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('Failed to export event log:', e);
+        alert('Failed to export event log: ' + e.message);
+    }
+}
+
+async function clearEventLog() {
+    if (!confirm('Are you sure you want to clear all event log entries? This cannot be undone.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API}/events/clear`, { method: 'POST' });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to clear log');
+        }
+        
+        await refreshEventLog();
+        await loadEventLogConfig(); // Update stats
+    } catch (e) {
+        console.error('Failed to clear event log:', e);
+        alert('Failed to clear event log: ' + e.message);
+    }
+}
+
+// Enhanced saveConfig to include new features
+async function saveConfig() {
+    const originalSaveConfig = window.saveConfig;
+    if (typeof originalSaveConfig === 'function') {
+        const result = await originalSaveConfig();
+        if (!result) return false;
+    }
+    
+    // Save new feature configs
+    const results = await Promise.all([
+        saveEventValidationConfig(),
+        saveNightModeConfig(),
+        saveEventLogConfig()
+    ]);
+    
+    if (results.every(r => r === true)) {
+        showMsg('Configuration saved', true);
+        // Reload night mode status and event log stats
+        await loadNightModeConfig();
+        await loadEventLogConfig();
+        return true;
+    } else {
+        showMsg('Failed to save some configuration', false);
+        return false;
+    }
+}
+
+// Enhanced loadConfig to include new features
+async function loadConfig() {
+    const originalLoadConfig = window.loadConfig;
+    if (typeof originalLoadConfig === 'function') {
+        await originalLoadConfig();
+    }
+    
+    // Load new feature configs
+    await Promise.all([
+        loadEventValidationConfig(),
+        loadNightModeConfig(),
+        loadEventLogConfig()
+    ]);
 }
 
 loadStatus();

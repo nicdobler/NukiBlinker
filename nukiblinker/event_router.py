@@ -98,3 +98,31 @@ async def dispatch(
 
     logger.info("Dispatching event '%s' with context %s", event_type, context)
     await notifier.notify(rule, config, clients, context)
+
+
+async def dispatch_with_actions(
+    event_type: str, payload: dict, config: AppConfig, clients, rule,
+    *, context_override: dict | None = None,
+) -> list[str]:
+    """Look up the event rule and fire matching notification channels, returning actions taken.
+
+    Returns:
+        List of action descriptions (e.g., ["Hue lights blinked", "TTS played"])
+    """
+    from nukiblinker import notifier  # noqa: E402 — deferred to avoid circular import
+
+    if rule is None:
+        logger.warning("No event rule for type '%s'", event_type)
+        return []
+
+    if context_override is not None:
+        context = context_override
+    elif event_type in ("ring_to_open", "door_opened"):
+        fallback = rule.audio.fallback_name if rule.audio else "Alguien"
+        context = await resolve_person(payload, getattr(clients, "nuki", None), fallback)
+    else:
+        context = {}
+
+    logger.info("Dispatching event '%s' with context %s", event_type, context)
+    actions = await notifier.notify_with_actions(rule, config, clients, context)
+    return actions
