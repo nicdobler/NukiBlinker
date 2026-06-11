@@ -362,6 +362,31 @@ On Windows with WSL2, `network_mode: host` gives the container access to the WSL
 
 3. **NAT mode (default WSL2)** does NOT forward multicast. If you can't switch to mirrored mode, speakers won't be discoverable from inside the container. Consider running NukiBlinker directly on the host instead of Docker.
 
+### HomeKit: accessory visible but pairing fails
+
+Discovery uses mDNS (UDP 5353), but **pairing connects over TCP to the HAP port (51826)**. If the accessory appears in the Home app but pairing fails:
+
+1. **Open the HAP port** in the Windows firewall:
+   ```powershell
+   New-NetFirewallRule -DisplayName "NukiBlinker HAP" -Direction Inbound -Protocol TCP -LocalPort 51826 -Action Allow
+   ```
+
+2. **Wrong advertised IP**: on multi-interface hosts (WSL2/Docker), zeroconf may advertise an internal IP (e.g. `172.x`) that the iPhone can't reach. NukiBlinker binds the HAP driver to the detected LAN IP (`server.public_host` / auto-detect). Override it explicitly if needed:
+   ```yaml
+   homekit:
+     address: "192.168.1.50"   # your host's LAN IP
+   ```
+   Verify with `dns-sd -B _hap._tcp` (macOS) or the "Discovery" iOS app — the advertised address must be your LAN IP.
+
+3. **Stale pairing state**: after failed pairing attempts, delete the persist state and retry:
+   ```sh
+   rm -rf ./homekit/*   # the mounted persist_dir
+   docker compose restart
+   ```
+   Then remove any half-added accessory from the Home app before pairing again.
+
+> Note: the accessory uses HomeKit category *Sensor* (with a Doorbell service). iOS refuses to pair `Video Doorbell` accessories that have no camera stream — same approach as Homebridge doorbell plugins.
+
 ### No logs after test event (nothing happens)
 
 The `ring` event has **audio disabled by default**. If you're testing speakers, use `ring_to_open` or enable audio for `ring` in the Events tab first. Check the startup log for a config summary:

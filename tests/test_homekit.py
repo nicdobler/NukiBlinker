@@ -13,7 +13,7 @@ class TestHapImports:
         from nukiblinker import homekit_service
 
         assert homekit_service._HAP_AVAILABLE is True
-        assert homekit_service.CATEGORY_VIDEO_DOOR_BELL is not None
+        assert homekit_service.CATEGORY_SENSOR is not None
 
 
 class TestSetupCode:
@@ -51,6 +51,35 @@ class TestStart:
         mock_driver.add_accessory.assert_called_once()
         # Thread started
         assert svc._thread is not None
+
+    @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
+    @patch("nukiblinker.homekit_service.AccessoryDriver")
+    @patch("nukiblinker.homekit_service.Accessory")
+    def test_binds_to_explicit_address(self, mock_acc_cls, mock_driver_cls, tmp_path):
+        """Regression: pairing failed because zeroconf advertised the wrong interface."""
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"), address="192.168.1.50")
+        svc.start()
+        assert mock_driver_cls.call_args.kwargs["address"] == "192.168.1.50"
+
+    @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
+    @patch("nukiblinker.homekit_service.AccessoryDriver")
+    @patch("nukiblinker.homekit_service.Accessory")
+    def test_auto_address_when_empty(self, mock_acc_cls, mock_driver_cls, tmp_path):
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
+        svc.start()
+        assert mock_driver_cls.call_args.kwargs["address"] is None
+
+    @patch("nukiblinker.homekit_service._HAP_AVAILABLE", True)
+    @patch("nukiblinker.homekit_service.CATEGORY_SENSOR", 10)
+    @patch("nukiblinker.homekit_service.AccessoryDriver")
+    @patch("nukiblinker.homekit_service.Accessory")
+    def test_category_is_not_video_doorbell(self, mock_acc_cls, mock_driver_cls, tmp_path):
+        """Regression: VIDEO_DOOR_BELL category without camera stream breaks iOS pairing."""
+        mock_acc = MagicMock()
+        mock_acc_cls.return_value = mock_acc
+        svc = HomeKitService(persist_dir=str(tmp_path / "hk"))
+        svc.start()
+        assert mock_acc.category == 10
 
     @patch("nukiblinker.homekit_service._HAP_AVAILABLE", False)
     def test_skips_when_hap_not_available(self, tmp_path):

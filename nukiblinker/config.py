@@ -94,6 +94,7 @@ class HomeKitConfig(BaseModel):
     enabled: bool = False
     setup_code: str = ""
     persist_dir: str = ".homekit"
+    address: str = ""
 
 
 class ServerConfig(BaseModel):

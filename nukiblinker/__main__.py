@@ -58,11 +58,13 @@ def _build_clients(config: AppConfig) -> Clients:
     clients.airplay = AirPlayClient()
 
     if config.homekit.enabled:
+        from nukiblinker.config import get_public_host
         from nukiblinker.homekit_service import HomeKitService
 
         clients.homekit = HomeKitService(
             setup_code=config.homekit.setup_code,
             persist_dir=config.homekit.persist_dir,
+            address=config.homekit.address or get_public_host(config),
         )
 
     from nukiblinker.event_log import EventLog
