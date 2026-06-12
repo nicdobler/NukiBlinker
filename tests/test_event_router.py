@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from nukiblinker.config import AppConfig
-from nukiblinker.event_router import classify, resolve_person
+from nukiblinker.event_router import classify, dispatch_with_actions, resolve_person
 
 
 # ---------------------------------------------------------------------------
@@ -196,3 +196,65 @@ class TestResolvePerson:
         web.get_recent_log.side_effect = Exception("cloud down")
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
         assert result == {"name": "Elena"}
+
+    @pytest.mark.asyncio
+    async def test_web_api_unnamed_entry_surfaces_trigger_with_bridge_name(self):
+        """#97: an anonymous open still surfaces the trigger for the user to confirm."""
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": "Elena"}
+        web = AsyncMock()
+        web.get_recent_log.return_value = [{"smartlockId": 100, "trigger": 2, "source": 1}]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Elena", "trigger": 2}
+
+    @pytest.mark.asyncio
+    async def test_web_api_unnamed_entry_surfaces_trigger_with_fallback(self):
+        """#97: trigger is surfaced even when no name resolves anywhere."""
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": ""}
+        web = AsyncMock()
+        web.get_recent_log.return_value = [{"smartlockId": 100, "trigger": 2}]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Alguien", "trigger": 2}
+
+
+# ---------------------------------------------------------------------------
+# dispatch_with_actions() — trigger observability (#97)
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchTriggerObservability:
+    @pytest.mark.asyncio
+    async def test_trigger_surfaced_in_actions(self, monkeypatch):
+        """#97: resolved trigger is prepended to the Event Log actions."""
+        monkeypatch.setattr(
+            "nukiblinker.event_router.resolve_person",
+            AsyncMock(return_value={"name": "Alguien", "trigger": 2}),
+        )
+        monkeypatch.setattr(
+            "nukiblinker.notifier.notify_with_actions",
+            AsyncMock(return_value=["Hue lights blinked"]),
+        )
+        cfg = AppConfig()
+        rule = cfg.events.ring_to_open
+        actions = await dispatch_with_actions(
+            "ring_to_open", {"nukiId": 100}, cfg, object(), rule,
+        )
+        assert actions[0] == "Trigger: button (2)"
+        assert "Hue lights blinked" in actions
+
+    @pytest.mark.asyncio
+    async def test_no_trigger_means_no_trigger_action(self, monkeypatch):
+        monkeypatch.setattr(
+            "nukiblinker.event_router.resolve_person",
+            AsyncMock(return_value={"name": "Alguien"}),
+        )
+        monkeypatch.setattr(
+            "nukiblinker.notifier.notify_with_actions",
+            AsyncMock(return_value=["Hue lights blinked"]),
+        )
+        cfg = AppConfig()
+        actions = await dispatch_with_actions(
+            "ring_to_open", {"nukiId": 100}, cfg, object(), cfg.events.ring_to_open,
+        )
+        assert not any(a.startswith("Trigger:") for a in actions)

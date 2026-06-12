@@ -84,6 +84,15 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
     {"name": fallback}.
     """
     nuki_id = payload.get("nukiId")
+    # Trigger code (how the action was performed). Captured for observability so
+    # the user can confirm the real code before any suppression is wired (#97).
+    resolved_trigger: int | None = None
+
+    def _result(name: str) -> dict:
+        out: dict = {"name": name}
+        if resolved_trigger is not None:
+            out["trigger"] = resolved_trigger
+        return out
 
     # 1. Nuki Web API — preferred when available (real names + trigger source).
     if nuki_web is not None:
@@ -101,12 +110,24 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
                         entry.get("source"),
                     )
                     return {"name": name, "trigger": trigger}
-            logger.debug("Nuki Web API log had no named entry for nukiId=%s", nuki_id)
+            # No named entry. Surface the most recent trigger for observability
+            # (#97) but still fall back to the bridge log for a name.
+            if entries:
+                resolved_trigger = entries[0].get("trigger")
+                logger.info(
+                    "Web API: no named entry for nukiId=%s; most recent "
+                    "trigger=%s(%s) source=%s",
+                    nuki_id, resolved_trigger,
+                    TRIGGER_NAMES.get(resolved_trigger, "unknown"),
+                    entries[0].get("source"),
+                )
+            else:
+                logger.debug("Nuki Web API log had no entry for nukiId=%s", nuki_id)
         except Exception:
             logger.warning("Nuki Web API resolution failed — falling back to bridge log", exc_info=True)
 
     if nuki_id is None or nuki_client is None:
-        return {"name": fallback_name}
+        return _result(fallback_name)
     try:
         name = ""
         # The bridge writes the activity log slightly after firing the
@@ -126,10 +147,10 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
             )
             name = fallback_name
         logger.info("Resolved person: %s (nukiId=%s)", name, nuki_id)
-        return {"name": name}
+        return _result(name)
     except Exception:
         logger.warning("Failed to resolve person for nukiId=%s — using fallback", nuki_id, exc_info=True)
-        return {"name": fallback_name}
+        return _result(fallback_name)
 
 
 async def dispatch(
@@ -187,4 +208,12 @@ async def dispatch_with_actions(
 
     logger.info("Dispatching event '%s' with context %s", event_type, context)
     actions = await notifier.notify_with_actions(rule, config, clients, context)
+
+    # Surface the resolved trigger in the Event Log so the user can confirm the
+    # real trigger code (e.g. physical button) before any suppression is wired (#97).
+    trigger = context.get("trigger")
+    if trigger is not None:
+        from nukiblinker.nuki_web_client import TRIGGER_NAMES
+        actions.insert(0, f"Trigger: {TRIGGER_NAMES.get(trigger, 'unknown')} ({trigger})")
+
     return actions

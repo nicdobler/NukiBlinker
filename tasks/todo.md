@@ -2,6 +2,36 @@
 
 ---
 
+## #97 (follow-up) Surface the real trigger code for physical-button opens
+
+**Branch**: `fix/97-trigger-observability` | **PR**: _pending_
+
+Context: User reports a single real interaction (ring + open from upstairs) fires
+multiple notifications, and that opening via the physical button should do
+nothing. The dedup + ring reclassification fix (`f633adb`) already reduces the
+multi-ring burst, but it shipped AFTER the CSV the user attached (events 15:51
++0200 < fix 18:21 +0200), so that part needs re-testing on the deployed build.
+Physical-button suppression was deliberately deferred pending the user
+confirming the real trigger code. User chose: confirm the trigger first, no
+suppression yet.
+
+- [x] `resolve_person`: capture + log `trigger` even for anonymous opens (no named entry), preserving bridge-log name fallback
+- [x] `dispatch_with_actions`: prepend `Trigger: <name> (<code>)` to Event Log actions when a trigger is resolved
+- [x] Tests: resolve_person trigger surfacing (bridge name + fallback), dispatch action injection / absence
+- [x] Docs: CHANGELOG `[Unreleased]`
+- [ ] Mac/CI: `make test` + `make lint` (not run on work laptop)
+- [ ] User: open the door via the physical button, read `Trigger: ...` in the Event Log/CSV, report the code
+- [ ] Decide & wire suppression for the confirmed trigger code(s)
+- [ ] Open PR
+
+Decisions:
+- Trigger is surfaced via the Event Log `Actions` column (no schema/CSV-column
+  change) — minimal, immediately visible where the user already reads events.
+- Requires `nuki.web_api_token` configured; without it the bridge log has no
+  reliable trigger and nothing is surfaced.
+
+---
+
 ## #96 Event log CSV export & #97 multiple events per interaction
 
 **Branch**: `fix/event-log-and-opener-events` | **PR**: _pending_
