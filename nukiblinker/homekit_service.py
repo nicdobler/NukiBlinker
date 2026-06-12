@@ -157,6 +157,8 @@ class HomeKitService:
     def get_qr_code(self) -> str | None:
         """Return an SVG QR code for the HomeKit setup URI, or None if unavailable."""
         try:
+            import io
+
             import pyqrcode
             import base36
 
@@ -169,13 +171,21 @@ class HomeKitService:
             if self._driver and hasattr(self._driver, "state"):
                 sid = getattr(self._driver.state, "setup_id", None)
                 if sid:
-                    setup_id = sid
+                    # Handle both bytes and string (driver state may return either)
+                    setup_id = sid.decode() if isinstance(sid, bytes) else sid
 
-            uri = f"X-HM://{base36.dumps(int(digits) | (category << 31)):>09}{setup_id}"
+            payload = base36.dumps(int(digits) | (category << 31))
+            # base36.dumps() returns bytes in some versions, string in others
+            payload_str = payload.decode() if isinstance(payload, bytes) else payload
+            uri = f"X-HM://{payload_str:>09}{setup_id}"
             qr = pyqrcode.create(uri, error="M")
-            return qr.svg(scale=4, xmldecl=False, omithw=True)
+            svg_buffer = io.BytesIO()
+            qr.svg(svg_buffer, scale=4, xmldecl=False, omithw=True)
+            return svg_buffer.getvalue().decode()
         except Exception as exc:
+            import traceback
             logger.warning("QR code generation failed: %s", exc)
+            logger.warning("QR code generation traceback: %s", traceback.format_exc())
             return None
 
     def is_paired(self) -> bool:

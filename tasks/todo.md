@@ -126,6 +126,22 @@
 
 ---
 
+## Fix QR code generation (#89) + follow-up (#91, #92, #93)
+
+**Branch**: `fix/qr-code-generation` | **PR**: #90
+
+- [x] Root cause: `pyqrcode.svg()` requires a `file` parameter, but code called it without one
+- [x] Fix: Use `io.StringIO()` to capture SVG output as a string
+- [x] Regression tests: `test_generates_svg_string`, `test_uses_setup_id_from_driver_state`
+- [x] Docs: CHANGELOG updated
+- [x] Follow-up #91: `base36.dumps()` returns bytes in some versions, need to decode to string
+- [x] Follow-up #92: `setup_id` from driver state can also be bytes, need to decode
+- [x] Follow-up #93: pyqrcode writes bytes via `write_bytes()`, need `BytesIO` not `StringIO`
+- [ ] Validate on Mac (`make test` + `make lint`)
+- [ ] Merge PR, close issue #89, #91, #92, and #93
+
+---
+
 ## Fix HomeKit accessory dropped after pairing
 
 **Branch**: `fix/homekit-service-label` | **PR**: pending

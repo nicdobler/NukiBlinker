@@ -1,5 +1,17 @@
 # Lessons
 
+## 2026-06-12 — base36.dumps() returns bytes in CI environment
+- **Mistake**: Assumed `base36.dumps()` returns a string, but in the CI environment it returns bytes. Using it directly in an f-string caused `string argument expected, got 'bytes'`.
+- **Rule**: Always handle library return types defensively. Use `isinstance(x, bytes)` and `.decode()` when a library might return bytes or str depending on version/environment.
+
+## 2026-06-12 — pyqrcode writes bytes, not strings
+- **Mistake**: Used `io.StringIO()` for pyqrcode output, but pyqrcode internally uses `write_bytes()` to write bytes to the file object. `StringIO` expects strings, causing `TypeError: string argument expected, got 'bytes'`.
+- **Rule**: Check whether a library writes bytes or strings before choosing between `BytesIO` and `StringIO`. When in doubt, check the library source or use `BytesIO` and decode.
+
+## 2026-06-12 — pyqrcode API mismatch
+- **Mistake**: Called `qr.svg(scale=4, xmldecl=False, omithw=True)` without the required `file` parameter. The pyqrcode library's `svg()` method requires a file-like object to write to, not returning a string directly.
+- **Rule**: When using library methods that write to files, check the signature carefully. Use `io.StringIO()` / `io.BytesIO()` to capture output as a string when needed.
+
 ## 2026-06-11 — Lint break pushed from work laptop
 - **Mistake**: Pushed a log line >120 chars; CI lint (flake8 E501) failed on PR #75 (issues #76, #78).
 - **Rule**: On the work laptop (no `make lint` allowed), manually check that new/edited lines stay ≤120 chars before committing — especially long log/f-string lines.
