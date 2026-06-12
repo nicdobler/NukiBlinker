@@ -173,7 +173,10 @@ class HomeKitService:
                 if sid:
                     setup_id = sid
 
-            uri = f"X-HM://{base36.dumps(int(digits) | (category << 31)):>09}{setup_id}"
+            payload = base36.dumps(int(digits) | (category << 31))
+            # base36.dumps() returns bytes in some versions, string in others
+            payload_str = payload.decode() if isinstance(payload, bytes) else payload
+            uri = f"X-HM://{payload_str:>09}{setup_id}"
             qr = pyqrcode.create(uri, error="M")
             svg_buffer = io.StringIO()
             qr.svg(svg_buffer, scale=4, xmldecl=False, omithw=True)
