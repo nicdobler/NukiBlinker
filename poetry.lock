@@ -1676,32 +1676,6 @@ files = [
 ]
 
 [[package]]
-name = "pyatv"
-version = "0.17.0"
-description = "A client library for Apple TV and AirPlay devices"
-optional = false
-python-versions = ">=3.9.0"
-groups = ["main"]
-files = [
-    {file = "pyatv-0.17.0-py3-none-any.whl", hash = "sha256:39d4000f19ab402808a7a098d4bc1d0f92959542b2d4c40a138be5b5832f4f8f"},
-    {file = "pyatv-0.17.0.tar.gz", hash = "sha256:3408bfb442d1676ee4cde4d71d7715d3083e577a088be2ce9d96b86d0e0adec5"},
-]
-
-[package.dependencies]
-aiohttp = ">=3.8.3,<5"
-chacha20poly1305-reuseable = ">=0.13.2"
-cryptography = ">=44.0.1"
-ifaddr = ">=0.1.7"
-miniaudio = ">=1.45"
-protobuf = ">=6.31.1"
-pydantic = ">=2.0.0"
-requests = ">=2.30.0"
-srptools = ">=0.2.0"
-tabulate = ">=0.9.0"
-tinytag = ">=1.10.0"
-zeroconf = ">=0.129.0"
-
-[[package]]
 name = "pychromecast"
 version = "14.0.10"
 description = "Python module to talk to Google Chromecast."
@@ -2787,4 +2761,4 @@ ifaddr = ">=0.1.7"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "1b672c40bec949929691d339a270fe6849a50c2b3305596acea2ead4844a5988"
+content-hash = "fad06a56855f0a9d41612d23aba0748dd8c1672e295901f13cb85b9f024cf644"
