@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Docs**: Added architecture diagrams to `specs/tech-spec.md` — a component diagram (external systems + internal modules), a class diagram (`Clients` container and service clients), and a callback processing pipeline sequence diagram.
+- **Docs**: Added a Documentation index to `README.md` linking the product/tech specs, changelog, config template, and deploy notes.
+- **Docs**: Aligned specs and README with the code — corrected the default chime to `chime.wav` (generated at Docker build) and the base image to `python:3.14-slim`; added `server.public_host` and removed the non-existent `homekit.address` from the tech-spec config model; clarified that event validation and night mode are global (not per-event); documented the `GET /api/homekit/qr` endpoint; and completed the test-suite table.
 - **#97**: The resolved action `trigger` (e.g. `Trigger: button (2)`) is now surfaced in the Event Log / CSV for `ring_to_open` and `door_opened` events, and is captured even for anonymous opens. This lets you confirm exactly which trigger code a physical-button open produces before deciding which triggers to suppress (suppression itself is not yet wired).
 - Optional **Nuki Web API** integration (`nuki.web_api_token`): when configured, resolves real user names and the action `trigger`/`source` from the cloud activity log (the local bridge cannot identify an anonymous ringer). Read-only — it never opens or locks doors.
 - Event deduplication config (`deduplication.enabled`, `deduplication.window_seconds`).

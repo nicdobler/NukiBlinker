@@ -248,7 +248,7 @@ Key settings:
 
 **Configuration**:
 - New setting in web UI: "Maximum event delay (seconds)" with default 60 seconds
-- Per-event validation: can be enabled/disabled per event type
+- Validation is a single global toggle (`event_validation.enabled`) applied to all events — not per event type
 - Events exceeding threshold are logged with warning but don't trigger notifications
 
 ### Event Log Viewer (#57)
@@ -280,10 +280,10 @@ Key settings:
 - Web UI configuration: start time and end time (24-hour format)
 - Night mode behavior:
   - Audio notifications: completely disabled
-  - Hue lights: reduced brightness (configurable, default 30% of normal)
+  - Hue lights: reduced brightness (configurable, default 30% of normal) when blink mode is `custom`
   - HomeKit notifications: remain enabled (silent push)
-- Per-event night mode settings: can be enabled/disabled per event type
-- Grace period: 5-minute buffer around configured times to avoid edge cases
+- Night mode is a single global toggle (`night_mode.enabled`) applied to all events — not per event type
+- Grace period: 5-minute buffer (`grace_minutes`) configured around the window boundaries
 
 ## New Features (v0.4.0)
 

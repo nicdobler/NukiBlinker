@@ -2,6 +2,18 @@
 
 Reacts to Nuki doorbell and Smart Lock events with configurable notifications: Hue light blinks, voice announcements on Google Nest, and Apple HomeKit doorbell push notifications.
 
+## Documentation
+
+All project documentation lives in this repository (versioned alongside the code):
+
+| Document | Purpose |
+|---|---|
+| [`specs/product-spec.md`](specs/product-spec.md) | What & why — vision, event types, channels, acceptance criteria, non-goals |
+| [`specs/tech-spec.md`](specs/tech-spec.md) | How — architecture diagrams, component/class design, data model, APIs, CI |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history (Keep a Changelog + SemVer) |
+| [`config.example.yaml`](config.example.yaml) | Annotated configuration template |
+| [`deploy/README.md`](deploy/README.md) | Bare-metal / systemd deployment notes |
+
 ## Features
 
 - **3 event types**: Ring (unknown visitor), Ring to Open (authorized), Door Opened (Smart Lock)
@@ -213,6 +225,7 @@ nuki:
 | `/api/hue/pair` | POST | Pair with Hue Bridge (tries existing key first) |
 | `/api/hue/lights` | GET | List Hue lights |
 | `/api/hue/groups` | GET | List Hue groups |
+| `/api/homekit/qr` | GET | HomeKit setup code, pairing status & QR (SVG) |
 | `/api/status` | GET | Service status |
 | `/api/pause` | POST | Pause service |
 | `/api/resume` | POST | Resume service |
@@ -438,6 +451,6 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 
 ### Tech Stack
 
-- **Python 3.14** · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
+- **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
 - **pychromecast** · **gTTS** · **HAP-python** · **zeroconf**
 - **Black** · **flake8** · **pytest** · **pytest-asyncio**

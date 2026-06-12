@@ -18,7 +18,7 @@ nukiblinker/
 ├── notifier.py              # Orchestrates notification channels per event rule
 ├── logging_config.py        # Structured logging setup
 ├── sounds/                  # Bundled chime audio files
-│   └── chime.mp3              # Default doorbell chime
+│   └── chime.wav              # Default doorbell chime (generated at Docker build)
 └── static/                  # Web UI frontend (HTML, CSS, JS)
     └── index.html
 ```
@@ -236,7 +236,7 @@ sequenceDiagram
 
 ## Runtime
 
-- **Python >= 3.11** (Docker image: `python:3.14.5-slim`)
+- **Python >= 3.11** (Docker image: `python:3.14-slim`)
 - **Poetry** for dependency management
 - **Docker** for deployment on Mini PC (WSL2), port mapping for LAN access
 
@@ -366,7 +366,7 @@ class AudioConfig(BaseModel):
     enabled: bool = False
     mode: str = "tts"              # "tts", "chime", or "none"
     message: str = "{name} llegó a casa"  # template, supports {name}
-    chime: str = "chime.mp3"       # filename in sounds/ (when mode="chime")
+    chime: str = "chime.wav"       # filename in sounds/ (when mode="chime")
     fallback_name: str = "Alguien" # used when {name} can't be resolved
 
 class EventRuleConfig(BaseModel):
@@ -395,11 +395,11 @@ class HomeKitConfig(BaseModel):
     enabled: bool = False
     setup_code: str = ""          # auto-generated if empty
     persist_dir: str = ".homekit" # HAP-python state directory
-    address: str = ""             # LAN IP to bind/advertise; falls back to get_public_host()
 
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
+    public_host: str = ""         # LAN IP for externally-reachable URLs (callback + HAP + audio); auto-detected when empty
 
 class AppConfig(BaseModel):
     nuki: NukiConfig = NukiConfig()
@@ -449,6 +449,7 @@ Serves the configuration page and provides API endpoints for it.
 | POST | `/api/hue/pair` | Pair with Hue Bridge (validates existing key first) |
 | GET | `/api/hue/lights` | List available Hue lights |
 | GET | `/api/hue/groups` | List available Hue groups |
+| GET | `/api/homekit/qr` | HomeKit setup code, pairing status & QR (SVG) |
 | POST | `/api/test/event/{type}` | Fire all channels for a specific event rule |
 | GET | `/api/status` | Service status, last event |
 | POST | `/api/pause` | Deregister Nuki callback (keep service running) |
@@ -487,11 +488,11 @@ Uses `httpx.AsyncClient` for non-blocking HTTP calls.
 Generates or selects audio files for playback:
 
 - **`render_message(template, context)`** — Replaces `{name}` (and future variables) in the template. Falls back to `fallback_name` if `name` is not available.
-- **`get_audio(audio_config: AudioConfig, context: dict) -> Path`** — Returns path to an `.mp3` file:
-  - `mode="tts"`: renders template → generates via `gTTS`, caches by rendered message hash.
-  - `mode="chime"`: returns `sounds/{chime_filename}`.
+- **`get_audio(audio_config: AudioConfig, context: dict) -> Path`** — Returns path to an audio file:
+  - `mode="tts"`: renders template → generates an `.mp3` via `gTTS`, caches by rendered message hash.
+  - `mode="chime"`: returns `sounds/{chime_filename}` (default `chime.wav`).
 - TTS cache is in-memory (same rendered message doesn’t regenerate).
-- Bundled chimes ship in `nukiblinker/sounds/` (included in Docker image).
+- The default `chime.wav` is generated at Docker build time by `script/generate_chime.py` (pure-stdlib, no committed binary); the `sounds/` dir ships only a `.gitkeep` in git.
 
 ### Chromecast Client (`chromecast_client.py`)
 
@@ -797,12 +798,20 @@ All tests run via `make test` on the Mac. Real-device testing via `make runLocal
 | `tests/test_notifier.py` | Per-event rule channel dispatch, failure isolation |
 | `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf/pychromecast) |
 | `tests/test_lifecycle.py` | Startup registration, graceful shutdown deregistration, pause/resume |
+| `tests/test_nuki_web_client.py` | Nuki Web API activity-log client (mock httpx) |
+| `tests/test_event_validator.py` | Event timestamp validation (delay threshold, missing/future timestamps) |
+| `tests/test_event_log.py` | Event logging, retention, device filtering, CSV export (BOM, tz, Date/Time) |
+| `tests/test_night_mode.py` | Night-mode window detection, rule adjustment (audio off, dimmed lights) |
+| `tests/test_deduplication.py` | Duplicate suppression window and key discrimination |
+| `tests/test_new_services_extra.py` | Extra edge cases for validator / log / night mode |
+| `tests/test_web_ui_new_endpoints.py` | Event log, devices, export, and per-feature config endpoints |
+| `tests/test_integration_event_pipeline.py` | End-to-end callback pipeline (validate → classify → dedup → dispatch → log) |
 
 ## Docker
 
 ```dockerfile
-FROM python:3.14.5-slim
-# Poetry install → copy source → EXPOSE 8080 → ENTRYPOINT
+FROM python:3.14-slim
+# Poetry install → copy source → generate chime.wav → EXPOSE 8080 → ENTRYPOINT
 ```
 
 ### Production deployment (Mini PC)
