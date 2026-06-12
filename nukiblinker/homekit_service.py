@@ -179,9 +179,9 @@ class HomeKitService:
             payload_str = payload.decode() if isinstance(payload, bytes) else payload
             uri = f"X-HM://{payload_str:>09}{setup_id}"
             qr = pyqrcode.create(uri, error="M")
-            svg_buffer = io.StringIO()
+            svg_buffer = io.BytesIO()
             qr.svg(svg_buffer, scale=4, xmldecl=False, omithw=True)
-            return svg_buffer.getvalue()
+            return svg_buffer.getvalue().decode()
         except Exception as exc:
             import traceback
             logger.warning("QR code generation failed: %s", exc)
