@@ -49,7 +49,6 @@ class BlinkConfig(BaseModel):
 
 class SpeakersConfig(BaseModel):
     chromecast: list[str] = Field(default_factory=list)
-    airplay: list[str] = Field(default_factory=list)
     volume: float = 0.5
 
 
@@ -232,8 +231,6 @@ def summarize_config(config: AppConfig) -> str:
         parts.append("hue=<not configured>")
     if config.speakers.chromecast:
         parts.append(f"chromecast={len(config.speakers.chromecast)} speakers")
-    if config.speakers.airplay:
-        parts.append(f"airplay={len(config.speakers.airplay)} speakers")
     if config.homekit.enabled:
         parts.append("homekit=enabled")
     return ", ".join(parts)

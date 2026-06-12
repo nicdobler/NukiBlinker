@@ -1,6 +1,6 @@
 # NukiBlinker
 
-Reacts to Nuki doorbell and Smart Lock events with configurable notifications: Hue light blinks, voice announcements on Google Nest and Apple HomePod, and Apple HomeKit doorbell push notifications.
+Reacts to Nuki doorbell and Smart Lock events with configurable notifications: Hue light blinks, voice announcements on Google Nest, and Apple HomeKit doorbell push notifications.
 
 ## Features
 
@@ -8,7 +8,7 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Per-event rules**: each event gets its own blink pattern, audio, and HomeKit toggle
 - **Personalized announcements**: "{name} llegó a casa" via Nuki activity log
 - **Hue light blinks**: alert mode (built-in 15s) or custom (color, flash count, interval)
-- **Voice announcements**: TTS via gTTS on Google Nest (Chromecast) and Apple HomePod (AirPlay 2)
+- **Voice announcements**: TTS via gTTS on Google Nest (Chromecast)
 - **Chime sounds**: bundled audio files for door-opened events
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
@@ -17,7 +17,7 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Optional Nuki Web API**: resolve real user names and action triggers from the cloud activity log (read-only)
 - **Night mode**: time-based notification adjustments (no audio, dimmer lights)
 - **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules, event log viewer
-- **Auto-discovery**: Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers
+- **Auto-discovery**: Nuki Bridge, Hue Bridge, and Chromecast speakers
 - **Graceful lifecycle**: shutdown deregisters Nuki callback, pause/resume via web UI
 
 ## Prerequisites
@@ -25,7 +25,9 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Nuki Opener** and/or **Smart Lock** connected to a **Nuki Bridge**
 - **Philips Hue Bridge** on the same LAN
 - **Docker** (recommended), or **Python >= 3.11** + [Poetry](https://python-poetry.org/)
-- Optional: Google Nest / Chromecast speakers, Apple HomePod
+- Optional: Google Nest / Chromecast speakers
+
+> **Note**: Apple HomePod / AirPlay audio output was removed in v0.4.x (HomePod RTSP setup timed out unreliably). HomePod owners still get the ring via the HomeKit doorbell notification.
 
 ## Quick Start
 
@@ -64,7 +66,7 @@ Go to the **Hue** tab.
 
 Go to the **Speakers** tab.
 
-1. Click **Discover** under Chromecast or AirPlay to find speakers on the network.
+1. Click **Discover** under Chromecast to find speakers on the network.
 2. Click on a speaker to add it, or type names manually (one per line).
 3. Adjust the **Volume** slider.
 4. Click **Save**.
@@ -100,7 +102,7 @@ The web UI provides a tabbed interface covering all configuration:
 | **Status** | Pause/resume, test events, server host/port |
 | **Nuki** | Bridge connection, network discovery, callback registration, device filter (opener/lock ID) |
 | **Hue** | Bridge connection, network discovery, guided pairing (button press → pair), light & group selection |
-| **Speakers** | Chromecast & AirPlay names, network discovery, volume slider |
+| **Speakers** | Chromecast names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |
 | **Events** | Per-event blink (alert/custom HSB), audio (TTS/chime), HomeKit toggle |
 | **Event Log** | View event history, export CSV, clear log |
@@ -139,7 +141,7 @@ See `config.example.yaml` for all options. Key sections:
 
 - **nuki** — Bridge IP, port, API token, optional opener/lock ID filters, optional Web API token (cloud name/trigger resolution)
 - **hue** — Bridge IP, API key, light/group IDs
-- **speakers** — Chromecast and AirPlay speaker names, volume
+- **speakers** — Chromecast speaker names, volume
 - **homekit** — Enable/disable, setup code
 - **events** — Per-event rules (ring, ring_to_open, door_opened)
 - **event_validation** — Timestamp validation settings
@@ -203,7 +205,7 @@ nuki:
 | `/api/config` | GET/PUT | Read/write full configuration |
 | `/api/discover/nuki` | GET | Discover Nuki Bridges on LAN |
 | `/api/discover/hue` | GET | Discover Hue Bridges on LAN |
-| `/api/discover/speakers` | GET | Discover Chromecast & AirPlay speakers |
+| `/api/discover/speakers` | GET | Discover Chromecast speakers |
 | `/api/nuki/pair` | POST | Register callback on Nuki Bridge |
 | `/api/nuki/devices` | GET | List Nuki devices |
 | `/api/nuki/callbacks` | GET | List registered callbacks |
@@ -321,7 +323,7 @@ Copy the `username` value into `config.yaml` under `hue.api_key`.
 
 ### Speakers not found (discovery returns empty)
 
-Speaker discovery relies on **mDNS/multicast** (zeroconf for Chromecast, pyatv for AirPlay). If the Discover button returns empty:
+Speaker discovery relies on **mDNS/multicast** (zeroconf for Chromecast). If the Discover button returns empty:
 
 - **Verify host networking**: `docker inspect nukiblinker --format '{{.HostConfig.NetworkMode}}'` should return `host`.
 - **Speakers are on the same LAN** and powered on.
@@ -335,7 +337,7 @@ Speaker discovery relies on **mDNS/multicast** (zeroconf for Chromecast, pyatv f
 
 If logs show `"fail to bind 5353"` or `"Address already in use"`, another process on the host already occupies the mDNS port. This blocks both discovery AND name-based playback.
 
-**Immediate fix**: Enter speaker **IP addresses** instead of names. IP-based Chromecast connections use `get_chromecast_from_host()` and AirPlay uses unicast scanning — neither requires port 5353.
+**Immediate fix**: Enter speaker **IP addresses** instead of names. IP-based Chromecast connections use `get_chromecast_from_host()`, which does not require port 5353.
 
 **Root fix** — free port 5353 so HomeKit, discovery, and name-based playback all work:
 
@@ -376,7 +378,7 @@ On Windows with WSL2, `network_mode: host` gives the container access to the WSL
    sudo apt install avahi-utils
    avahi-browse -a -t
    ```
-   If this shows your Chromecast/HomePod devices, discovery will work from Docker too.
+   If this shows your Chromecast devices, discovery will work from Docker too.
 
 3. **NAT mode (default WSL2)** does NOT forward multicast. If you can't switch to mirrored mode, speakers won't be discoverable from inside the container. Consider running NukiBlinker directly on the host instead of Docker.
 
@@ -437,5 +439,5 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 ### Tech Stack
 
 - **Python 3.14** · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
-- **pychromecast** · **pyatv** · **gTTS** · **HAP-python** · **zeroconf**
+- **pychromecast** · **gTTS** · **HAP-python** · **zeroconf**
 - **Black** · **flake8** · **pytest** · **pytest-asyncio**

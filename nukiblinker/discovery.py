@@ -1,4 +1,4 @@
-"""Auto-discovery for Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers."""
+"""Auto-discovery for Nuki Bridge, Hue Bridge, and Chromecast speakers."""
 
 from __future__ import annotations
 
@@ -50,16 +50,4 @@ async def discover_chromecast_speakers() -> list[dict]:
         return await client.list_speakers()
     except Exception:
         logger.warning("Chromecast discovery failed", exc_info=True)
-        return []
-
-
-async def discover_airplay_speakers() -> list[dict]:
-    """Discover AirPlay 2 / HomePod speakers on LAN."""
-    try:
-        from nukiblinker.airplay_client import AirPlayClient
-
-        client = AirPlayClient()
-        return await client.list_speakers()
-    except Exception:
-        logger.warning("AirPlay discovery failed", exc_info=True)
         return []

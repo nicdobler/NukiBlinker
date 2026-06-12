@@ -2,7 +2,7 @@
 
 ## Vision
 
-A lightweight, always-on service that reacts to Nuki smart lock events — blinking Philips Hue lights, playing chimes and announcements on Google Nest and HomePod speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.
+A lightweight, always-on service that reacts to Nuki smart lock events — blinking Philips Hue lights, playing chimes and announcements on Google Nest speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.
 
 ## Problem
 
@@ -10,7 +10,7 @@ Nuki devices (Opener + Smart Lock) handle doorbell and door events but have no b
 
 ## Users
 
-Individual homeowner running a Nuki Opener and/or Nuki Smart Lock, plus one or more of: Philips Hue Bridge, Google Nest speakers, Apple HomePod, Apple HomeKit devices — all on the same local network.
+Individual homeowner running a Nuki Opener and/or Nuki Smart Lock, plus one or more of: Philips Hue Bridge, Google Nest speakers, Apple HomeKit devices — all on the same local network.
 
 ## How It Works (User Perspective)
 
@@ -51,7 +51,6 @@ The Nuki Bridge does not retry or error when a callback URL is unreachable — i
 | Nuki Smart Lock | Detects door open/lock/unlock (deviceType=0) | Via Nuki Bridge |
 | Philips Hue Bridge | Controls lights | [Hue CLIP API v2](https://developers.meethue.com/develop/hue-api-v2/) / v1 REST |
 | Google Nest / Home | Chimes and voice announcements | Chromecast protocol (`pychromecast`) + TTS (`gTTS`) |
-| Apple HomePod | Chimes and voice announcements | AirPlay 2 (`pyatv`) + TTS (`gTTS`) |
 | Apple HomeKit | Doorbell notifications on iPhone/iPad/Watch/Mac | HomeKit Accessory Protocol (`HAP-python`) |
 
 ## Event Types
@@ -119,21 +118,21 @@ All enabled channels fire in parallel. Each event rule selects which channels to
 | Channel | Type | What happens | Required hardware |
 |---|---|---|---|
 | **Hue Lights** | Visual | Lights blink (per-event pattern) | Hue Bridge |
-| **Audio** | Sound | Chime or TTS message on speakers | Google Nest (Chromecast) and/or HomePod (AirPlay) |
+| **Audio** | Sound | Chime or TTS message on speakers | Google Nest (Chromecast) |
 | **Apple HomeKit** | Push notification | Native doorbell alert on all Apple devices | iPhone/iPad/Watch/Mac |
 
 ### Audio (Chimes & Announcements)
 
-Plays sounds on **Google Nest** and/or **Apple HomePod** speakers. Two audio modes:
+Plays sounds on **Google Nest** speakers. Two audio modes:
 
 - **Chime** (`mode: chime`): Plays a bundled chime sound (pleasant doorbell tone). No internet required.
 - **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet. Message is configurable per event rule and supports `{name}` template variable for personalized announcements.
 
 Speaker support:
 - **Google Nest / Home**: Uses Chromecast protocol via `pychromecast`. Speakers auto-discovered on LAN.
-- **Apple HomePod**: Uses AirPlay 2 via `pyatv`. Speakers auto-discovered on LAN.
 - Volume can be set independently of the speaker's current volume.
-- Both speaker types can be active simultaneously.
+
+> **Note**: Apple HomePod / AirPlay output was removed in v0.4.x. HomePod owners still receive the ring via the HomeKit doorbell notification (which plays the built-in chime on the HomePod).
 
 Bundled chime sounds are stored in `nukiblinker/sounds/`. Future: user-uploadable custom sounds.
 
@@ -168,7 +167,7 @@ A simple, single-page web interface for configuring NukiBlinker.
    - Light/group picker — shows discovered lights and groups with checkboxes.
 
 3. **Speakers**
-   - Speaker picker — shows auto-discovered Google Nest (Chromecast) and HomePod (AirPlay) devices with checkboxes.
+   - Speaker picker — shows auto-discovered Google Nest (Chromecast) devices with checkboxes.
    - Volume override (slider).
    - "Test announce" button.
 
@@ -195,7 +194,6 @@ A simple, single-page web interface for configuring NukiBlinker.
 - Nuki Bridge: discovered via Nuki Cloud discovery endpoint (`https://api.nuki.io/discover/bridges`) or local UDP broadcast.
 - Hue Bridge: discovered via mDNS (`_hue._tcp.local`) or Philips discovery endpoint (`https://discovery.meethue.com`).
 - Google Nest / Chromecast speakers: discovered via `pychromecast` (mDNS/zeroconf).
-- Apple HomePod / AirPlay speakers: discovered via `pyatv` (mDNS/zeroconf).
 - If auto-discovery finds a device, the IP / name is pre-filled. User can always override manually.
 
 ### Config file (`config.yaml`)
@@ -203,7 +201,7 @@ A simple, single-page web interface for configuring NukiBlinker.
 Key settings:
 - **Nuki Bridge**: IP, port, API token, optional Opener ID filter.
 - **Hue Bridge**: IP, API key, list of light IDs and/or group IDs to blink.
-- **Speakers**: list of speaker names/IPs (Chromecast + AirPlay), volume.
+- **Speakers**: list of Chromecast speaker names/IPs, volume.
 - **HomeKit**: enabled flag, pairing state/code.
 - **Nuki Smart Lock**: optional Smart Lock ID filter.
 - **Event rules**: per-event config (channels enabled, blink pattern, audio mode/message).
@@ -216,7 +214,7 @@ Key settings:
 2. **Event classification** — Ring, Ring to open, and Door opened are correctly distinguished and routed to the matching rule.
 3. **Light blink** — Configured Hue lights blink with the per-event pattern within 1 second of receiving the callback.
 4. **State restore** — After a custom blink sequence, lights return to their exact previous state (on/off, brightness, color).
-5. **Audio** — Chime or TTS plays on selected Google Nest and/or HomePod speakers within 2 seconds.
+5. **Audio** — Chime or TTS plays on selected Google Nest speakers within 2 seconds.
 6. **Person identification** — For ring-to-open and door-opened events, the user's name is resolved from the Nuki activity log and used in TTS templates.
 7. **HomeKit** — Doorbell notification appears on all paired Apple devices within 2 seconds.
 8. **Per-event rules** — Each event type has independently configurable channels, blink pattern, and audio mode/message.
@@ -225,7 +223,7 @@ Key settings:
 11. **Idempotent startup** — Multiple restarts do not create duplicate callbacks on the Nuki Bridge.
 12. **Config validation** — Invalid config is rejected at startup with a clear error message.
 13. **Web UI** — Config page is accessible from private-network IPs (localhost, LAN). All settings are editable and persist to `config.yaml`.
-14. **Auto-discovery** — Nuki Bridge, Hue Bridge, Chromecast speakers, and AirPlay speakers are auto-discovered when available.
+14. **Auto-discovery** — Nuki Bridge, Hue Bridge, and Chromecast speakers are auto-discovered when available.
 15. **Test buttons** — Per-event "Test" button fires all enabled channels for that rule without a real doorbell event.
 16. **Graceful shutdown** — `docker compose down` deregisters the Nuki callback before exiting.
 17. **Pause/Resume** — Web UI pause button deregisters callback without stopping the service; resume re-registers it.

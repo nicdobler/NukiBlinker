@@ -86,7 +86,6 @@ class TestEventPipelineIntegration:
         # Mock other clients
         clients.hue = AsyncMock()
         clients.chromecast = AsyncMock()
-        clients.airplay = AsyncMock()
         clients.homekit = AsyncMock()
         clients.nuki = AsyncMock()
         clients.nuki_web = None  # Web API not configured in tests

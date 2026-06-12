@@ -48,12 +48,8 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients, context: dic
             audio_url = _build_audio_url(config, audio_path.name)
             logger.info("Audio URL for speakers: %s", audio_url)
             chromecast = getattr(clients, "chromecast", None)
-            airplay = getattr(clients, "airplay", None)
             if config.speakers.chromecast and chromecast is not None:
                 tasks.append(asyncio.ensure_future(_trigger_chromecast(chromecast, config.speakers, audio_url)))
-            if config.speakers.airplay and airplay is not None:
-                # AirPlay uses pyatv stream_file — needs local path, not HTTP URL
-                tasks.append(asyncio.ensure_future(_trigger_airplay(airplay, config.speakers, str(audio_path))))
 
     # HomeKit
     if rule.homekit and config.homekit.enabled:
@@ -103,18 +99,10 @@ async def notify_with_actions(
             audio_url = _build_audio_url(config, audio_path.name)
             logger.info("Audio URL for speakers: %s", audio_url)
             chromecast = getattr(clients, "chromecast", None)
-            airplay = getattr(clients, "airplay", None)
             if config.speakers.chromecast and chromecast is not None:
                 tasks.append(asyncio.ensure_future(
                     _trigger_chromecast_with_result(
                         chromecast, config.speakers, audio_url, actions
-                    )
-                ))
-            if config.speakers.airplay and airplay is not None:
-                # AirPlay uses pyatv stream_file — needs local path, not HTTP URL
-                tasks.append(asyncio.ensure_future(
-                    _trigger_airplay_with_result(
-                        airplay, config.speakers, str(audio_path), actions
                     )
                 ))
 
@@ -150,11 +138,6 @@ async def _trigger_chromecast(cc_client, speakers_config, audio_url) -> None:
     await cc_client.play(speakers_config.chromecast, audio_url, speakers_config.volume)
 
 
-async def _trigger_airplay(ap_client, speakers_config, audio_url) -> None:
-    """Play audio on AirPlay speakers."""
-    await ap_client.play(speakers_config.airplay, audio_url, speakers_config.volume)
-
-
 async def _trigger_homekit(hk_service) -> None:
     """Fire HomeKit doorbell notification."""
     await hk_service.trigger_ring()
@@ -184,16 +167,6 @@ async def _trigger_chromecast_with_result(cc_client, speakers_config, audio_url,
         actions.append(f"Audio played on Chromecast: {', '.join(speakers_config.chromecast)}")
     except Exception as e:
         actions.append(f"Chromecast failed: {str(e)}")
-        raise
-
-
-async def _trigger_airplay_with_result(ap_client, speakers_config, audio_url, actions: list[str]) -> None:
-    """Play audio on AirPlay speakers and add action result."""
-    try:
-        await ap_client.play(speakers_config.airplay, audio_url, speakers_config.volume)
-        actions.append(f"Audio played on AirPlay: {', '.join(speakers_config.airplay)}")
-    except Exception as e:
-        actions.append(f"AirPlay failed: {str(e)}")
         raise
 
 

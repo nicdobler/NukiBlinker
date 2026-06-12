@@ -15,7 +15,6 @@ hue:
 
 speakers:
   chromecast: []                   # speaker names or IP addresses
-  airplay: []                      # speaker names or IP addresses
   volume: 0.5                      # 0.0 - 1.0
 
 homekit:
