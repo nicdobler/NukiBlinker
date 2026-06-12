@@ -171,7 +171,8 @@ class HomeKitService:
             if self._driver and hasattr(self._driver, "state"):
                 sid = getattr(self._driver.state, "setup_id", None)
                 if sid:
-                    setup_id = sid
+                    # Handle both bytes and string (driver state may return either)
+                    setup_id = sid.decode() if isinstance(sid, bytes) else sid
 
             payload = base36.dumps(int(digits) | (category << 31))
             # base36.dumps() returns bytes in some versions, string in others
