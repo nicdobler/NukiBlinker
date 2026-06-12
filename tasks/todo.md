@@ -136,7 +136,7 @@
 - [x] Docs: CHANGELOG updated
 - [x] Follow-up #91: `base36.dumps()` returns bytes in some versions, need to decode to string
 - [x] Follow-up #92: `setup_id` from driver state can also be bytes, need to decode
-- [ ] Follow-up #93: Add debug traceback logging to identify exact source of persistent bytes error
+- [x] Follow-up #93: pyqrcode writes bytes via `write_bytes()`, need `BytesIO` not `StringIO`
 - [ ] Validate on Mac (`make test` + `make lint`)
 - [ ] Merge PR, close issue #89, #91, #92, and #93
 
