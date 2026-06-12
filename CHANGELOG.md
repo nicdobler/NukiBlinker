@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- CI failure reporting now keeps a single issue per branch (deduplicated via a hidden marker) instead of opening a new issue on every failing commit, and auto-closes that issue when CI goes green again.
+
 ### Fixed
 - **#97**: A single real interaction fired multiple notifications. Opener `state == 1` ("online") was misclassified as a ring — rings are now detected from `ringactionState`/`ringactionTimestamp`. Added event deduplication (default 120 s window) that collapses the burst of callbacks one interaction emits while still letting a genuine second ring through.
 - **#96**: Event-log CSV export now opens cleanly in Excel (UTF-8 BOM + `sep=,` hint), shows timestamps in a configurable local timezone split into `Date`/`Time` columns, and can be filtered by device.
