@@ -23,6 +23,217 @@ nukiblinker/
     └── index.html
 ```
 
+## Architecture Diagrams
+
+### Component Diagram
+
+External devices/services and the internal modules that talk to them. `server.py`
+handles the inbound Nuki callback pipeline; `web_ui.py` serves the SPA and config
+API; the per-integration clients live in the `Clients` container.
+
+```mermaid
+flowchart TB
+    subgraph External["External Systems / Devices"]
+        Visitor([Visitor])
+        NukiBridge[Nuki Bridge<br/>HTTP API]
+        NukiWeb[Nuki Web API<br/>api.nuki.io]
+        HueBridge[Philips Hue Bridge<br/>v1 REST]
+        Chromecast[Google Nest /<br/>Chromecast speakers]
+        Apple[Apple Home devices<br/>HomeKit]
+        Browser[LAN Browser]
+    end
+
+    subgraph App["NukiBlinker (FastAPI process)"]
+        direction TB
+        Server[server.py<br/>callback + health + audio]
+        WebUI[web_ui.py<br/>config API + SPA]
+        Router[event_router.py<br/>classify + dispatch]
+        Notifier[notifier.py<br/>channel orchestration]
+        Validator[event_validator.py]
+        Dedup[deduplication.py]
+        Night[night_mode.py]
+        Log[event_log.py]
+        Audio[audio.py<br/>TTS + chime]
+        Config[config.py<br/>Pydantic + YAML]
+        Discovery[discovery.py]
+
+        subgraph ClientsBox["Clients container"]
+            NukiC[nuki_client.py]
+            NukiWC[nuki_web_client.py]
+            HueC[hue_client.py]
+            CastC[chromecast_client.py]
+            HKC[homekit_service.py]
+        end
+    end
+
+    Visitor -->|rings| NukiBridge
+    NukiBridge -->|POST /nuki/callback| Server
+    Browser -->|/ + /api/*| WebUI
+
+    Server --> Validator
+    Server --> Dedup
+    Server --> Router
+    Server --> Log
+    Server --> Night
+    Router --> Notifier
+    Router --> NukiC
+    Router --> NukiWC
+    Notifier --> Audio
+    Notifier --> HueC
+    Notifier --> CastC
+    Notifier --> HKC
+
+    WebUI --> Config
+    WebUI --> Discovery
+    WebUI --> NukiC
+    WebUI --> HueC
+    WebUI --> CastC
+    WebUI --> HKC
+    WebUI --> Log
+
+    NukiC -->|callback mgmt + /log| NukiBridge
+    NukiWC -->|activity log| NukiWeb
+    HueC -->|light control| HueBridge
+    CastC -->|cast audio URL| Chromecast
+    HKC -->|doorbell event| Apple
+    Config -->|read/write| YAML[(config.yaml)]
+    Server -->|/audio/*| Chromecast
+```
+
+### Class Diagram — Clients & Services
+
+The `Clients` dataclass (`__main__.py`) is a lazy container instantiated by
+`_build_clients()`. Each attribute is populated only when the relevant config is
+present (e.g. `hue` is `None` until a Hue bridge IP + key are configured). The
+processing services (`EventValidator`, `EventLog`, `NightMode`, `Deduplicator`)
+are always created.
+
+```mermaid
+classDiagram
+    class Clients {
+        +NukiClient nuki
+        +NukiWebClient nuki_web
+        +HueClient hue
+        +ChromecastClient chromecast
+        +HomeKitService homekit
+        +EventValidator event_validator
+        +EventLog event_log
+        +NightMode night_mode
+        +Deduplicator deduplicator
+    }
+
+    class NukiClient {
+        +register_callback(url)
+        +list_callbacks()
+        +remove_callback(id)
+        +list_devices()
+        +get_last_log(nuki_id)
+    }
+    class NukiWebClient {
+        +get_recent_log(smartlock_id, limit)
+    }
+    class HueClient {
+        +check_connection()
+        +trigger_alert(lights, groups)
+        +trigger_custom_blink(lights, groups, cfg)
+        +list_lights()
+        +list_groups()
+        +pair()
+    }
+    class ChromecastClient {
+        +play(speakers, url, volume)
+        +list_speakers()
+    }
+    class HomeKitService {
+        +start()
+        +stop()
+        +trigger_ring()
+        +get_setup_code()
+        +is_paired()
+    }
+    class EventValidator {
+        +int max_delay_seconds
+        +validate_event(payload) ValidationResult
+    }
+    class EventLog {
+        +log_event(payload, type, actions, result)
+        +get_recent_events(limit, offset)
+        +export_to_csv(device_id, tz)
+        +get_devices()
+    }
+    class NightMode {
+        +is_night_time() bool
+        +apply_night_mode(rule) EventRuleConfig
+    }
+    class Deduplicator {
+        +bool enabled
+        +int window_seconds
+        +is_duplicate(payload, type) bool
+    }
+
+    Clients o-- NukiClient
+    Clients o-- NukiWebClient
+    Clients o-- HueClient
+    Clients o-- ChromecastClient
+    Clients o-- HomeKitService
+    Clients o-- EventValidator
+    Clients o-- EventLog
+    Clients o-- NightMode
+    Clients o-- Deduplicator
+```
+
+### Callback Processing Pipeline
+
+End-to-end interaction for an inbound Nuki callback as implemented in
+`server.py`. The Bridge always gets a fast 200; actual notification dispatch
+runs in a FastAPI `BackgroundTask` so the response is never blocked.
+
+```mermaid
+sequenceDiagram
+    participant NB as Nuki Bridge
+    participant SV as server.py
+    participant EV as EventValidator
+    participant ER as event_router
+    participant DD as Deduplicator
+    participant NM as NightMode
+    participant NT as notifier
+    participant EL as EventLog
+
+    NB->>SV: POST /nuki/callback
+    alt paused
+        SV-->>NB: 200 {paused}
+    else active
+        SV->>EV: validate_event(payload)
+        EV-->>SV: ValidationResult
+        alt invalid (too old)
+            SV->>EL: log_event(Rejected)
+            SV-->>NB: 200 {rejected}
+        else valid
+            SV->>ER: classify(payload, config)
+            ER-->>SV: event_type or None
+            alt None
+                SV->>EL: log_event(Ignored)
+                SV-->>NB: 200 {ignored}
+            else duplicate
+                SV->>DD: is_duplicate(payload, type)
+                DD-->>SV: true
+                SV->>EL: log_event(Suppressed)
+                SV-->>NB: 200 {duplicate}
+            else dispatch
+                SV-->>NB: 200 {ok, event}
+                Note over SV: BackgroundTask
+                SV->>NM: apply_night_mode(rule)
+                NM-->>SV: effective rule
+                SV->>ER: dispatch_with_actions()
+                ER->>NT: notify_with_actions()
+                NT-->>ER: actions[]
+                ER-->>SV: actions[]
+                SV->>EL: log_event(actions)
+            end
+        end
+    end
+```
+
 ## Runtime
 
 - **Python >= 3.11** (Docker image: `python:3.14.5-slim`)
