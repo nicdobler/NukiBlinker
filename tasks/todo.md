@@ -209,3 +209,17 @@ Decisions:
 - [x] Regression test (chars kwarg, configure_char, is_primary_service)
 - [x] Docs: tech-spec, CHANGELOG; lesson captured in lessons.md
 - [ ] Validate on Mac, merge, deploy, clear ./homekit/*, re-pair, verify accessory persists in Home
+
+---
+
+## Fix #101 AirPlay "'set' object can't be awaited"
+
+**Branch**: `fix/101-airplay-close-not-awaitable` | **PR**: pending
+
+- [x] Root cause: `await atv.close()` in airplay_client.py — pyatv `AppleTV.close()` is sync and returns `Set[asyncio.Task]`, not awaitable. The TypeError masked the real playback error (HomePod SETUP TimeoutError).
+- [x] Fix: call `atv.close()` without `await`
+- [x] Regression test `test_close_is_not_awaited_regression` (close returns a set); fixed two existing tests that asserted `close` was awaited
+- [x] CHANGELOG updated under [Unreleased]
+- [ ] Validate on Mac (`make test` + `make lint`)
+- [ ] Merge PR, close issue #101
+- Note: #97 (multiple events) left out of scope per user decision — separate effort.

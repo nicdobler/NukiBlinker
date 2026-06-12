@@ -25,19 +25,22 @@ class TestPlay:
         dev = _make_device("HomePod")
         atv = AsyncMock()
         atv.stream.stream_file = AsyncMock()
+        # pyatv's AppleTV.close() is synchronous and returns a set of tasks (#101).
+        atv.close = MagicMock(return_value=set())
 
         with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
             mock_pyatv.scan = AsyncMock(return_value=[dev])
             mock_pyatv.connect = AsyncMock(return_value=atv)
             await client.play(["HomePod"], "/tmp/test.mp3", 0.5)
             atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
-            atv.close.assert_awaited_once()
+            atv.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_plays_on_speaker_by_ip(self, client):
         dev = _make_device("HomePod", "10.0.0.10")
         atv = AsyncMock()
         atv.stream.stream_file = AsyncMock()
+        atv.close = MagicMock(return_value=set())
 
         with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
             mock_pyatv.scan = AsyncMock(return_value=[dev])
@@ -48,7 +51,27 @@ class TestPlay:
             call_kwargs = mock_pyatv.scan.call_args
             assert call_kwargs.kwargs.get("hosts") == ["10.0.0.10"]
             atv.stream.stream_file.assert_called_once_with("/tmp/test.mp3")
-            atv.close.assert_awaited_once()
+            atv.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_is_not_awaited_regression(self, client):
+        """Regression for #101: pyatv's close() returns a set, not a coroutine.
+
+        Awaiting it raised "TypeError: 'set' object can't be awaited", which
+        propagated out of play() and masked the real playback error.
+        """
+        dev = _make_device("HomePod")
+        atv = AsyncMock()
+        atv.stream.stream_file = AsyncMock()
+        # Faithfully model pyatv: close() is a plain method returning a set.
+        atv.close = MagicMock(return_value={MagicMock()})
+
+        with patch("nukiblinker.airplay_client.pyatv") as mock_pyatv:
+            mock_pyatv.scan = AsyncMock(return_value=[dev])
+            mock_pyatv.connect = AsyncMock(return_value=atv)
+            # Must not raise "'set' object can't be awaited".
+            await client.play(["HomePod"], "/tmp/test.mp3", 0.5)
+            atv.close.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skips_non_matching_speaker(self, client):
