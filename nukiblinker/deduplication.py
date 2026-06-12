@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 from threading import Lock
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from nukiblinker.logging_config import get_logger
 
