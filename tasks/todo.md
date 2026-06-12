@@ -126,7 +126,7 @@
 
 ---
 
-## Fix QR code generation (#89) + follow-up (#91, #92)
+## Fix QR code generation (#89) + follow-up (#91, #92, #93)
 
 **Branch**: `fix/qr-code-generation` | **PR**: #90
 
@@ -136,8 +136,9 @@
 - [x] Docs: CHANGELOG updated
 - [x] Follow-up #91: `base36.dumps()` returns bytes in some versions, need to decode to string
 - [x] Follow-up #92: `setup_id` from driver state can also be bytes, need to decode
+- [ ] Follow-up #93: Add debug traceback logging to identify exact source of persistent bytes error
 - [ ] Validate on Mac (`make test` + `make lint`)
-- [ ] Merge PR, close issue #89, #91, and #92
+- [ ] Merge PR, close issue #89, #91, #92, and #93
 
 ---
 
