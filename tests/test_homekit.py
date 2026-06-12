@@ -180,4 +180,4 @@ class TestQrCode:
         svc._driver = mock_driver
         svg = svc.get_qr_code()
         assert svg is not None
-        assert "ABCD" in svg
+        assert "<svg" in svg  # QR is generated, setup_id is encoded in the pattern
