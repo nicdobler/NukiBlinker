@@ -126,6 +126,19 @@
 
 ---
 
+## Fix QR code generation (#89)
+
+**Branch**: `fix/qr-code-generation` | **PR**: pending
+
+- [x] Root cause: `pyqrcode.svg()` requires a `file` parameter, but code called it without one
+- [x] Fix: Use `io.StringIO()` to capture SVG output as a string
+- [x] Regression tests: `test_generates_svg_string`, `test_uses_setup_id_from_driver_state`
+- [x] Docs: CHANGELOG updated
+- [ ] Validate on Mac (`make test` + `make lint`)
+- [ ] Merge PR, close issue #89
+
+---
+
 ## Fix HomeKit accessory dropped after pairing
 
 **Branch**: `fix/homekit-service-label` | **PR**: pending

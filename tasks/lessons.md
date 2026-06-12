@@ -1,5 +1,9 @@
 # Lessons
 
+## 2026-06-12 — pyqrcode API mismatch
+- **Mistake**: Called `qr.svg(scale=4, xmldecl=False, omithw=True)` without the required `file` parameter. The pyqrcode library's `svg()` method requires a file-like object to write to, not returning a string directly.
+- **Rule**: When using library methods that write to files, check the signature carefully. Use `io.StringIO()` / `io.BytesIO()` to capture output as a string when needed.
+
 ## 2026-06-11 — Lint break pushed from work laptop
 - **Mistake**: Pushed a log line >120 chars; CI lint (flake8 E501) failed on PR #75 (issues #76, #78).
 - **Rule**: On the work laptop (no `make lint` allowed), manually check that new/edited lines stay ≤120 chars before committing — especially long log/f-string lines.

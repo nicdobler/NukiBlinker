@@ -157,6 +157,8 @@ class HomeKitService:
     def get_qr_code(self) -> str | None:
         """Return an SVG QR code for the HomeKit setup URI, or None if unavailable."""
         try:
+            import io
+
             import pyqrcode
             import base36
 
@@ -173,7 +175,9 @@ class HomeKitService:
 
             uri = f"X-HM://{base36.dumps(int(digits) | (category << 31)):>09}{setup_id}"
             qr = pyqrcode.create(uri, error="M")
-            return qr.svg(scale=4, xmldecl=False, omithw=True)
+            svg_buffer = io.StringIO()
+            qr.svg(svg_buffer, scale=4, xmldecl=False, omithw=True)
+            return svg_buffer.getvalue()
         except Exception as exc:
             logger.warning("QR code generation failed: %s", exc)
             return None

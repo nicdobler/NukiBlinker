@@ -161,3 +161,23 @@ class TestIsPaired:
         svc._driver = MagicMock()
         svc._driver.state.paired_clients = {"client1": {}}
         assert svc.is_paired() is True
+
+
+class TestQrCode:
+    def test_generates_svg_string(self, tmp_path):
+        """Regression #89: QR code generation failed due to missing 'file' parameter."""
+        svc = HomeKitService(setup_code="529-41-736", persist_dir=str(tmp_path / "hk"))
+        svg = svc.get_qr_code()
+        assert svg is not None
+        assert "<svg" in svg
+        assert "</svg>" in svg
+
+    def test_uses_setup_id_from_driver_state(self, tmp_path):
+        """QR code should use setup_id from driver state when available."""
+        svc = HomeKitService(setup_code="529-41-736", persist_dir=str(tmp_path / "hk"))
+        mock_driver = MagicMock()
+        mock_driver.state.setup_id = "ABCD"
+        svc._driver = mock_driver
+        svg = svc.get_qr_code()
+        assert svg is not None
+        assert "ABCD" in svg
