@@ -28,6 +28,7 @@ class Clients:
     """Lazy container for all external-service clients."""
 
     nuki: object = None
+    nuki_web: object = None
     hue: object = None
     chromecast: object = None
     airplay: object = None
@@ -35,6 +36,7 @@ class Clients:
     event_validator: object = None
     event_log: object = None
     night_mode: object = None
+    deduplicator: object = None
 
 
 def _build_clients(config: AppConfig) -> Clients:
@@ -45,6 +47,11 @@ def _build_clients(config: AppConfig) -> Clients:
         from nukiblinker.nuki_client import NukiClient
 
         clients.nuki = NukiClient(config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token)
+
+    if config.nuki.web_api_token:
+        from nukiblinker.nuki_web_client import NukiWebClient
+
+        clients.nuki_web = NukiWebClient(config.nuki.web_api_token)
 
     if config.hue.bridge_ip and config.hue.api_key:
         from nukiblinker.hue_client import HueClient
@@ -67,6 +74,7 @@ def _build_clients(config: AppConfig) -> Clients:
             address=get_public_host(config),
         )
 
+    from nukiblinker.deduplication import Deduplicator
     from nukiblinker.event_log import EventLog
     from nukiblinker.event_validator import EventValidator
     from nukiblinker.night_mode import NightMode
@@ -85,6 +93,10 @@ def _build_clients(config: AppConfig) -> Clients:
         end_time=config.night_mode.end_time,
         brightness_factor=config.night_mode.brightness_factor,
         grace_minutes=config.night_mode.grace_minutes,
+    )
+    clients.deduplicator = Deduplicator(
+        window_seconds=config.deduplication.window_seconds,
+        enabled=config.deduplication.enabled,
     )
 
     return clients

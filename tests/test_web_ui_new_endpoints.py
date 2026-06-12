@@ -309,12 +309,15 @@ class TestWebUINewEndpoints:
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/csv; charset=utf-8"
 
-        # Check CSV content
-        csv_content = response.content.decode()
+        # Check CSV content (BOM + sep hint + header + 3 data rows) (#96)
+        csv_content = response.content.decode("utf-8-sig")
+        assert csv_content.startswith("sep=,\r\n")
         lines = csv_content.strip().split('\n')
-        assert len(lines) == 4  # Header + 3 data rows
-        assert "Timestamp" in lines[0]
-        assert "Event Type" in lines[0]
+        assert len(lines) == 5  # sep hint + header + 3 data rows
+        header = lines[1]
+        assert "Date" in header and "Time" in header
+        assert "Timestamp" not in header
+        assert "Event Type" in header
 
     def test_export_event_log_disabled(self, test_client):
         """Test exporting event log when disabled."""
@@ -324,6 +327,34 @@ class TestWebUINewEndpoints:
 
         assert response.status_code == 400
         assert "Event logging is disabled" in response.json()["error"]
+
+    def test_get_event_log_devices(self, test_client, mock_clients):
+        """#96: /events/devices returns the distinct devices seen."""
+        vr = mock_clients.event_validator.validate_event({})
+        mock_clients.event_log.log_event(
+            {"deviceType": 2, "nukiId": 111, "name": "Opener"}, "ring", ["a"], vr)
+        mock_clients.event_log.log_event(
+            {"deviceType": 0, "nukiId": 222, "name": "Lock"}, "door_opened", ["b"], vr)
+
+        response = test_client.get("/api/events/devices")
+        assert response.status_code == 200
+        ids = {d["nukiId"] for d in response.json()["devices"]}
+        assert ids == {111, 222}
+
+    def test_event_log_device_filter(self, test_client, mock_clients):
+        """#96: /events/log?device_id= filters to a single device."""
+        vr = mock_clients.event_validator.validate_event({})
+        mock_clients.event_log.log_event(
+            {"deviceType": 2, "nukiId": 111}, "ring", ["a"], vr)
+        mock_clients.event_log.log_event(
+            {"deviceType": 0, "nukiId": 222}, "door_opened", ["b"], vr)
+
+        response = test_client.get("/api/events/log?device_id=111")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["device_id"] == 111
+        assert data["total_count"] == 1
+        assert all(e["payload"]["nukiId"] == 111 for e in data["events"])
 
     def test_clear_event_log(self, test_client, mock_clients):
         """Test clearing event log."""

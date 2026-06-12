@@ -184,14 +184,15 @@ class TestEventLogExtra:
             processing_time_ms=12.5,
         )
         csv_content = log.export_to_csv()
-        assert "Timestamp" in csv_content
+        # Date/Time columns replace the old UTC Timestamp column (#96)
+        assert "Date" in csv_content and "Time" in csv_content
         assert "ring" in csv_content
         assert "Hue lights blinked" in csv_content
 
     def test_export_to_csv_empty_log(self):
         log = EventLog(max_entries=10, persist_to_file=False)
         csv_content = log.export_to_csv()
-        assert "Timestamp" in csv_content
+        assert "Date" in csv_content and "Time" in csv_content
 
     def test_clear_log(self):
         log = EventLog(max_entries=10, persist_to_file=False)

@@ -8,12 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **#97**: A single real interaction fired multiple notifications. Opener `state == 1` ("online") was misclassified as a ring — rings are now detected from `ringactionState`/`ringactionTimestamp`. Added event deduplication (default 120 s window) that collapses the burst of callbacks one interaction emits while still letting a genuine second ring through.
+- **#96**: Event-log CSV export now opens cleanly in Excel (UTF-8 BOM + `sep=,` hint), shows timestamps in a configurable local timezone split into `Date`/`Time` columns, and can be filtered by device.
 - **#89**: QR code generation failed with "missing required positional argument: 'file'" — now uses `io.StringIO` to capture SVG output as a string
 - HomeKit accessory silently dropped by iOS right after a successful pairing: the `StatelessProgrammableSwitch` now carries `ServiceLabelIndex=1` to disambiguate the two `ProgrammableSwitchEvent` services, and the Doorbell is marked as primary service
 - HomeKit "incorrect setup code": auto-generated setup codes are now persisted in `persist_dir/setup_code` and reused across restarts (previously a new random code was logged on every start while HAP-python kept the original pincode), and generation skips the trivial codes Apple rejects
 - HomeKit pairing failures: accessory category changed from `VIDEO_DOOR_BELL` to `SENSOR` (iOS rejects video doorbells without a camera stream), and the HAP driver now binds/advertises on the LAN IP resolved by `server.public_host` / auto-detect instead of letting zeroconf pick an interface
 
 ### Added
+- Optional **Nuki Web API** integration (`nuki.web_api_token`): when configured, resolves real user names and the action `trigger`/`source` from the cloud activity log (the local bridge cannot identify an anonymous ringer). Read-only — it never opens or locks doors.
+- Event deduplication config (`deduplication.enabled`, `deduplication.window_seconds`).
+- Event-log CSV timezone config (`event_log.timezone`, default `Europe/Madrid`) and device filtering in the Event Log viewer and export. New endpoint `/api/events/devices`; `/api/events/log` and `/api/events/export` accept `?device_id=`.
 - HomeKit accessory now exposes a `StatelessProgrammableSwitch` alongside the Doorbell service, so rings can trigger Home app automations (assign scenes/actions to the button's single press)
 - **#56**: Night mode - configurable quiet hours with reduced notifications (no audio, dimmer lights)
 - **#57**: Event log viewer - comprehensive event history with detailed action tracking and CSV export

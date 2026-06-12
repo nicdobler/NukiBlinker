@@ -2,6 +2,34 @@
 
 ---
 
+## #96 Event log CSV export & #97 multiple events per interaction
+
+**Branch**: `fix/event-log-and-opener-events` | **PR**: _pending_
+
+Context: `docs/nuki-bridge-api-1.13.3.md` confirms the Opener signals a ring via
+`ringactionState`/`ringactionTimestamp`, not `state`. The bridge `/log` cannot
+identify an anonymous visitor — the Nuki Web API can (names + trigger).
+
+- [x] Spec gate: update product-spec & tech-spec (ring detection, dedup, CSV, Web API; amend Cloud-API non-goal)
+- [x] Config: `nuki.web_api_token`, `event_log.timezone`, `deduplication` section
+- [x] #96 CSV export: UTF-8 BOM + `sep=,` hint, local-tz Date/Time columns, device filter
+- [x] #96 Event Log viewer device dropdown + `/api/events/devices`; `?device_id=` on log/export
+- [x] #97 Reclassify Opener ring via `ringactionState` (removed `state==1 → ring`)
+- [x] #97 `Deduplicator` (key includes `ringactionTimestamp` so double rings pass, bursts collapse); wired into callback
+- [x] Optional `NukiWebClient` + `resolve_person` uses it first (name + trigger), bridge `/log` fallback
+- [x] Tests: classify, dedup, web client, CSV (BOM/tz/device), web UI device endpoints/filter, server dedup
+- [x] Docs: README, CHANGELOG, config.example.yaml, specs
+- [ ] Mac/CI: `make test` + `make lint` (not run on work laptop)
+- [ ] Open PR
+
+Decisions:
+- Dedup window default 120 s. Double-ring passthrough achieved by including
+  `ringactionTimestamp` in the dedup key.
+- Physical-button suppression NOT auto-applied: the Web API `trigger` is logged
+  so the user can confirm the real code before any suppression is wired.
+
+---
+
 ## Project Setup
 
 **Branch**: `chore/project-setup`

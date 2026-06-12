@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from threading import Lock
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .event_validator import ValidationResult
 
@@ -108,12 +109,14 @@ class EventLog:
                 event_type, len(actions), validation_result.valid
             )
 
-    def get_recent_events(self, limit: int = 100, offset: int = 0) -> List[EventLogEntry]:
+    def get_recent_events(self, limit: int = 100, offset: int = 0,
+                          device_id: Optional[int] = None) -> List[EventLogEntry]:
         """Return recent events for web UI.
 
         Args:
             limit: Maximum number of entries to return
             offset: Number of entries to skip (for pagination)
+            device_id: Optional nukiId to filter by
 
         Returns:
             List of event log entries
@@ -121,50 +124,96 @@ class EventLog:
         with self._lock:
             # Return entries in reverse chronological order (newest first)
             items = list(reversed(self.entries))
-            return items[offset:offset + limit]
+        if device_id is not None:
+            items = [e for e in items if e.payload.get("nukiId") == device_id]
+        return items[offset:offset + limit]
 
-    def get_event_count(self) -> int:
-        """Get total number of events in log."""
+    def get_event_count(self, device_id: Optional[int] = None) -> int:
+        """Get total number of events in log (optionally filtered by device)."""
         with self._lock:
-            return len(self.entries)
+            if device_id is None:
+                return len(self.entries)
+            return sum(1 for e in self.entries if e.payload.get("nukiId") == device_id)
 
-    def export_to_csv(self) -> str:
-        """Export event log to CSV format.
+    def get_devices(self) -> List[Dict[str, Any]]:
+        """Return the distinct devices seen in the log (for the UI filter).
 
         Returns:
-            CSV string
+            List of {"nukiId", "deviceType", "name"} dicts, newest-seen first.
         """
+        with self._lock:
+            entries = list(reversed(self.entries))
+        devices: Dict[Any, Dict[str, Any]] = {}
+        for entry in entries:
+            nuki_id = entry.payload.get("nukiId")
+            if nuki_id is None or nuki_id in devices:
+                continue
+            devices[nuki_id] = {
+                "nukiId": nuki_id,
+                "deviceType": entry.payload.get("deviceType"),
+                "name": entry.payload.get("name"),
+            }
+        return list(devices.values())
+
+    def export_to_csv(self, device_id: Optional[int] = None,
+                      tz: str = "Europe/Madrid") -> str:
+        """Export event log to CSV format.
+
+        The output is Excel-friendly: it starts with a UTF-8 BOM and an Excel
+        ``sep=,`` hint line so columns and accented characters render correctly
+        even in locales (e.g. Spanish) where Excel defaults to ``;`` separators.
+        Timestamps are converted to the given timezone and split into separate
+        Date (YYYY-MM-DD) and Time (HH:MM:SS) columns (#96).
+
+        Args:
+            device_id: Optional nukiId to filter rows by.
+            tz: IANA timezone name for the Date/Time columns.
+
+        Returns:
+            CSV string (prefixed with BOM + ``sep=,`` hint).
+        """
+        try:
+            zone = ZoneInfo(tz)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            logger.warning("Unknown timezone %r for CSV export — using UTC", tz)
+            zone = timezone.utc
+
         output = io.StringIO()
         writer = csv.writer(output)
 
         # Write header
         writer.writerow([
-            "Timestamp", "Event Type", "Device Type", "Device ID", "State",
-            "Validation Valid", "Validation Delay (s)", "Validation Reason",
-            "Actions", "Processing Time (ms)"
+            "Date", "Time", "Event Type", "Device Type", "Device ID",
+            "Device Name", "State", "Validation Valid", "Validation Delay (s)",
+            "Validation Reason", "Actions", "Processing Time (ms)"
         ])
 
         with self._lock:
-            for entry in reversed(self.entries):  # Newest first
-                # Extract key info from payload
-                device_type = entry.payload.get("deviceType")
-                device_id = entry.payload.get("nukiId")
-                state = entry.payload.get("state")
+            entries = list(reversed(self.entries))  # Newest first
 
-                writer.writerow([
-                    entry.timestamp.isoformat(),
-                    entry.event_type or "Unknown",
-                    device_type,
-                    device_id,
-                    state,
-                    entry.validation_result.valid,
-                    f"{entry.validation_result.delay_seconds:.2f}",
-                    entry.validation_result.reason or "",
-                    "; ".join(entry.actions),
-                    f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms else ""
-                ])
+        for entry in entries:
+            if device_id is not None and entry.payload.get("nukiId") != device_id:
+                continue
 
-        return output.getvalue()
+            local_ts = entry.timestamp.astimezone(zone)
+
+            writer.writerow([
+                local_ts.strftime("%Y-%m-%d"),
+                local_ts.strftime("%H:%M:%S"),
+                entry.event_type or "Unknown",
+                entry.payload.get("deviceType"),
+                entry.payload.get("nukiId"),
+                entry.payload.get("name") or "",
+                entry.payload.get("state"),
+                entry.validation_result.valid,
+                f"{entry.validation_result.delay_seconds:.2f}",
+                entry.validation_result.reason or "",
+                "; ".join(entry.actions),
+                f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms else ""
+            ])
+
+        # BOM + Excel separator hint so Excel (incl. ES locale) parses columns.
+        return "\ufeff" + "sep=,\r\n" + output.getvalue()
 
     def clear_log(self):
         """Clear all events from log."""

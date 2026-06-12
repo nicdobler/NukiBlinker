@@ -419,6 +419,11 @@
                 <button class="btn-secondary btn-sm" onclick="refreshEventLog()">Refresh</button>
                 <button class="btn-secondary btn-sm" onclick="exportEventLog()">Export CSV</button>
                 <button class="btn-secondary btn-sm" onclick="clearEventLog()">Clear Log</button>
+                <label style="font-size:0.8rem; color:#64748b; margin-left:0.5rem;">Device
+                    <select id="eventLogDeviceFilter" class="btn-sm" onchange="refreshEventLog()">
+                        <option value="">All devices</option>
+                    </select>
+                </label>
             </div>
             <div id="eventLogStatus" class="discover-results"></div>
         </div>
@@ -875,8 +880,31 @@ async function saveEventLogConfig() {
 let eventLogOffset = 0;
 const EVENT_LOG_LIMIT = 50;
 
+function getEventLogDeviceId() {
+    const el = document.getElementById('eventLogDeviceFilter');
+    return el && el.value ? el.value : '';
+}
+
+async function populateDeviceFilter() {
+    const sel = document.getElementById('eventLogDeviceFilter');
+    if (!sel) return;
+    try {
+        const data = await (await fetch(`${API}/events/devices`)).json();
+        const current = sel.value;
+        const devices = data.devices || [];
+        sel.innerHTML = '<option value="">All devices</option>' + devices.map(d => {
+            const label = (d.name || `Device ${d.nukiId}`) + ` (${d.nukiId})`;
+            return `<option value="${d.nukiId}">${label}</option>`;
+        }).join('');
+        sel.value = current;
+    } catch (e) {
+        console.error('Failed to load device filter:', e);
+    }
+}
+
 async function refreshEventLog() {
     eventLogOffset = 0;
+    await populateDeviceFilter();
     await loadEventLog();
 }
 
@@ -888,7 +916,9 @@ async function loadEventLog() {
     try {
         statusEl.innerHTML = '<span style="color:#94a3b8;font-size:0.8rem;">Loading...</span>';
         
-        const response = await fetch(`${API}/events/log?limit=${EVENT_LOG_LIMIT}&offset=${eventLogOffset}`);
+        const deviceId = getEventLogDeviceId();
+        const deviceParam = deviceId ? `&device_id=${deviceId}` : '';
+        const response = await fetch(`${API}/events/log?limit=${EVENT_LOG_LIMIT}&offset=${eventLogOffset}${deviceParam}`);
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Failed to load event log');
@@ -954,7 +984,9 @@ function renderEventLogEntry(entry) {
 
 async function exportEventLog() {
     try {
-        const response = await fetch(`${API}/events/export`);
+        const deviceId = getEventLogDeviceId();
+        const deviceParam = deviceId ? `?device_id=${deviceId}` : '';
+        const response = await fetch(`${API}/events/export${deviceParam}`);
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Failed to export');

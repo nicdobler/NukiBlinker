@@ -204,22 +204,75 @@ class TestEventLog:
 
         csv_content = event_log.export_to_csv()
 
-        lines = csv_content.strip().split('\n')
-        assert len(lines) == 3  # Header + 2 data rows
+        # Excel-friendly prefix: UTF-8 BOM + sep hint line (#96)
+        assert csv_content.startswith("\ufeffsep=,\r\n")
 
-        # Check header
-        assert "Timestamp" in lines[0]
-        assert "Event Type" in lines[0]
-        assert "Actions" in lines[0]
+        lines = csv_content.strip().split('\n')
+        # sep hint + header + 2 data rows
+        assert len(lines) == 4
+
+        # Check header — Date/Time replace the old UTC Timestamp column (#96)
+        header = lines[1]
+        assert "Timestamp" not in header
+        assert "Date" in header and "Time" in header
+        assert "Event Type" in header
+        assert "Actions" in header
 
         # Check data rows (newest first)
-        assert "door_opened" in lines[1]
-        assert "67890" in lines[1]
-        assert "Chime played" in lines[1]
+        assert "door_opened" in lines[2]
+        assert "67890" in lines[2]
+        assert "Chime played" in lines[2]
 
-        assert "ring" in lines[2]
-        assert "12345" in lines[2]
-        assert "Hue lights blinked; HomeKit notification" in lines[2]
+        assert "ring" in lines[3]
+        assert "12345" in lines[3]
+        assert "Hue lights blinked; HomeKit notification" in lines[3]
+
+    def test_export_to_csv_localizes_timestamp(self):
+        """#96: Date/Time columns are rendered in the configured timezone."""
+        event_log = EventLog(persist_to_file=False)
+        # 2026-06-12 23:30 UTC → Madrid (UTC+2 in June) = 2026-06-13 01:30
+        entry = EventLogEntry(
+            timestamp=datetime(2026, 6, 12, 23, 30, 0, tzinfo=timezone.utc),
+            event_type="ring",
+            payload={"deviceType": 2, "nukiId": 1, "state": 1},
+            actions=["x"],
+            validation_result=ValidationResult(valid=True, delay_seconds=0.0),
+        )
+        event_log.entries.append(entry)
+
+        csv_content = event_log.export_to_csv(tz="Europe/Madrid")
+        assert "2026-06-13,01:30:00" in csv_content
+
+        # Unknown timezone falls back to UTC without raising
+        utc_csv = event_log.export_to_csv(tz="Not/AZone")
+        assert "2026-06-12,23:30:00" in utc_csv
+
+    def test_export_to_csv_device_filter(self):
+        """#96: export can be filtered to a single device."""
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        event_log.log_event({"deviceType": 2, "nukiId": 111}, "ring", ["a"], vr)
+        event_log.log_event({"deviceType": 0, "nukiId": 222}, "door_opened", ["b"], vr)
+
+        csv_content = event_log.export_to_csv(device_id=111)
+        assert "111" in csv_content
+        assert "222" not in csv_content
+
+    def test_get_devices_and_filtered_count(self):
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        event_log.log_event({"deviceType": 2, "nukiId": 111, "name": "Opener"}, "ring", ["a"], vr)
+        event_log.log_event({"deviceType": 2, "nukiId": 111, "name": "Opener"}, "ring", ["a"], vr)
+        event_log.log_event({"deviceType": 0, "nukiId": 222, "name": "Lock"}, "door_opened", ["b"], vr)
+
+        devices = event_log.get_devices()
+        ids = {d["nukiId"] for d in devices}
+        assert ids == {111, 222}
+
+        assert event_log.get_event_count(device_id=111) == 2
+        assert event_log.get_event_count(device_id=222) == 1
+        assert event_log.get_event_count() == 3
+        assert len(event_log.get_recent_events(device_id=111)) == 2
 
     def test_clear_log(self):
         """Test clearing the event log."""

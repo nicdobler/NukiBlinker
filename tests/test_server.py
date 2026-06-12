@@ -16,7 +16,17 @@ def _make_clients():
     clients.airplay = AsyncMock()
     clients.homekit = AsyncMock()
     clients.nuki = AsyncMock()
+    # Real deduplicator so duplicate detection behaves predictably in tests
+    from nukiblinker.deduplication import Deduplicator
+    clients.deduplicator = Deduplicator(window_seconds=120)
     return clients
+
+
+def _ring_payload(nuki_id=100, ts="2026-06-12T13:51:05+00:00"):
+    return {
+        "deviceType": 2, "nukiId": nuki_id, "state": 1,
+        "ringactionState": True, "ringactionTimestamp": ts,
+    }
 
 
 @pytest.fixture
@@ -40,8 +50,7 @@ class TestHealth:
 
 class TestNukiCallback:
     def test_ring_event(self, client):
-        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
-        r = client.post("/nuki/callback", json=payload)
+        r = client.post("/nuki/callback", json=_ring_payload())
         assert r.status_code == 200
         assert r.json()["event"] == "ring"
 
@@ -63,6 +72,13 @@ class TestNukiCallback:
         assert r.status_code == 200
         assert r.json()["status"] == "ignored"
 
+    def test_state_1_online_ignored(self, client):
+        """#97: bare Opener state==1 (online) is not a ring."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        r = client.post("/nuki/callback", json=payload)
+        assert r.status_code == 200
+        assert r.json()["status"] == "ignored"
+
     def test_unknown_device_type(self, client):
         payload = {"deviceType": 99, "nukiId": 100, "state": 1}
         r = client.post("/nuki/callback", json=payload)
@@ -71,8 +87,7 @@ class TestNukiCallback:
 
     def test_paused_ignores_callback(self, app, client):
         app.state.paused = True
-        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
-        r = client.post("/nuki/callback", json=payload)
+        r = client.post("/nuki/callback", json=_ring_payload())
         assert r.status_code == 200
         assert r.json()["status"] == "paused"
 
@@ -81,7 +96,20 @@ class TestNukiCallback:
         assert r.status_code == 400
 
     def test_records_last_event(self, app, client):
-        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
-        client.post("/nuki/callback", json=payload)
+        client.post("/nuki/callback", json=_ring_payload())
         assert app.state.last_event is not None
         assert app.state.last_event["type"] == "ring"
+
+    def test_duplicate_ring_suppressed(self, client):
+        """#97: a repeated callback for the same ring is suppressed."""
+        payload = _ring_payload(ts="2026-06-12T13:51:05+00:00")
+        first = client.post("/nuki/callback", json=payload)
+        assert first.json()["event"] == "ring"
+        second = client.post("/nuki/callback", json=payload)
+        assert second.json()["status"] == "duplicate"
+
+    def test_second_distinct_ring_not_suppressed(self, client):
+        """#97: a genuine second ring (new ringactionTimestamp) still notifies."""
+        client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:05+00:00"))
+        second = client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:40+00:00"))
+        assert second.json()["event"] == "ring"

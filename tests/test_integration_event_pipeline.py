@@ -89,6 +89,7 @@ class TestEventPipelineIntegration:
         clients.airplay = AsyncMock()
         clients.homekit = AsyncMock()
         clients.nuki = AsyncMock()
+        clients.nuki_web = None  # Web API not configured in tests
         clients._app = None
 
         # Mock event log with temporary file
@@ -234,10 +235,10 @@ class TestEventPipelineIntegration:
         # Verify all events were logged
         assert len(mock_clients.event_log.entries) == 5
 
-        # Test CSV export
+        # Test CSV export (BOM + sep hint + header + 5 data rows) (#96)
         csv_content = mock_clients.event_log.export_to_csv()
         lines = csv_content.strip().split('\n')
-        assert len(lines) == 6  # Header + 5 data rows
+        assert len(lines) == 7  # sep hint + header + 5 data rows
 
         # Test cleanup by max entries
         mock_clients.event_log.max_entries = 3

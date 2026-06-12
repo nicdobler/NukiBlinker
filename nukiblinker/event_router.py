@@ -13,8 +13,11 @@ if TYPE_CHECKING:
 logger = get_logger("event_router")
 
 # Nuki Opener states (deviceType=2)
-_OPENER_STATE_RING_TO_OPEN = 7  # opening
-_OPENER_STATE_RING = 1  # online — ring detected, door stays closed
+_OPENER_STATE_RING_TO_OPEN = 7  # opening (door being opened)
+# Note: a doorbell ring is signalled by the callback's `ringactionState`/
+# `ringactionTimestamp` fields (Bridge API §4), NOT by `state`. Opener
+# `state == 1` is "online" (a routine status update) and must not be treated
+# as a ring (#97).
 
 # Nuki Smart Lock states (deviceType=0)
 # Note: state 3 (unlocked) is deliberately NOT treated as door_opened —
@@ -42,10 +45,16 @@ def classify(payload: dict, config: AppConfig) -> str | None:
         if state == _OPENER_STATE_RING_TO_OPEN:
             logger.info("Event classified: ring_to_open (Opener %s, state=%s)", nuki_id, state)
             return "ring_to_open"
-        if state == _OPENER_STATE_RING:
-            logger.info("Event classified: ring (Opener %s, state=%s)", nuki_id, state)
+        if payload.get("ringactionState") is True:
+            logger.info(
+                "Event classified: ring (Opener %s, ringactionTimestamp=%s)",
+                nuki_id, payload.get("ringactionTimestamp"),
+            )
             return "ring"
-        logger.debug("Ignoring Opener state %s (nukiId=%s)", state, nuki_id)
+        logger.debug(
+            "Ignoring Opener state %s (nukiId=%s, ringactionState=%s)",
+            state, nuki_id, payload.get("ringactionState"),
+        )
         return None
 
     if device_type == 0:  # Smart Lock
@@ -62,12 +71,40 @@ def classify(payload: dict, config: AppConfig) -> str | None:
     return None
 
 
-async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Alguien") -> dict:
-    """Query Nuki Bridge /log to get the user name for the event.
+async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Alguien",
+                         nuki_web=None) -> dict:
+    """Resolve the user name (and trigger) for the event.
 
-    Returns context dict: {"name": "Nico"} or {"name": fallback}.
+    Resolution order:
+    1. Nuki Web API (when configured) — reliably returns ``name``/``trigger``.
+    2. Nuki Bridge ``/log`` — best-effort, with retry (the bridge writes the log
+       slightly after firing the callback). May have no name for anonymous rings.
+
+    Returns context dict: {"name": "Nico"} (plus "trigger" when known) or
+    {"name": fallback}.
     """
     nuki_id = payload.get("nukiId")
+
+    # 1. Nuki Web API — preferred when available (real names + trigger source).
+    if nuki_web is not None:
+        try:
+            from nukiblinker.nuki_web_client import TRIGGER_NAMES
+
+            entries = await nuki_web.get_recent_log(smartlock_id=nuki_id, limit=20)
+            for entry in entries:
+                name = entry.get("name")
+                if name:
+                    trigger = entry.get("trigger")
+                    logger.info(
+                        "Resolved person via Web API: name=%s trigger=%s(%s) source=%s",
+                        name, trigger, TRIGGER_NAMES.get(trigger, "unknown"),
+                        entry.get("source"),
+                    )
+                    return {"name": name, "trigger": trigger}
+            logger.debug("Nuki Web API log had no named entry for nukiId=%s", nuki_id)
+        except Exception:
+            logger.warning("Nuki Web API resolution failed — falling back to bridge log", exc_info=True)
+
     if nuki_id is None or nuki_client is None:
         return {"name": fallback_name}
     try:
@@ -111,7 +148,10 @@ async def dispatch(
         context = context_override
     elif event_type in ("ring_to_open", "door_opened"):
         fallback = rule.audio.fallback_name if rule.audio else "Alguien"
-        context = await resolve_person(payload, getattr(clients, "nuki", None), fallback)
+        context = await resolve_person(
+            payload, getattr(clients, "nuki", None), fallback,
+            nuki_web=getattr(clients, "nuki_web", None),
+        )
     else:
         context = {}
 
@@ -138,7 +178,10 @@ async def dispatch_with_actions(
         context = context_override
     elif event_type in ("ring_to_open", "door_opened"):
         fallback = rule.audio.fallback_name if rule.audio else "Alguien"
-        context = await resolve_person(payload, getattr(clients, "nuki", None), fallback)
+        context = await resolve_person(
+            payload, getattr(clients, "nuki", None), fallback,
+            nuki_web=getattr(clients, "nuki_web", None),
+        )
     else:
         context = {}
 

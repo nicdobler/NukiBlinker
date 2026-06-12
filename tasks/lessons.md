@@ -1,5 +1,17 @@
 # Lessons
 
+## 2026-06-12 — Read the device API spec before classifying events
+- **Mistake**: Opener "ring" was classified from `state == 1`, but per the Nuki Bridge API `state == 1` is just "online". The real ring signal is `ringactionState`/`ringactionTimestamp`. This fired notifications on routine status callbacks (#97).
+- **Rule**: For device integrations, confirm the exact field semantics in the vendor spec (now vendored at `docs/nuki-bridge-api-1.13.3.md`) before mapping events. Don't infer meaning from a single observed value.
+
+## 2026-06-12 — Excel CSV "looks broken" is usually a delimiter/locale issue, not escaping
+- **Mistake**: A CSV reported as "not escaping columns" in Excel was actually valid RFC-4180; Spanish Excel just defaults to `;` as the separator, so a comma file lands in one column.
+- **Rule**: For Excel interop, emit a UTF-8 BOM + a `sep=,` hint line. Verify the actual file before assuming a quoting bug.
+
+## 2026-06-12 — MagicMock clients make truthy attributes (dedup gotcha)
+- **Mistake**: A `MagicMock()` clients object auto-creates `.deduplicator`, whose `.is_duplicate(...)` returns a truthy mock — silently suppressing every event in tests.
+- **Rule**: In tests, set new client attributes explicitly (real instance or `None`) instead of relying on the auto-mock. Guard new pipeline hooks with `getattr(..., None)`.
+
 ## 2026-06-12 — base36.dumps() returns bytes in CI environment
 - **Mistake**: Assumed `base36.dumps()` returns a string, but in the CI environment it returns bytes. Using it directly in an f-string caused `string argument expected, got 'bytes'`.
 - **Rule**: Always handle library return types defensively. Use `isinstance(x, bytes)` and `.decode()` when a library might return bytes or str depending on version/environment.

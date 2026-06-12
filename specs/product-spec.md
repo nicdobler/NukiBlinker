@@ -64,9 +64,22 @@ Nuki devices produce different events. NukiBlinker maps each to a configurable s
 | **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + personalized announcement |
 | **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime or personalized announcement |
 
+> **Ring detection (Opener)**: A doorbell ring is detected via the callback's `ringactionState`/`ringactionTimestamp` fields (per Bridge API §4 — the ring action flag, reset after 30 s), **not** via the lock `state`. Opener `state == 1` means "online" (a routine status update) and must not be treated as a ring. The door being opened (Ring to Open / manual open) is signalled by `state == 7` ("opening").
+
+### Event Deduplication
+
+A single real interaction makes the Nuki Bridge emit several callbacks (status transitions plus the ring/open). To avoid firing notifications multiple times for one event, NukiBlinker keeps an in-memory cache of recently processed events (default window 120 s) and suppresses duplicates.
+
+- The dedup key is `(nukiId, event_type, discriminator)` where the discriminator is the **`ringactionTimestamp`** for rings and the lock **`state`** otherwise.
+- Because a genuine second ring carries a **new** `ringactionTimestamp`, ringing twice still produces two notifications — only repeated callbacks for the *same* ring/open are collapsed.
+- Suppressed events are recorded in the Event Log with the reason, so the behaviour is auditable.
+
 ### Person Identification
 
-For **ring to open** and **door opened** events, NukiBlinker queries the Nuki Bridge activity log (`GET /log`) to identify which user triggered the action. The user's registered name (as set in the Nuki app) is available as a `{name}` template variable in the TTS message.
+For **ring to open** and **door opened** events, NukiBlinker resolves which user triggered the action and exposes it as a `{name}` template variable in the TTS message.
+
+- **Local Bridge log** (`GET /log`, default): best-effort. On hardware bridges the log entry includes a `name` for *authorized* actions (app/keypad/fob). The Bridge API does not guarantee this field, and an RTO triggered by an anonymous visitor ringing has no name — in those cases NukiBlinker falls back to `fallback_name` ("Alguien").
+- **Nuki Web API** (optional, cloud): when a `nuki.web_api_token` is configured, NukiBlinker queries the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also lets NukiBlinker tell *how* the door was opened (e.g. by the physical button on the device vs Ring to Open).
 
 Examples:
 - Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
@@ -221,7 +234,7 @@ Key settings:
 
 ## Non-Goals (Current)
 
-- No integration with Nuki Cloud API (local bridge only, except for bridge discovery).
+- No integration with Nuki Cloud API for control (local bridge only). The Nuki **Web API** is used read-only and **optionally** (when a token is configured) to resolve user names/triggers for the activity log; it never opens or locks doors.
 - No Alexa support (no public local API for announcements).
 - No multi-bridge support (single Nuki Bridge + single Hue Bridge).
 - No door-opening automation — NukiBlinker is notification only, it never opens or locks doors.
@@ -273,6 +286,26 @@ Key settings:
   - HomeKit notifications: remain enabled (silent push)
 - Per-event night mode settings: can be enabled/disabled per event type
 - Grace period: 5-minute buffer around configured times to avoid edge cases
+
+## New Features (v0.4.0)
+
+### Correct Opener ring detection & event deduplication (#97)
+
+**Problem**: A single real interaction (e.g. someone rings and the door is opened) produced multiple notifications. Routine Opener `state == 1` ("online") callbacks were misclassified as rings, and repeated callbacks for one event each fired the speakers.
+
+**Solution**:
+- Detect a ring from the Opener's `ringactionState`/`ringactionTimestamp` (not `state == 1`).
+- Deduplicate events within a configurable window (default 120 s) keyed on `(nukiId, event_type, ringactionTimestamp|state)` so duplicate callbacks collapse while a genuine second ring (new `ringactionTimestamp`) still notifies.
+- Optionally resolve *who/how* via the Nuki Web API to distinguish a manual physical-button open from an automatic Ring to Open.
+
+### Event Log export improvements (#96)
+
+**Problem**: The exported CSV did not open cleanly in (Spanish) Excel, timestamps were in UTC, and there was no way to filter by device.
+
+**Solution**:
+- CSV is written with a UTF-8 BOM and an Excel `sep=,` hint so columns and accents render correctly across locales.
+- Timestamps are converted to a configurable local timezone (`event_log.timezone`, default `Europe/Madrid`) and split into separate **Date** (`YYYY-MM-DD`) and **Time** (`HH:MM:SS`) columns.
+- The Event Log viewer and CSV export can be **filtered by device** (`nukiId`).
 
 ## Future Considerations
 

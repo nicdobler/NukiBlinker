@@ -70,6 +70,21 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                 )
             return JSONResponse({"status": "ignored"})
 
+        # Deduplicate: one real interaction emits several callbacks (#97).
+        deduplicator = getattr(app.state.clients, "deduplicator", None)
+        if deduplicator is not None and deduplicator.is_duplicate(payload, event_type):
+            window = app.state.config.deduplication.window_seconds
+            logger.info("Duplicate %s event suppressed (within %ss)", event_type, window)
+            if app.state.config.event_log.enabled:
+                app.state.clients.event_log.log_event(
+                    payload=payload,
+                    event_type=event_type,
+                    actions=[f"Suppressed: duplicate within {window}s"],
+                    validation_result=validation_result
+                    or app.state.clients.event_validator.validate_event(payload),
+                )
+            return JSONResponse({"status": "duplicate", "event": event_type})
+
         app.state.last_event = {"type": event_type, "payload": payload}
 
         # Dispatch in background so we return 200 immediately

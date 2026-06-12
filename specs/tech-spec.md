@@ -478,10 +478,12 @@ Key fields:
 - `deviceType`: 0=SmartLock, 2=Opener
 
 **Opener states** (deviceType=2):
-  - `1` = online (ring detected but door not opened → event: **ring**)
+  - `1` = online (routine status update — **NOT** a ring; must be ignored)
   - `3` = rto active
   - `5` = open
   - `7` = opening (door being opened → event: **ring_to_open**)
+
+**Opener ring detection**: A ring is signalled by the callback fields `ringactionState: true` / `ringactionTimestamp` (the ring-action flag, reset after 30 s — Bridge API §4.x), independent of `state`. Classification: `ringactionState == true` → **ring**; `state == 7` → **ring_to_open**. The old `state == 1 → ring` rule was incorrect (it fired on every "online" status callback) and was removed (#97).
 
 **Smart Lock states** (deviceType=0):
   - `1` = locked
@@ -808,6 +810,75 @@ sequenceDiagram
         NK->>EL: log_event(actions=actions_taken)
         NK-->>NB: 200 OK
     end
+```
+
+## New Features (v0.4.0)
+
+### Event Deduplication (`deduplication.py`) (#97)
+
+```python
+class Deduplicator:
+    def __init__(self, window_seconds: int = 120, enabled: bool = True):
+        self.window_seconds = window_seconds
+        self.enabled = enabled
+        self._recent: dict[tuple, float] = {}  # key -> monotonic ts
+
+    def is_duplicate(self, payload: dict, event_type: str) -> bool:
+        """True if an equivalent event was seen within window_seconds.
+
+        Key = (nukiId, event_type, discriminator), where discriminator is
+        ringactionTimestamp for 'ring' (so a genuine second ring with a new
+        timestamp is NOT a duplicate) and the lock `state` otherwise.
+        Records the event and prunes expired keys on every call.
+        """
+```
+
+Wired into `server.py` after classification: a duplicate is logged to the Event Log with action `"Suppressed: duplicate within {window}s"` and no notification fires.
+
+### Nuki Web API Client (`nuki_web_client.py`) — optional name/trigger resolution
+
+When `nuki.web_api_token` is set, `resolve_person()` prefers the Nuki Web API activity log over the local bridge `/log`:
+
+```python
+class NukiWebClient:
+    BASE = "https://api.nuki.io"
+    def __init__(self, api_token: str): ...
+    async def get_recent_log(self, smartlock_id: int | None = None, limit: int = 20) -> list[dict]:
+        """GET /smartlock/log (Bearer token). Returns entries with name, action, trigger, source, date."""
+```
+
+- Uses `httpx` (no new dependency).
+- `resolve_person()` returns `{"name": ..., "trigger": ...}`; the bridge `/log` remains the fallback when the Web API is not configured or returns nothing.
+- The bridge cannot identify an anonymous visitor; the Web API is the only source for `name`/`trigger`/`source`.
+
+### Event Log CSV export (#96)
+
+`EventLog.export_to_csv(device_id: int | None = None, tz: str = "Europe/Madrid")`:
+
+- Output starts with a UTF-8 BOM (`\ufeff`) and an Excel `sep=,` hint line so Excel (incl. Spanish locale) splits columns and renders accents.
+- The UTC `Timestamp` column is replaced by **`Date`** (`YYYY-MM-DD`) and **`Time`** (`HH:MM:SS`) in the configured timezone via `zoneinfo.ZoneInfo`.
+- `device_id` filters rows to a single `nukiId`.
+
+`EventLog.get_recent_events(limit, offset, device_id=None)` and a new `EventLog.get_devices()` (distinct `nukiId`/`deviceType`/name seen) back the Web UI device filter. New endpoints: `GET /api/events/devices`; `GET /api/events/log?device_id=`; `GET /api/events/export?device_id=`.
+
+### Updated config models (v0.4.0)
+
+```python
+class NukiConfig(BaseModel):
+    # ... existing ...
+    web_api_token: str = ""          # optional Nuki Web API token (name/trigger resolution)
+
+class DeduplicationConfig(BaseModel):
+    enabled: bool = True
+    window_seconds: int = 120
+
+class EventLogConfig(BaseModel):
+    # ... existing ...
+    timezone: str = "Europe/Madrid"  # IANA tz for CSV Date/Time columns
+
+class AppConfig(BaseModel):
+    # ... existing ...
+    deduplication: DeduplicationConfig = DeduplicationConfig()
 ```
 
 ## Logging
