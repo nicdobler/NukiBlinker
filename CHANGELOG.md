@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **#106**: Removed the Apple HomePod / AirPlay 2 audio integration (`airplay_client.py`, `pyatv` dependency, `speakers.airplay` config field, AirPlay discovery, and the AirPlay card in the web UI). HomePod RTSP `SETUP` timed out unreliably and produced no audio; the masked `'set' object can't be awaited` warning behind it was the already-fixed #101 bug. HomePod owners are still notified via the HomeKit doorbell. Chromecast / Google Nest is now the only speaker audio channel. Existing `speakers.airplay` keys in `config.yaml` are ignored.
+
 ### Changed
 - CI failure reporting now keeps a single issue per branch (deduplicated via a hidden marker) instead of opening a new issue on every failing commit, and auto-closes that issue when CI goes green again.
 

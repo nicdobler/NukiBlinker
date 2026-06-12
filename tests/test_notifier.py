@@ -12,7 +12,6 @@ def _make_clients(**overrides):
     clients = MagicMock()
     clients.hue = overrides.get("hue", AsyncMock())
     clients.chromecast = overrides.get("chromecast", AsyncMock())
-    clients.airplay = overrides.get("airplay", AsyncMock())
     clients.homekit = overrides.get("homekit", AsyncMock())
     return clients
 
@@ -113,7 +112,7 @@ class TestNotify:
         await notify(rule, cfg, clients)  # Should not raise
 
     @pytest.mark.asyncio
-    async def test_fires_both_speaker_types(self, tmp_path):
+    async def test_fires_chromecast_audio(self, tmp_path):
         rule = EventRuleConfig(
             blink=BlinkConfig(mode="none"),
             audio=AudioConfig(enabled=True, mode="chime"),
@@ -121,7 +120,6 @@ class TestNotify:
         )
         cfg = AppConfig()
         cfg.speakers.chromecast = ["Nest"]
-        cfg.speakers.airplay = ["HomePod"]
         clients = _make_clients()
 
         fake_path = tmp_path / "chime.mp3"
@@ -131,4 +129,3 @@ class TestNotify:
             mock_audio.get_audio.return_value = fake_path
             await notify(rule, cfg, clients)
             clients.chromecast.play.assert_called_once()
-            clients.airplay.play.assert_called_once()

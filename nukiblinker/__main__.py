@@ -31,7 +31,6 @@ class Clients:
     nuki_web: object = None
     hue: object = None
     chromecast: object = None
-    airplay: object = None
     homekit: object = None
     event_validator: object = None
     event_log: object = None
@@ -59,10 +58,8 @@ def _build_clients(config: AppConfig) -> Clients:
         clients.hue = HueClient(config.hue.bridge_ip, config.hue.api_key)
 
     from nukiblinker.chromecast_client import ChromecastClient
-    from nukiblinker.airplay_client import AirPlayClient
 
     clients.chromecast = ChromecastClient()
-    clients.airplay = AirPlayClient()
 
     if config.homekit.enabled:
         from nukiblinker.config import get_public_host

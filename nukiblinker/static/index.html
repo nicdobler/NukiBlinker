@@ -193,13 +193,6 @@
             <div id="ccDiscoverResults" class="discover-results"></div>
         </div>
         <div class="card">
-            <h2>AirPlay / HomePod</h2>
-            <label>Speaker names <span class="opt">(one per line)</span></label>
-            <textarea id="speakersAirplay" rows="3" placeholder="HomePod mini&#10;Bedroom HomePod"></textarea>
-            <button class="btn-secondary btn-sm" onclick="discoverSpeakers('airplay')">Discover</button>
-            <div id="apDiscoverResults" class="discover-results"></div>
-        </div>
-        <div class="card">
             <h2>Volume</h2>
             <label>Playback volume: <span id="volumeValue">50</span>%</label>
             <input id="speakersVolume" type="range" min="0" max="100" value="50" oninput="document.getElementById('volumeValue').textContent=this.value">
@@ -568,7 +561,6 @@ async function loadBaseConfig() {
         setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
         setVal('hueLights', (d.hue?.lights || []).join(',')); setVal('hueGroups', (d.hue?.groups || []).join(','));
         document.getElementById('speakersChromecast').value = (d.speakers?.chromecast || []).join('\n');
-        document.getElementById('speakersAirplay').value = (d.speakers?.airplay || []).join('\n');
         const vol = Math.round((d.speakers?.volume ?? 0.5) * 100);
         document.getElementById('speakersVolume').value = vol;
         document.getElementById('volumeValue').textContent = vol;
@@ -590,7 +582,6 @@ async function saveBaseConfig() {
             lights: val('hueLights').split(',').map(s=>s.trim()).filter(Boolean).map(Number),
             groups: val('hueGroups').split(',').map(s=>s.trim()).filter(Boolean).map(Number) },
         speakers: { chromecast: document.getElementById('speakersChromecast').value.split('\n').map(s=>s.trim()).filter(Boolean),
-            airplay: document.getElementById('speakersAirplay').value.split('\n').map(s=>s.trim()).filter(Boolean),
             volume: parseInt(val('speakersVolume')) / 100 },
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
         server: { host: '0.0.0.0', port: 8080, public_host: val('publicHost') },
@@ -731,13 +722,13 @@ function addToList(inputId, value) {
 
 /* --- Speaker Discovery --- */
 async function discoverSpeakers(type) {
-    const el = document.getElementById(type === 'chromecast' ? 'ccDiscoverResults' : 'apDiscoverResults');
+    const el = document.getElementById('ccDiscoverResults');
     el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Searching network...</p>';
     try {
         const speakers = await (await fetch(`${API}/discover/speakers`)).json();
-        const filtered = speakers.filter(s => s.type === type);
+        const filtered = speakers.filter(s => s.type === 'chromecast');
         if (!filtered.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No speakers found</p>'; return; }
-        const tid = type === 'chromecast' ? 'speakersChromecast' : 'speakersAirplay';
+        const tid = 'speakersChromecast';
         el.innerHTML = filtered.map(s => `<div class="discover-item" onclick="addSpeaker('${tid}','${s.name.replace(/'/g,"\\'")}')"><span>${s.name}</span><span style="color:#64748b">${s.host||''}</span></div>`).join('');
     } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Discovery failed</p>'; }
 }

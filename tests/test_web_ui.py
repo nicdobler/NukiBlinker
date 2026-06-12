@@ -15,7 +15,6 @@ def _make_clients():
     clients = MagicMock()
     clients.hue = AsyncMock()
     clients.chromecast = AsyncMock()
-    clients.airplay = AsyncMock()
     clients.homekit = AsyncMock()
     clients.nuki = AsyncMock()
     return clients

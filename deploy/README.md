@@ -46,4 +46,4 @@ Before starting, you need:
 1. **Nuki Bridge** — IP + API token (Nuki app → Bridge → Manage → Enable API)
 2. **Hue Bridge** — IP + API key (press link button, then pair via web UI or curl)
 3. **Light IDs** — which Hue lights to blink (find via web UI discover or `curl http://<hue-ip>/api/<key>/lights`)
-4. **Speaker names** (optional) — Google Nest / HomePod names as they appear on the network
+4. **Speaker names** (optional) — Google Nest names as they appear on the network

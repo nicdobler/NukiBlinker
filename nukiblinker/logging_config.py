@@ -21,7 +21,7 @@ def setup_logging(level: str = "INFO") -> None:
         root.addHandler(handler)
 
     # Silence chatty third-party libraries
-    for lib in ("httpx", "httpcore", "pychromecast", "zeroconf", "casttube", "pyatv"):
+    for lib in ("httpx", "httpcore", "pychromecast", "zeroconf", "casttube"):
         logging.getLogger(lib).setLevel(logging.WARNING)
 
 

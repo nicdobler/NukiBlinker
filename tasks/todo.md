@@ -223,3 +223,26 @@ Decisions:
 - [ ] Validate on Mac (`make test` + `make lint`)
 - [ ] Merge PR, close issue #101
 - Note: #97 (multiple events) left out of scope per user decision — separate effort.
+
+---
+
+## #106 Remove AirPlay / HomePod integration
+
+**Branch**: `chore/remove-airplay` | **PR**: _pending_
+
+Context: #106 reported `'set' object can't be awaited` in the logs. Diagnosis:
+that was the already-fixed #101 bug (logs predate commit `acce574`). The real
+remaining symptom was **no AirPlay audio** — the HomePod "Salon" timed out on
+RTSP `SETUP`. User decided to **remove the AirPlay integration entirely**;
+HomePod still receives the ring via the HomeKit doorbell, and Google Nest covers
+speaker audio.
+
+- [x] Specs updated first (product-spec, tech-spec) — AirPlay/HomePod/pyatv removed
+- [x] Deleted `nukiblinker/airplay_client.py` and `tests/test_airplay.py`
+- [x] Removed AirPlay from `__main__.py` (Clients), `notifier.py`, `discovery.py`, `config.py` (SpeakersConfig.airplay + summary), `logging_config.py`, `web_ui.py`
+- [x] Web UI: removed AirPlay card + load/save/discovery JS (also restored an accidentally-removed `populateEventRule('ring')` line)
+- [x] Removed `pyatv` from `pyproject.toml`; removed `speakers.airplay` from `config.example.yaml`
+- [x] Updated tests: test_discovery, test_notifier, test_lifecycle, test_server, test_web_ui, test_integration_event_pipeline
+- [x] README, deploy/README, CHANGELOG updated
+- [ ] **Mac/CI**: run `poetry lock` (poetry.lock still references pyatv), then `make test` + `make lint`
+- [ ] Merge PR, close issue #106

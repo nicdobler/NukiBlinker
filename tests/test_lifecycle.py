@@ -37,11 +37,10 @@ class TestBuildClients:
         clients = _build_clients(cfg)
         assert clients.hue is None
 
-    def test_chromecast_and_airplay_always_created(self):
+    def test_chromecast_always_created(self):
         cfg = AppConfig()
         clients = _build_clients(cfg)
         assert clients.chromecast is not None
-        assert clients.airplay is not None
 
     def test_homekit_created_when_enabled(self):
         cfg = AppConfig()

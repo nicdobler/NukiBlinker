@@ -12,10 +12,9 @@ nukiblinker/
 ├── nuki_client.py           # Nuki Bridge HTTP API client (callback registration)
 ├── hue_client.py            # Philips Hue Bridge API client (light control)
 ├── chromecast_client.py     # Google Nest / Chromecast audio playback
-├── airplay_client.py        # Apple HomePod AirPlay 2 audio playback
 ├── audio.py                 # Audio generation (TTS + chime selection)
 ├── homekit_service.py       # Apple HomeKit doorbell accessory (HAP-python)
-├── discovery.py             # Auto-discovery for Nuki, Hue, Chromecast, AirPlay
+├── discovery.py             # Auto-discovery for Nuki, Hue, Chromecast
 ├── notifier.py              # Orchestrates notification channels per event rule
 ├── logging_config.py        # Structured logging setup
 ├── sounds/                  # Bundled chime audio files
@@ -40,7 +39,6 @@ nukiblinker/
 | `pyyaml` | Config file parsing |
 | `pydantic` | Config validation |
 | `pychromecast` | Google Nest / Chromecast discovery + casting |
-| `pyatv` | Apple HomePod / AirPlay 2 discovery + streaming |
 | `gTTS` | Text-to-speech audio generation |
 | `HAP-python[QRCode]` | HomeKit accessory protocol |
 | `zeroconf` | mDNS for bridge/speaker auto-discovery |
@@ -80,7 +78,6 @@ sequenceDiagram
     participant ER as EventRouter
     participant HB as Hue Bridge
     participant GN as Google Nest
-    participant HP as HomePod
     participant HK as HomeKit
 
     V->>NO: Presses doorbell
@@ -152,7 +149,6 @@ class BlinkConfig(BaseModel):
 
 class SpeakersConfig(BaseModel):
     chromecast: list[str] = []    # Google Nest / Chromecast speaker names
-    airplay: list[str] = []       # HomePod / AirPlay speaker names
     volume: float = 0.5           # 0.0-1.0
 
 class AudioConfig(BaseModel):
@@ -234,7 +230,7 @@ Serves the configuration page and provides API endpoints for it.
 | PUT | `/api/config` | Save updated config → `config.yaml` |
 | GET | `/api/discover/nuki` | Auto-discover Nuki Bridges |
 | GET | `/api/discover/hue` | Auto-discover Hue Bridges |
-| GET | `/api/discover/speakers` | Auto-discover Chromecast + AirPlay speakers |
+| GET | `/api/discover/speakers` | Auto-discover Chromecast speakers |
 | POST | `/api/nuki/pair` | Register callback on Nuki Bridge |
 | GET | `/api/nuki/devices` | List Nuki devices (Openers + Smart Locks) |
 | GET | `/api/nuki/callbacks` | List registered callbacks on Bridge |
@@ -295,14 +291,7 @@ Manages Google Nest / Chromecast speakers:
   2. Set volume → cast audio → restore volume.
 - **`list_speakers()`** — Discover Chromecast devices on LAN.
 
-### AirPlay Client (`airplay_client.py`)
-
-Manages Apple HomePod / AirPlay 2 speakers:
-
-- **`play(speaker_names, audio_path, volume)`** — For each speaker:
-  1. Connect via `pyatv` (AirPlay 2).
-  2. Stream audio → wait for completion.
-- **`list_speakers()`** — Discover AirPlay devices on LAN via `pyatv.scan()`.
+> **Note**: Apple HomePod / AirPlay output (`airplay_client.py`, `pyatv`) was removed in v0.4.x — HomePod RTSP `SETUP` timed out unreliably and HomePod owners are still notified via the HomeKit doorbell. Chromecast is now the only audio output.
 
 ### HomeKit Service (`homekit_service.py`)
 
@@ -332,12 +321,9 @@ async def discover_hue_bridges() -> list[dict]:
 
 async def discover_chromecast_speakers() -> list[dict]:
     """pychromecast / zeroconf scan."""
-
-async def discover_airplay_speakers() -> list[dict]:
-    """pyatv / zeroconf scan for AirPlay 2 devices."""
 ```
 
-Each returns a list of `{"name": ..., "ip": ..., "port": ..., "type": "chromecast"|"airplay"}`.
+Each returns a list of `{"name": ..., "ip": ..., "port": ..., "type": "chromecast"}`.
 
 ### Event Router (`event_router.py`)
 
@@ -394,11 +380,6 @@ async def notify(rule: EventRuleConfig, config: AppConfig, clients: Clients, con
         if config.speakers.chromecast:
             tasks.append(trigger_chromecast(
                 clients.chromecast, config.speakers.chromecast,
-                audio_path, config.speakers.volume
-            ))
-        if config.speakers.airplay:
-            tasks.append(trigger_airplay(
-                clients.airplay, config.speakers.airplay,
                 audio_path, config.speakers.volume
             ))
 
@@ -542,10 +523,6 @@ Note: The exact state values will be confirmed during implementation against the
 
 Via `pychromecast` — no direct HTTP. Library handles mDNS discovery, connection, and media casting.
 
-### AirPlay 2 Protocol
-
-Via `pyatv` — no direct HTTP. Library handles mDNS discovery, pairing, and audio streaming to HomePod and AirPlay 2 speakers.
-
 ### HomeKit Accessory Protocol
 
 Via `HAP-python` — no direct HTTP. Library handles mDNS advertising, pairing, and event dispatch.
@@ -565,7 +542,6 @@ flowchart LR
         DISC[discovery.py]
         HC[hue_client.py]
         CC[chromecast_client.py]
-        AC[airplay_client.py]
         HKS[homekit_service.py]
     end
 
@@ -606,10 +582,9 @@ All tests run via `make test` on the Mac. Real-device testing via `make runLocal
 | `tests/test_hue_client.py` | Hue API calls (mock httpx) |
 | `tests/test_nuki_client.py` | Callback registration (mock httpx) |
 | `tests/test_chromecast.py` | Chromecast audio playback (mock pychromecast) |
-| `tests/test_airplay.py` | AirPlay audio playback (mock pyatv) |
 | `tests/test_homekit.py` | HAP accessory lifecycle (mock HAP-python) |
 | `tests/test_notifier.py` | Per-event rule channel dispatch, failure isolation |
-| `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf/pyatv) |
+| `tests/test_discovery.py` | Auto-discovery responses (mock zeroconf/pychromecast) |
 | `tests/test_lifecycle.py` | Startup registration, graceful shutdown deregistration, pause/resume |
 
 ## Docker

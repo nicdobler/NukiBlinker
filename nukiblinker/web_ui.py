@@ -139,8 +139,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
     @router.get("/discover/speakers")
     async def discover_speakers() -> JSONResponse:
         cc = await discovery.discover_chromecast_speakers()
-        ap = await discovery.discover_airplay_speakers()
-        return JSONResponse(cc + ap)
+        return JSONResponse(cc)
 
     # ------------------------------------------------------------------
     # Nuki pairing & device discovery

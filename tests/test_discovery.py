@@ -8,7 +8,6 @@ from nukiblinker.discovery import (
     discover_nuki_bridges,
     discover_hue_bridges,
     discover_chromecast_speakers,
-    discover_airplay_speakers,
 )
 
 
@@ -72,15 +71,3 @@ class TestDiscoverChromecast:
             result = await discover_chromecast_speakers()
             assert len(result) == 1
             assert result[0]["name"] == "Nest"
-
-
-class TestDiscoverAirPlay:
-    @pytest.mark.asyncio
-    async def test_delegates_to_client(self):
-        with patch("nukiblinker.airplay_client.AirPlayClient") as mock_cls:
-            mock_cls.return_value.list_speakers = AsyncMock(
-                return_value=[{"name": "HomePod", "ip": "10.0.0.10", "port": 7000, "type": "airplay"}]
-            )
-            result = await discover_airplay_speakers()
-            assert len(result) == 1
-            assert result[0]["name"] == "HomePod"
