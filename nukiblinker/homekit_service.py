@@ -183,7 +183,9 @@ class HomeKitService:
             qr.svg(svg_buffer, scale=4, xmldecl=False, omithw=True)
             return svg_buffer.getvalue()
         except Exception as exc:
+            import traceback
             logger.warning("QR code generation failed: %s", exc)
+            logger.warning("QR code generation traceback: %s", traceback.format_exc())
             return None
 
     def is_paired(self) -> bool:
