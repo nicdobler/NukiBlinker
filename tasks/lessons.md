@@ -1,5 +1,9 @@
 # Lessons
 
+## 2026-06-12 — base36.dumps() returns bytes in CI environment
+- **Mistake**: Assumed `base36.dumps()` returns a string, but in the CI environment it returns bytes. Using it directly in an f-string caused `string argument expected, got 'bytes'`.
+- **Rule**: Always handle library return types defensively. Use `isinstance(x, bytes)` and `.decode()` when a library might return bytes or str depending on version/environment.
+
 ## 2026-06-12 — pyqrcode API mismatch
 - **Mistake**: Called `qr.svg(scale=4, xmldecl=False, omithw=True)` without the required `file` parameter. The pyqrcode library's `svg()` method requires a file-like object to write to, not returning a string directly.
 - **Rule**: When using library methods that write to files, check the signature carefully. Use `io.StringIO()` / `io.BytesIO()` to capture output as a string when needed.
