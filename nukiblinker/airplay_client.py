@@ -93,7 +93,11 @@ class AirPlayClient:
         except Exception:
             logger.error("AirPlay playback failed on %s", device_config.name, exc_info=True)
         finally:
-            await atv.close()
+            # pyatv's AppleTV.close() is synchronous and returns the set of
+            # pending teardown tasks — it is NOT a coroutine. Awaiting it raises
+            # "TypeError: 'set' object can't be awaited" (#101), which masked the
+            # real playback error in the logs.
+            atv.close()
 
     async def list_speakers(self) -> list[dict]:
         """Discover AirPlay 2 devices on LAN."""
