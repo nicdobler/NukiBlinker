@@ -12,7 +12,9 @@ Reacts to Nuki doorbell and Smart Lock events with configurable notifications: H
 - **Chime sounds**: bundled audio files for door-opened events
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
-- **Event logging**: comprehensive event history with detailed action tracking and CSV export
+- **Event deduplication**: collapses the burst of callbacks one real interaction emits (a genuine second ring still notifies)
+- **Event logging**: comprehensive event history with detailed action tracking, device filtering, and Excel-friendly CSV export (local timezone, separate Date/Time columns)
+- **Optional Nuki Web API**: resolve real user names and action triggers from the cloud activity log (read-only)
 - **Night mode**: time-based notification adjustments (no audio, dimmer lights)
 - **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules, event log viewer
 - **Auto-discovery**: Nuki Bridge, Hue Bridge, Chromecast, and AirPlay speakers
@@ -135,14 +137,15 @@ Reduces notifications during specified hours:
 
 See `config.example.yaml` for all options. Key sections:
 
-- **nuki** — Bridge IP, port, API token, optional opener/lock ID filters
+- **nuki** — Bridge IP, port, API token, optional opener/lock ID filters, optional Web API token (cloud name/trigger resolution)
 - **hue** — Bridge IP, API key, light/group IDs
 - **speakers** — Chromecast and AirPlay speaker names, volume
 - **homekit** — Enable/disable, setup code
 - **events** — Per-event rules (ring, ring_to_open, door_opened)
 - **event_validation** — Timestamp validation settings
 - **night_mode** — Quiet hours and notification adjustments
-- **event_log** — Logging configuration and retention
+- **event_log** — Logging configuration, retention, and CSV timezone
+- **deduplication** — Suppress duplicate events from one interaction (enabled, window_seconds)
 - **server** — Host and port
 
 ### New Configuration Options
@@ -172,6 +175,20 @@ event_log:
   retention_days: 7       # How long to keep events
   persist_to_file: true   # Save to disk for durability
   file_path: "logs/event_log.json"
+  timezone: "Europe/Madrid"  # IANA tz for the CSV Date/Time columns
+```
+
+#### Event Deduplication
+```yaml
+deduplication:
+  enabled: true
+  window_seconds: 120     # suppress duplicate events within this window
+```
+
+#### Nuki Web API (optional name/trigger resolution)
+```yaml
+nuki:
+  web_api_token: ""       # cloud token; resolves real names + how the door was opened
 ```
 
 ### Getting API Keys
@@ -198,8 +215,9 @@ event_log:
 | `/api/pause` | POST | Pause service |
 | `/api/resume` | POST | Resume service |
 | `/api/test/event/{type}` | POST | Fire test event |
-| `/api/events/log` | GET | Get paginated event log |
-| `/api/events/export` | GET | Export event log as CSV |
+| `/api/events/log` | GET | Get paginated event log (`?device_id=` to filter) |
+| `/api/events/devices` | GET | List distinct devices seen in the event log |
+| `/api/events/export` | GET | Export event log as CSV (`?device_id=` to filter) |
 | `/api/events/clear` | POST | Clear all event log entries |
 | `/api/config/event-validation` | GET/PUT | Event validation configuration |
 | `/api/config/night-mode` | GET/PUT | Night mode configuration |

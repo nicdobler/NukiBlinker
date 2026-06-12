@@ -89,6 +89,7 @@ class TestEventPipelineIntegration:
         clients.airplay = AsyncMock()
         clients.homekit = AsyncMock()
         clients.nuki = AsyncMock()
+        clients.nuki_web = None  # Web API not configured in tests
         clients._app = None
 
         # Mock event log with temporary file

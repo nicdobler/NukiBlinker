@@ -20,3 +20,5 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .venv/
+
+test-output.txt

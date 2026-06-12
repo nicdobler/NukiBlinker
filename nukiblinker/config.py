@@ -24,6 +24,7 @@ class NukiConfig(BaseModel):
     api_token: str = ""
     opener_id: int | None = None
     lock_id: int | None = None
+    web_api_token: str = ""  # optional Nuki Web API token for name/trigger resolution
 
 
 class HueConfig(BaseModel):
@@ -121,6 +122,12 @@ class EventLogConfig(BaseModel):
     retention_days: int = 7
     persist_to_file: bool = True
     file_path: str = "logs/event_log.json"
+    timezone: str = "Europe/Madrid"  # IANA tz for CSV Date/Time columns
+
+
+class DeduplicationConfig(BaseModel):
+    enabled: bool = True
+    window_seconds: int = 120  # suppress duplicate events within this window
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +147,7 @@ class AppConfig(BaseModel):
     event_validation: EventValidationConfig = Field(default_factory=EventValidationConfig)
     night_mode: NightModeConfig = Field(default_factory=NightModeConfig)
     event_log: EventLogConfig = Field(default_factory=EventLogConfig)
+    deduplication: DeduplicationConfig = Field(default_factory=DeduplicationConfig)
 
 
 def get_public_host(config: AppConfig) -> str:

@@ -95,6 +95,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         # Mask secrets
         if data.get("nuki", {}).get("api_token"):
             data["nuki"]["api_token"] = "***"
+        if data.get("nuki", {}).get("web_api_token"):
+            data["nuki"]["web_api_token"] = "***"
         if data.get("hue", {}).get("api_key"):
             data["hue"]["api_key"] = "***"
         return JSONResponse(data)
@@ -108,6 +110,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             nuki = body.get("nuki", {})
             if nuki.get("api_token") in ("***", ""):
                 nuki["api_token"] = current.nuki.api_token
+            if nuki.get("web_api_token") in ("***", ""):
+                nuki["web_api_token"] = current.nuki.web_api_token
             hue = body.get("hue", {})
             if hue.get("api_key") in ("***", ""):
                 hue["api_key"] = current.hue.api_key
@@ -388,36 +392,60 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             offset = int(request.query_params.get("offset", 0))
             limit = min(limit, 1000)  # Cap at 1000 to prevent overload
 
-            events = request.app.state.clients.event_log.get_recent_events(limit, offset)
-            total_count = request.app.state.clients.event_log.get_event_count()
+            device_param = request.query_params.get("device_id")
+            device_id = int(device_param) if device_param else None
+
+            event_log = request.app.state.clients.event_log
+            events = event_log.get_recent_events(limit, offset, device_id=device_id)
+            total_count = event_log.get_event_count(device_id=device_id)
 
             return JSONResponse({
                 "events": [event.to_dict() for event in events],
                 "total_count": total_count,
                 "limit": limit,
-                "offset": offset
+                "offset": offset,
+                "device_id": device_id
             })
         except Exception as e:
             logger.error("Failed to get event log: %s", e, exc_info=True)
             return JSONResponse({"error": "Failed to retrieve event log"}, status_code=500)
 
+    @router.get("/events/devices")
+    async def get_event_log_devices(request: Request) -> JSONResponse:
+        """Return the distinct devices seen in the event log (for the UI filter)."""
+        if not request.app.state.config.event_log.enabled:
+            return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
+        try:
+            devices = request.app.state.clients.event_log.get_devices()
+            return JSONResponse({"devices": devices})
+        except Exception as e:
+            logger.error("Failed to get event log devices: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to retrieve devices"}, status_code=500)
+
     @router.get("/events/export")
     async def export_event_log(request: Request) -> FileResponse:
-        """Export event log as CSV."""
+        """Export event log as CSV (optionally filtered by ?device_id=)."""
         if not request.app.state.config.event_log.enabled:
             return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
 
         try:
-            csv_content = request.app.state.clients.event_log.export_to_csv()
+            device_param = request.query_params.get("device_id")
+            device_id = int(device_param) if device_param else None
+            tz = request.app.state.config.event_log.timezone
+            csv_content = request.app.state.clients.event_log.export_to_csv(
+                device_id=device_id, tz=tz
+            )
 
-            # Create temporary file
+            # Create temporary file (utf-8 so the BOM is preserved for Excel)
             import tempfile
             from datetime import datetime
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"nukiblinker_events_{timestamp}.csv"
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.csv', delete=False, encoding='utf-8'
+            ) as f:
                 f.write(csv_content)
                 temp_path = f.name
 
@@ -610,6 +638,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             "retention_days": config.retention_days,
             "persist_to_file": config.persist_to_file,
             "file_path": config.file_path,
+            "timezone": config.timezone,
             "stats": stats
         })
 
@@ -648,6 +677,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 config.event_log.retention_days = data["retention_days"]
             if "persist_to_file" in data:
                 config.event_log.persist_to_file = bool(data["persist_to_file"])
+            if "timezone" in data:
+                config.event_log.timezone = str(data["timezone"])
 
             # Save configuration
             save_config(config, "config.yaml")
@@ -658,7 +689,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 "max_entries": config.event_log.max_entries,
                 "retention_days": config.event_log.retention_days,
                 "persist_to_file": config.event_log.persist_to_file,
-                "file_path": config.event_log.file_path
+                "file_path": config.event_log.file_path,
+                "timezone": config.event_log.timezone
             })
         except Exception as e:
             logger.error("Failed to update event log config: %s", e, exc_info=True)

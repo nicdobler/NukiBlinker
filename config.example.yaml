@@ -4,6 +4,8 @@ nuki:
   api_token: "your-nuki-bridge-api-token"
   # opener_id: 12345              # optional: filter to a specific Opener
   # lock_id: 67890                # optional: filter to a specific Smart Lock
+  # web_api_token: ""            # optional: Nuki Web API token to resolve real
+  #                               # user names/triggers (cloud, read-only)
 
 hue:
   bridge_ip: "192.168.1.101"
@@ -79,3 +81,9 @@ event_log:
   retention_days: 7                # Keep entries for 7 days
   persist_to_file: true
   file_path: "logs/event_log.json"
+  timezone: "Europe/Madrid"        # IANA tz for the CSV Date/Time columns
+
+# Event deduplication - collapse the burst of callbacks one interaction emits
+deduplication:
+  enabled: true
+  window_seconds: 120              # suppress duplicate events within this window

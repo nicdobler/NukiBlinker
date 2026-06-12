@@ -20,9 +20,30 @@ class TestClassifyOpener:
         payload = {"deviceType": 2, "nukiId": 100, "state": 7}
         assert classify(payload, AppConfig()) == "ring_to_open"
 
-    def test_ring(self):
-        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+    def test_ring_via_ringaction_state(self):
+        """#97: a ring is signalled by ringactionState, not by state."""
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 1,
+            "ringactionState": True,
+            "ringactionTimestamp": "2026-06-12T13:51:05+00:00",
+        }
         assert classify(payload, AppConfig()) == "ring"
+
+    def test_state_1_online_is_not_ring(self):
+        """Regression #97: Opener state==1 ('online') must NOT be a ring."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": False}
+        assert classify(payload, AppConfig()) is None
+
+    def test_state_1_without_ringaction_is_ignored(self):
+        """Regression #97: bare state==1 status callbacks are ignored."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        assert classify(payload, AppConfig()) is None
+
+    def test_ring_to_open_takes_priority_over_ringaction(self):
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 7, "ringactionState": True,
+        }
+        assert classify(payload, AppConfig()) == "ring_to_open"
 
     def test_ignored_state(self):
         payload = {"deviceType": 2, "nukiId": 100, "state": 3}
@@ -143,3 +164,35 @@ class TestResolvePerson:
         nuki.get_last_log.side_effect = Exception("fail")
         result = await resolve_person({"nukiId": 100}, nuki, fallback_name="Desconocido")
         assert result == {"name": "Desconocido"}
+
+    @pytest.mark.asyncio
+    async def test_web_api_preferred_returns_name_and_trigger(self):
+        """When a Web API client is provided, it is used and returns name + trigger."""
+        nuki = AsyncMock()
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Nico", "trigger": 2}
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=100, limit=20)
+        nuki.get_last_log.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_web_api_empty_falls_back_to_bridge_log(self):
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": "Elena"}
+        web = AsyncMock()
+        web.get_recent_log.return_value = []
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Elena"}
+        nuki.get_last_log.assert_called_once_with(100)
+
+    @pytest.mark.asyncio
+    async def test_web_api_exception_falls_back_to_bridge_log(self):
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": "Elena"}
+        web = AsyncMock()
+        web.get_recent_log.side_effect = Exception("cloud down")
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Elena"}

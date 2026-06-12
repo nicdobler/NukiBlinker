@@ -62,6 +62,8 @@ class TestBuildClients:
         assert clients.event_log is not None
         assert clients.event_validator is not None
         assert clients.night_mode is not None
+        assert clients.deduplicator is not None
+        assert clients.nuki_web is None  # Web API not configured by default
         assert clients.event_log.max_entries == cfg.event_log.max_entries
         assert clients.event_validator.max_delay_seconds == cfg.event_validation.max_delay_seconds
 
