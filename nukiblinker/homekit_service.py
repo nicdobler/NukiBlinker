@@ -14,14 +14,12 @@ logger = get_logger("homekit")
 try:
     from pyhap.accessory import Accessory
     from pyhap.accessory_driver import AccessoryDriver
-    from pyhap.const import CATEGORY_PROGRAMMABLE_SWITCH
 
     _HAP_AVAILABLE = True
 except ImportError as _exc:
     logger.warning("HAP-python import failed: %s", _exc)
     Accessory = None  # type: ignore[assignment,misc]
     AccessoryDriver = None  # type: ignore[assignment,misc]
-    CATEGORY_PROGRAMMABLE_SWITCH = None  # type: ignore[assignment]
     _HAP_AVAILABLE = False
 
 
@@ -105,18 +103,7 @@ class HomeKitService:
         )
 
         self._accessory = Accessory(self._driver, "NukiBlinker Doorbell")
-        self._accessory.category = CATEGORY_PROGRAMMABLE_SWITCH
-        doorbell = self._accessory.add_preload_service("Doorbell")
-        doorbell.is_primary_service = True
-        # Programmable button: usable as an automation trigger in the Home
-        # app (bare Doorbell events cannot trigger automations).
-        # ServiceLabelIndex is required to disambiguate the two
-        # ProgrammableSwitchEvent services — without it iOS rejects the
-        # attribute database right after pairing and drops the accessory.
-        switch = self._accessory.add_preload_service(
-            "StatelessProgrammableSwitch", chars=["ServiceLabelIndex"]
-        )
-        switch.configure_char("ServiceLabelIndex", value=1)
+        self._accessory.add_preload_service("Doorbell")
         self._driver.add_accessory(self._accessory)
 
         self._thread = threading.Thread(target=self._run_driver, daemon=True)
@@ -151,21 +138,16 @@ class HomeKitService:
             logger.info("HomeKit doorbell stopped")
 
     async def trigger_ring(self) -> None:
-        """Fire a doorbell ring event to all paired Apple devices.
-
-        Fires on both the Doorbell service (push notification) and the
-        StatelessProgrammableSwitch service (automation trigger).
-        """
+        """Fire a doorbell ring event to all paired Apple devices."""
         if not self._accessory:
             logger.warning("HomeKit accessory not started — cannot trigger ring")
             return
 
-        for service_name in ("Doorbell", "StatelessProgrammableSwitch"):
-            service = self._accessory.get_service(service_name)
-            if service:
-                switch_event = service.get_characteristic("ProgrammableSwitchEvent")
-                if switch_event:
-                    switch_event.set_value(0)  # Single press
+        service = self._accessory.get_service("Doorbell")
+        if service:
+            char = service.get_characteristic("ProgrammableSwitchEvent")
+            if char:
+                char.set_value(0)  # Single press
         logger.info("HomeKit doorbell ring triggered")
 
     def get_setup_code(self) -> str:
@@ -179,7 +161,7 @@ class HomeKitService:
             import base36
 
             digits = self._setup_code.replace("-", "")
-            category = 15  # CATEGORY_PROGRAMMABLE_SWITCH value
+            category = 10  # CATEGORY_SENSOR value
 
             # Use the setup_id from driver state when available so the QR URI
             # matches exactly what HAP-python has advertised.

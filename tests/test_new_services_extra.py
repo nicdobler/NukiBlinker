@@ -4,6 +4,7 @@ All tests are based strictly on the public APIs of the new services.
 """
 
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -133,11 +134,15 @@ class TestNightModeExtra:
         assert nm.apply_night_mode(rule) is rule
 
     def test_apply_night_mode_disables_audio_during_night(self):
-        # 00:00-23:59 same-day range covers the whole day, so it is always night
-        nm = NightMode(start_time="00:00", end_time="23:59", grace_minutes=0)
-        assert nm.is_night_time() is True
+        nm = NightMode(start_time="22:00", end_time="23:00", grace_minutes=0)
         rule = EventRuleConfig()
-        night_rule = nm.apply_night_mode(rule)
+        with patch("nukiblinker.night_mode.datetime") as mock_dt:
+            from datetime import datetime as real_datetime
+            mock_dt.now.return_value = real_datetime(2026, 1, 1, 22, 30, 0)
+            mock_dt.combine = real_datetime.combine
+            mock_dt.today = real_datetime.today
+            assert nm.is_night_time() is True
+            night_rule = nm.apply_night_mode(rule)
         assert night_rule.audio.enabled is False
 
 
