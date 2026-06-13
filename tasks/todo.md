@@ -278,7 +278,7 @@ Regression tests added: `test_deduplication.py` (timestamp discriminator), `test
 
 ## Event log: slow load + lost between versions → SQLite backend
 
-**Branch**: `feat/event-log-sqlite` | **PR**: _pending_
+**Branch**: `feat/event-log-sqlite` | **PR**: #111
 
 Context: User reported the event log takes long to load and is lost between app
 versions. Root causes: (1) `logs/` was never mounted as a volume → wiped on every
