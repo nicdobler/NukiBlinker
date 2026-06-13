@@ -87,7 +87,7 @@ Examples:
 
 Each event rule configures:
 - Which **notification channels** to fire (checkboxes).
-- Which **blink pattern** to use (alert, custom, or none).
+- Which **blink pattern** to use (none, short, or long).
 - Which **audio** to play: chime (bundled sound), TTS (template message with `{name}`), or none.
 - Whether to send a **HomeKit** notification.
 
@@ -101,15 +101,28 @@ Example configuration:
 
 ## Blink Modes
 
-### 1. Built-in Alert (default)
-- Uses Hue's native `"alert": "lselect"` — 15-second blink cycle.
-- Zero configuration beyond selecting which lights/groups.
-- Lights return to previous state automatically.
+Each event rule picks one of three blink modes. Both active modes use Hue's
+native `alert` effect, so the bridge **restores each light's previous state**
+(on/off, colour, brightness) automatically when the sequence ends.
 
-### 2. Custom Pattern
-- Parameters: color (HSB), number of flashes, interval between flashes.
-- NukiBlinker saves light state before blinking, restores after.
-- Each event rule can have its own custom pattern (e.g., red for unknown ring, green for RTO).
+### `none`
+- No blink.
+
+### `short` — single cycle
+- Uses Hue's native `"alert": "select"` — a single "breathe" cycle (one blink).
+- For quick, low-disruption notifications.
+
+### `long` — 15-second cycle
+- Uses Hue's native `"alert": "lselect"` — the ~15-second "breathe" cycle.
+- For attention-grabbing alerts.
+
+The number of blinks is fixed by the Hue bridge for each mode and is not
+configurable. A future hardcoded blink pattern may be added in code (no config
+surface); it would also save and restore each light's state.
+
+> **Removed (Unreleased)**: the previous configurable `custom` pattern (color /
+> flash count / interval) was removed — its save/restore was unreliable. Use
+> `short` or `long` instead.
 
 ## Notification Channels
 

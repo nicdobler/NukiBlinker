@@ -19,7 +19,7 @@ All project documentation lives in this repository (versioned alongside the code
 - **3 event types**: Ring (unknown visitor), Ring to Open (authorized), Door Opened (Smart Lock)
 - **Per-event rules**: each event gets its own blink pattern, audio, and HomeKit toggle
 - **Personalized announcements**: "{name} llegó a casa" via Nuki activity log
-- **Hue light blinks**: alert mode (built-in 15s) or custom (color, flash count, interval)
+- **Hue light blinks**: built-in alert per event — `short` (1 blink) or `long` (~15s); lights restore their previous state automatically
 - **Voice announcements**: TTS via gTTS on Google Nest (Chromecast)
 - **Chime sounds**: bundled audio files for door-opened events
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
@@ -27,7 +27,7 @@ All project documentation lives in this repository (versioned alongside the code
 - **Event deduplication**: collapses the burst of callbacks one real interaction emits (a genuine second ring still notifies)
 - **Event logging**: comprehensive event history with detailed action tracking, device filtering, and Excel-friendly CSV export (local timezone, separate Date/Time columns)
 - **Optional Nuki Web API**: resolve real user names and action triggers from the cloud activity log (read-only)
-- **Night mode**: time-based notification adjustments (no audio, dimmer lights)
+- **Night mode**: time-based notification adjustments (disables audio during quiet hours)
 - **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules, event log viewer
 - **Auto-discovery**: Nuki Bridge, Hue Bridge, and Chromecast speakers
 - **Graceful lifecycle**: shutdown deregisters Nuki callback, pause/resume via web UI
@@ -95,7 +95,7 @@ Go to the **HomeKit** tab.
 
 Go to the **Events** tab. Each event type (Ring, Ring to Open, Door Opened) has its own settings:
 
-- **Blink mode**: `alert` (15s Hue built-in), `custom` (set color, flash count, interval), or `none`.
+- **Blink mode**: `none`, `short` (single Hue built-in blink), or `long` (~15s Hue built-in). Lights return to their previous state automatically.
 - **Audio**: enable TTS announcements (with `{name}` placeholder) or play a chime sound.
 - **HomeKit**: toggle doorbell notification per event.
 
@@ -116,7 +116,7 @@ The web UI provides a tabbed interface covering all configuration:
 | **Hue** | Bridge connection, network discovery, guided pairing (button press → pair), light & group selection |
 | **Speakers** | Chromecast names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |
-| **Events** | Per-event blink (alert/custom HSB), audio (TTS/chime), HomeKit toggle |
+| **Events** | Per-event blink (none/short/long), audio (TTS/chime), HomeKit toggle |
 | **Event Log** | View event history, export CSV, clear log |
 | **Event Validation** | Configure timestamp validation to reject stale events |
 | **Night Mode** | Set quiet hours with reduced notifications |

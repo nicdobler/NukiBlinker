@@ -6,7 +6,7 @@ import socket
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from nukiblinker.logging_config import get_logger
 
@@ -34,17 +34,30 @@ class HueConfig(BaseModel):
     groups: list[int] = Field(default_factory=list)
 
 
-class CustomBlinkConfig(BaseModel):
-    hue: int = 0
-    saturation: int = 254
-    brightness: int = 254
-    flashes: int = 3
-    interval_ms: int = 500
-
-
 class BlinkConfig(BaseModel):
-    mode: str = "alert"
-    custom: CustomBlinkConfig = Field(default_factory=CustomBlinkConfig)
+    """Hue blink behaviour for an event.
+
+    Modes map to the Hue built-in ``alert`` effect, which restores each light's
+    previous state automatically when the sequence ends:
+
+    - ``none``  — no blink.
+    - ``short`` — ``select`` (single breathe cycle, one blink).
+    - ``long``  — ``lselect`` (~15-second breathe cycle).
+    """
+
+    mode: str = "long"
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _migrate_mode(cls, value: object) -> str:
+        """Normalise legacy values (``alert``/``custom``) and unknown modes."""
+        if value in ("none", "short", "long"):
+            return value  # type: ignore[return-value]
+        # Legacy configs: the old built-in alert was lselect (long); the old
+        # configurable custom pattern was removed — map it to a visible blink.
+        if value in ("alert", "custom"):
+            return "long"
+        return "long"
 
 
 class SpeakersConfig(BaseModel):
@@ -69,14 +82,14 @@ class EventRuleConfig(BaseModel):
 class EventRulesConfig(BaseModel):
     ring: EventRuleConfig = Field(
         default_factory=lambda: EventRuleConfig(
-            blink=BlinkConfig(mode="alert"),
+            blink=BlinkConfig(mode="long"),
             audio=AudioConfig(enabled=False),
             homekit=True,
         )
     )
     ring_to_open: EventRuleConfig = Field(
         default_factory=lambda: EventRuleConfig(
-            blink=BlinkConfig(mode="custom"),
+            blink=BlinkConfig(mode="short"),
             audio=AudioConfig(enabled=True, mode="tts", message="{name} llegó a casa"),
             homekit=True,
         )

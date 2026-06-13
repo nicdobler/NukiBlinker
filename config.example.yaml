@@ -25,20 +25,14 @@ homekit:
 events:
   ring:
     blink:
-      mode: "alert"               # "alert", "custom", or "none"
+      mode: "long"                # "none", "short" (1 blink), or "long" (~15s)
     audio:
       enabled: false
     homekit: true
 
   ring_to_open:
     blink:
-      mode: "custom"
-      custom:
-        hue: 25500                 # green
-        saturation: 254
-        brightness: 254
-        flashes: 3
-        interval_ms: 500
+      mode: "short"               # single built-in Hue alert cycle
     audio:
       enabled: true
       mode: "tts"

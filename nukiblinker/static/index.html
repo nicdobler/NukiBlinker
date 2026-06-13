@@ -246,14 +246,8 @@
             <p class="help">Triggered when someone rings without Ring to Open enabled.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
-                <select id="ringBlinkMode" onchange="toggleCustomBlink('ring')"><option value="alert">Alert (built-in)</option><option value="custom">Custom</option><option value="none">None</option></select>
-                <div id="ringCustomBlink" style="display:none" class="grid-3">
-                    <div><label>Hue (0–65535)</label><input id="ringBlinkHue" type="number" min="0" max="65535" value="0"></div>
-                    <div><label>Saturation</label><input id="ringBlinkSat" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Brightness</label><input id="ringBlinkBri" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Flashes</label><input id="ringBlinkFlashes" type="number" min="1" max="20" value="3"></div>
-                    <div><label>Interval (ms)</label><input id="ringBlinkInterval" type="number" min="100" max="5000" value="500"></div>
-                </div>
+                <select id="ringBlinkMode"><option value="none">None</option><option value="short">Short (1 blink)</option><option value="long">Long (15s)</option></select>
+                <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
             </div>
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable audio</label></div>
@@ -274,14 +268,8 @@
             <p class="help">Triggered when a known person rings and the door auto-opens.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
-                <select id="rtoBlinkMode" onchange="toggleCustomBlink('rto')"><option value="custom">Custom</option><option value="alert">Alert (built-in)</option><option value="none">None</option></select>
-                <div id="rtoCustomBlink" class="grid-3">
-                    <div><label>Hue (0–65535)</label><input id="rtoBlinkHue" type="number" min="0" max="65535" value="0"></div>
-                    <div><label>Saturation</label><input id="rtoBlinkSat" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Brightness</label><input id="rtoBlinkBri" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Flashes</label><input id="rtoBlinkFlashes" type="number" min="1" max="20" value="3"></div>
-                    <div><label>Interval (ms)</label><input id="rtoBlinkInterval" type="number" min="100" max="5000" value="500"></div>
-                </div>
+                <select id="rtoBlinkMode"><option value="none">None</option><option value="short">Short (1 blink)</option><option value="long">Long (15s)</option></select>
+                <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
             </div>
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="rtoAudioEnabled" checked onchange="toggleAudioFields('rto')"><label for="rtoAudioEnabled">Enable audio</label></div>
@@ -302,14 +290,8 @@
             <p class="help">Triggered when the smart lock is unlocked or unlatched.</p>
             <div class="event-section"><h4>Blink</h4>
                 <label>Mode</label>
-                <select id="doorBlinkMode" onchange="toggleCustomBlink('door')"><option value="none">None</option><option value="alert">Alert (built-in)</option><option value="custom">Custom</option></select>
-                <div id="doorCustomBlink" style="display:none" class="grid-3">
-                    <div><label>Hue (0–65535)</label><input id="doorBlinkHue" type="number" min="0" max="65535" value="0"></div>
-                    <div><label>Saturation</label><input id="doorBlinkSat" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Brightness</label><input id="doorBlinkBri" type="number" min="0" max="254" value="254"></div>
-                    <div><label>Flashes</label><input id="doorBlinkFlashes" type="number" min="1" max="20" value="3"></div>
-                    <div><label>Interval (ms)</label><input id="doorBlinkInterval" type="number" min="100" max="5000" value="500"></div>
-                </div>
+                <select id="doorBlinkMode"><option value="none">None</option><option value="short">Short (1 blink)</option><option value="long">Long (15s)</option></select>
+                <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
             </div>
             <div class="event-section"><h4>Audio</h4>
                 <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable audio</label></div>
@@ -460,10 +442,6 @@ function switchTab(btn, name) {
     document.getElementById('panel-' + name).classList.add('active');
 }
 
-function toggleCustomBlink(prefix) {
-    document.getElementById(prefix + 'CustomBlink').style.display =
-        document.getElementById(prefix + 'BlinkMode').value === 'custom' ? '' : 'none';
-}
 function toggleAudioFields(prefix) {
     document.getElementById(prefix + 'AudioFields').style.display =
         document.getElementById(prefix + 'AudioEnabled').checked ? '' : 'none';
@@ -529,12 +507,7 @@ function setSelect(id, v) { const el = document.getElementById(id); for (const o
 function populateEventRule(prefix, rule) {
     if (!rule) return;
     const b = rule.blink || {}, a = rule.audio || {};
-    setSelect(prefix + 'BlinkMode', b.mode || 'none'); toggleCustomBlink(prefix);
-    if (b.custom) {
-        setVal(prefix + 'BlinkHue', b.custom.hue); setVal(prefix + 'BlinkSat', b.custom.saturation);
-        setVal(prefix + 'BlinkBri', b.custom.brightness); setVal(prefix + 'BlinkFlashes', b.custom.flashes);
-        setVal(prefix + 'BlinkInterval', b.custom.interval_ms);
-    }
+    setSelect(prefix + 'BlinkMode', b.mode || 'none');
     setChk(prefix + 'AudioEnabled', a.enabled); toggleAudioFields(prefix);
     setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
     setVal(prefix + 'TtsMsg', a.message); setVal(prefix + 'Chime', a.chime);
@@ -543,10 +516,7 @@ function populateEventRule(prefix, rule) {
 
 function collectEventRule(prefix) {
     return {
-        blink: { mode: val(prefix + 'BlinkMode'), custom: {
-            hue: parseInt(val(prefix + 'BlinkHue')) || 0, saturation: parseInt(val(prefix + 'BlinkSat')) || 254,
-            brightness: parseInt(val(prefix + 'BlinkBri')) || 254, flashes: parseInt(val(prefix + 'BlinkFlashes')) || 3,
-            interval_ms: parseInt(val(prefix + 'BlinkInterval')) || 500 } },
+        blink: { mode: val(prefix + 'BlinkMode') },
         audio: { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
             message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime') },
         homekit: chk(prefix + 'Hk'),

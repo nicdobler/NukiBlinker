@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nukiblinker.hue_client import HueClient
-from nukiblinker.config import CustomBlinkConfig
 
 
 @pytest.fixture
@@ -51,43 +50,26 @@ class TestTriggerAlert:
         finally:
             ctx.stop()
 
-
-class TestCustomBlink:
     @pytest.mark.asyncio
-    async def test_blink_saves_and_restores(self, client):
-        saved_state = {"on": True, "bri": 200, "hue": 100, "sat": 50}
-        get_resp = _mock_response({"state": saved_state})
-        put_resp = _mock_response([{"success": True}])
-
-        mock_http = _mock_http_client(get=get_resp, put=put_resp)
+    async def test_defaults_to_lselect(self, client):
+        resp = _mock_response([{"success": True}])
+        mock_http = _mock_http_client(put=resp)
         ctx = _patch_httpx(mock_http)
         try:
-            blink = CustomBlinkConfig(hue=0, saturation=254, brightness=254, flashes=1, interval_ms=10)
-            await client.trigger_custom_blink([1], [2], blink)  # light_ids=[1], group_ids=[2]
-            # get: 1 (save) | put: 2 (on, off) + 1 (restore) = 3
-            assert mock_http.get.call_count == 1
-            assert mock_http.put.call_count >= 3
+            await client.trigger_alert([1], [])
+            assert mock_http.put.call_args.kwargs["json"] == {"alert": "lselect"}
         finally:
             ctx.stop()
 
     @pytest.mark.asyncio
-    async def test_restore_preserves_color_temperature_mode(self, client):
-        """Regression: a light in ct mode must be restored with ct, not hue/sat."""
-        saved_state = {"on": True, "bri": 200, "ct": 366, "colormode": "ct",
-                       "hue": 8000, "sat": 120}
-        get_resp = _mock_response({"state": saved_state})
-        put_resp = _mock_response([{"success": True}])
-
-        mock_http = _mock_http_client(get=get_resp, put=put_resp)
+    async def test_select_alert_for_short_mode(self, client):
+        resp = _mock_response([{"success": True}])
+        mock_http = _mock_http_client(put=resp)
         ctx = _patch_httpx(mock_http)
         try:
-            blink = CustomBlinkConfig(hue=0, saturation=254, brightness=254, flashes=1, interval_ms=10)
-            await client.trigger_custom_blink([1], [], blink)
-            # The final PUT is the restore call.
-            restore_body = mock_http.put.call_args_list[-1].kwargs["json"]
-            assert restore_body["ct"] == 366
-            assert "hue" not in restore_body
-            assert "sat" not in restore_body
+            await client.trigger_alert([1], [2], alert="select")
+            for call in mock_http.put.call_args_list:
+                assert call.kwargs["json"] == {"alert": "select"}
         finally:
             ctx.stop()
 

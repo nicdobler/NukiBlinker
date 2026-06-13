@@ -323,3 +323,27 @@ lock surfaced on the next `make cleanup`.
 - [x] Docs: CHANGELOG `[Unreleased]` + `tasks/lessons.md`
 - [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
 - [ ] Merge PR #113
+
+---
+
+## Hue blink modes: none / short (select) / long (lselect)
+
+**Branch**: `feat/hue-blink-select-lselect` | **PR**: _pending_
+
+Context: User asked whether the built-in Hue alerts can have fewer blinks. The
+built-in `lselect` (~15s) is fixed; only `select` (single cycle) reduces it.
+Decision (user): per-event choice between a 1-cycle and a 15-second blink,
+remove the broken `custom` mode, leave room for a future hardcoded pattern (no
+config), and guarantee lights return to their previous state — which the
+built-in `select`/`lselect` already do via the bridge.
+
+- [x] Specs: product-spec Blink Modes (none/short/long) + tech-spec config model, HueClient, night mode
+- [x] `config.py`: `BlinkConfig` modes none/short/long; removed `CustomBlinkConfig`; `field_validator` migrates `alert`/`custom`→`long`; new defaults (ring=long, ring_to_open=short)
+- [x] `hue_client.py`: `trigger_alert(..., alert="lselect")`; removed `trigger_custom_blink`; kept `get_light_state`/`set_light_state` for a future pattern
+- [x] `notifier.py`: `_BLINK_ALERT` mode→alert map + documented extension hook
+- [x] `night_mode.py`: dropped custom-brightness branch (built-in alerts are bridge-controlled)
+- [x] Web UI: Events tab selector none/short/long; removed custom inputs + `toggleCustomBlink` JS
+- [x] Tests: hue_client (alert kind), notifier, night_mode, config (migration), integration pipeline
+- [x] Docs: README, config.example.yaml, CHANGELOG `[Unreleased]`
+- [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
+- [ ] Merge PR

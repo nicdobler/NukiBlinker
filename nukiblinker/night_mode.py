@@ -94,18 +94,8 @@ class NightMode:
             night_rule.audio.enabled = False
             logger.debug("Night mode: disabled audio for event")
 
-        # Reduce light brightness for custom blink mode
-        if night_rule.blink.mode == "custom":
-            original_brightness = night_rule.blink.custom.brightness
-            night_rule.blink.custom.brightness = max(
-                1, int(original_brightness * self.brightness_factor)
-            )
-            logger.debug(
-                "Night mode: reduced brightness from %d to %d (%.1f%%)",
-                original_brightness, night_rule.blink.custom.brightness,
-                self.brightness_factor * 100
-            )
-
+        # Built-in select/lselect blink brightness is controlled by the Hue
+        # bridge and cannot be dimmed, so night mode only disables audio.
         # Note: HomeKit notifications remain enabled (silent push notifications)
         logger.debug("Night mode applied to event rule")
 
