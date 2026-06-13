@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI failure reporting now keeps a single issue per branch (deduplicated via a hidden marker) instead of opening a new issue on every failing commit, and auto-closes that issue when CI goes green again.
 
 ### Fixed
+- **#112**: `make install` ran `poetry lock` in addition to `poetry install`, which rewrote the committed `poetry.lock` (Poetry version drift) and left the working tree dirty — so a later `make cleanup` failed at `git pull --ff-only` ("cannot pull with rebase: You have unstaged changes"). `install` now only runs `poetry install`; lockfile regeneration moved to a dedicated `make lock`. Also added `.homekit/` (and `homekit/`) to `.gitignore` to stop the HomeKit pairing-state directory showing up as an untracked artifact.
 - **Code review**: Batch of bug fixes from a full-codebase review:
   - Web UI feature-config endpoints (`/api/config/event-validation|night-mode|event-log`) now persist to the launch `--config` path instead of a hardcoded `./config.yaml`, preventing config drift / lost changes in the Dockerized deploy.
   - `PUT /api/config` no longer wipes stored Nuki/Hue credentials when the request omits the `nuki`/`hue` sections (omitted sections are preserved like masked secrets).

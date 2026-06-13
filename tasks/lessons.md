@@ -39,6 +39,10 @@
 - **Mistake**: Added a new `homekit.address` config field when `server.public_host` + `get_public_host()` already expressed the same intent (LAN IP for externally-reachable endpoints).
 - **Rule**: Before adding a config field, scan `config.py` for an existing option covering the same concept and reuse it. One concept = one config knob.
 
+## 2026-06-13 — `poetry lock` in the `install` target dirtied the tree (#112)
+- **Mistake**: `make install` ran `poetry install` **and** `poetry lock`. On the Mac, `poetry lock` rewrote the committed `poetry.lock` (Poetry version drift), leaving the working tree dirty. A later `make cleanup` then failed at `git pull --ff-only` ("cannot pull with rebase: You have unstaged changes").
+- **Rule**: Keep `poetry lock` out of routine targets. `install` should only `poetry install` (install from the committed lock); regenerate the lock with a dedicated `make lock` only when dependencies change. Don't let dev/CI convenience targets mutate version-controlled files.
+
 ## 2026-06-12 - HomeKit service changes on a paired standalone accessory
 - **Mistake**: Added a second ProgrammableSwitchEvent service (StatelessProgrammableSwitch) without ServiceLabelIndex; iOS paired OK, then rejected the attribute DB and silently dropped the accessory. Also assumed iOS would treat a service-list change as an in-place update; it dropped the accessory instead, leaving an orphaned pairing (paired_clients set, no QR shown).
 - **Rule**: When an accessory has 2+ services with ProgrammableSwitchEvent, set ServiceLabelIndex on the switch and mark the main service primary. Before deploying service-list changes to a paired accessory, remove it from the Home app first (protocol unpair), then deploy and re-pair.

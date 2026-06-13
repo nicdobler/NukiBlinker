@@ -303,3 +303,23 @@ Decisions:
 - Single connection per instance, `check_same_thread=False` + existing Lock, WAL
   for file DBs, `:memory:` when `persist_to_file=False`.
 - Back-compat `entries` property + `store_entry()` keep most existing tests intact.
+
+---
+
+## #112 — `make cleanup` failed: dirty poetry.lock from `make install`
+
+**Branch**: `fix/112-poetry-lock-churn` | **PR**: #113
+
+Context: `make cleanup` aborted at `git pull --ff-only` with "cannot pull with
+rebase: You have unstaged changes". Root cause: `make install` ran `poetry lock`
+on top of `poetry install`, rewriting the committed `poetry.lock` (Poetry version
+drift) and dirtying the tree; `make validate` runs `make install`, so the dirty
+lock surfaced on the next `make cleanup`.
+
+- [x] Root cause identified (Makefile `install` runs `poetry lock`)
+- [x] Fix: `install` only runs `poetry install`; move `poetry lock` to a dedicated `make lock`
+- [x] `.gitignore`: ignore `.homekit/` and `homekit/` (runtime artifact in the trace)
+- [x] Regression test `tests/test_makefile.py` (fails on pre-fix Makefile)
+- [x] Docs: CHANGELOG `[Unreleased]` + `tasks/lessons.md`
+- [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
+- [ ] Merge PR #113
