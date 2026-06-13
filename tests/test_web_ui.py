@@ -104,7 +104,9 @@ class TestTestEvent:
             r = client.post("/api/test/event/ring")
             assert r.status_code == 200
             assert r.json()["event"] == "ring"
-            assert r.json()["actions"] == ["Hue lights blinked"]
+            # actions are recorded in the Event Log, NOT echoed in the response
+            # (avoids leaking exception detail — CodeQL py/stack-trace-exposure)
+            assert "actions" not in r.json()
             mock_er.dispatch_with_actions.assert_awaited_once()
 
     def test_unknown_event_type(self, client):

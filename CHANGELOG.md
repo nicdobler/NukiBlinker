@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Event deduplication no longer collapses two genuinely distinct `ring_to_open`/`door_opened` events: the discriminator now prefers a per-event `timestamp` (falling back to `state` for burst suppression when no timestamp is present).
   - Chromecast name-based playback no longer leaks a `Zeroconf`/`CastBrowser` per event, and cast socket clients are now disconnected after playback; `volume_level == None` is handled when saving/restoring volume.
   - Event-log CSV export now renders a `0.00` ms processing time instead of a blank cell, and the temporary CSV file is deleted after the response is sent.
-  - `/api/test/event` now mirrors the real pipeline (applies night mode and records the event in the Event Log).
+  - `/api/test/event` now mirrors the real pipeline (applies night mode and records the event in the Event Log). The detailed action list — which may embed exception text — is kept in the Event Log only and is no longer echoed in the HTTP response (CodeQL `py/stack-trace-exposure`).
   - Hue custom-blink restore honours the light's original colour mode (`ct`/`xy`/`hs`) instead of forcing it into hue/sat.
   - Night mode grace period now wraps correctly across midnight (minutes-of-day arithmetic).
   - Server computes the validation result once per callback and reuses it across logging branches.

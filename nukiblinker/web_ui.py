@@ -742,7 +742,11 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 context_override=context_override,
             )
 
-            # Record test events in the event log, like real callbacks.
+            # Record test events in the event log, like real callbacks. The
+            # detailed actions (which may embed exception text) are kept in the
+            # Event Log only — they are deliberately NOT echoed in the HTTP
+            # response to avoid leaking internal error detail (CodeQL
+            # py/stack-trace-exposure).
             if config.event_log.enabled and getattr(clients, "event_log", None) is not None:
                 validation_result = clients.event_validator.validate_event(payload)
                 clients.event_log.log_event(
@@ -751,7 +755,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                     actions=actions,
                     validation_result=validation_result,
                 )
-            return JSONResponse({"status": "fired", "event": event_type, "actions": actions})
+            return JSONResponse({"status": "fired", "event": event_type})
         except Exception as e:
             logger.error("Test event failed: %s", e, exc_info=True)
             return JSONResponse({"error": "Test event failed"}, status_code=500)
