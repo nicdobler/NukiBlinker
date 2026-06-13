@@ -460,21 +460,24 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 | `make install` | Install/update deps | Mac |
 | `make runLocal` | Run locally (real devices) | Mac |
 | `make build` | Build Docker image | Mac |
-| `./scripts/test.sh` | Pick a branch → install, lint, test, then wait for merge to main and clean up | Mac |
+| `make run-tests` | Lint + tests on the current branch | Mac |
+| `make validate` | Pick a branch (menu or arg) → checkout → install → run-tests | Mac |
+| `make cleanup` | Return to main, pull, prune merged local branches | Mac |
 
 > **Note**: No testing or building on the work laptop. Code only.
 
-### Validating a branch (Mac)
+### Branch workflow (Mac)
 
 ```sh
-./scripts/test.sh                 # interactive branch picker
-./scripts/test.sh feat/my-branch  # validate a specific branch
+make run-tests                         # validate the branch you're already on
+make validate                          # fetch + pick a branch + checkout + validate
+./scripts/validate.sh feat/my-branch   # (or validate a specific branch directly)
+make cleanup                           # after the PR is merged: back to main + prune
 ```
 
-It fetches with prune, lets you pick a branch, runs `make install` + `make lint` +
-`make test`, and — if green — waits until the branch's PR is merged into `main`
-(via `gh`, falling back to git ancestry), then switches to `main`, pulls, and
-deletes the merged branch locally and on the remote.
+`make validate` fetches with prune, lets you pick a branch, checks it out,
+installs deps, and runs `make run-tests` (lint + tests). Once the PR is merged on
+GitHub, `make cleanup` switches to `main`, pulls, and deletes merged local branches.
 
 ### Tech Stack
 

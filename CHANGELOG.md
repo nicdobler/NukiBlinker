@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Ops**: `update.sh` (project root, executable) — one-command update for the Mini PC: pulls latest code + image, ensures the `logs/` volume dir exists, restarts the container, and prunes dangling images (`BUILD=1` to build locally).
-- **Dev**: `scripts/test.sh` (executable) — interactive branch validation for the Mac: fetch + prune, pick a branch, run `make install`/`make lint`/`make test`, then wait for the PR to be merged into `main` and clean up the branch locally and on the remote.
+- **Dev**: Mac branch workflow as Make targets — `make run-tests` (lint + tests on the current branch), `make validate` (fetch + pick a branch + checkout + install + run-tests, backed by `scripts/validate.sh`), and `make cleanup` (return to main, pull, prune merged local branches). `make test`/`make lint` keep their original meaning.
 - **Repo**: `.gitattributes` enforcing `eol=lf` for `*.sh` so scripts authored on the Windows work laptop keep a working shebang on macOS/Linux.
 - **Docs**: Added architecture diagrams to `specs/tech-spec.md` — a component diagram (external systems + internal modules), a class diagram (`Clients` container and service clients), and a callback processing pipeline sequence diagram.
 - **Docs**: Added a Documentation index to `README.md` linking the product/tech specs, changelog, config template, and deploy notes.
