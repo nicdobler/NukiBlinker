@@ -209,7 +209,7 @@ class EventLog:
                 f"{entry.validation_result.delay_seconds:.2f}",
                 entry.validation_result.reason or "",
                 "; ".join(entry.actions),
-                f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms else ""
+                f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms is not None else ""
             ])
 
         # BOM + Excel separator hint so Excel (incl. ES locale) parses columns.

@@ -70,6 +70,27 @@ class TestCustomBlink:
         finally:
             ctx.stop()
 
+    @pytest.mark.asyncio
+    async def test_restore_preserves_color_temperature_mode(self, client):
+        """Regression: a light in ct mode must be restored with ct, not hue/sat."""
+        saved_state = {"on": True, "bri": 200, "ct": 366, "colormode": "ct",
+                       "hue": 8000, "sat": 120}
+        get_resp = _mock_response({"state": saved_state})
+        put_resp = _mock_response([{"success": True}])
+
+        mock_http = _mock_http_client(get=get_resp, put=put_resp)
+        ctx = _patch_httpx(mock_http)
+        try:
+            blink = CustomBlinkConfig(hue=0, saturation=254, brightness=254, flashes=1, interval_ms=10)
+            await client.trigger_custom_blink([1], [], blink)
+            # The final PUT is the restore call.
+            restore_body = mock_http.put.call_args_list[-1].kwargs["json"]
+            assert restore_body["ct"] == 366
+            assert "hue" not in restore_body
+            assert "sat" not in restore_body
+        finally:
+            ctx.stop()
+
 
 class TestListLights:
     @pytest.mark.asyncio

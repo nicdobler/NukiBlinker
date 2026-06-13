@@ -152,15 +152,23 @@ class HueClient:
                     logger.warning("Flash off failed for group %s", gid, exc_info=True)
             await asyncio.sleep(interval_s)
 
-        # Restore (lights only)
+        # Restore (lights only). Honor the light's original color mode so a
+        # light that was in colour-temperature (ct) or xy mode is not forced
+        # into hue/sat mode on restore.
         for lid, orig in saved_states.items():
             restore = {
                 "on": orig.get("on", False),
                 "bri": orig.get("bri", 254),
-                "hue": orig.get("hue", 0),
-                "sat": orig.get("sat", 0),
                 "transitiontime": 4,
             }
+            colormode = orig.get("colormode")
+            if colormode == "ct" and "ct" in orig:
+                restore["ct"] = orig["ct"]
+            elif colormode == "xy" and "xy" in orig:
+                restore["xy"] = orig["xy"]
+            else:
+                restore["hue"] = orig.get("hue", 0)
+                restore["sat"] = orig.get("sat", 0)
             try:
                 await self.set_light_state(lid, restore)
                 logger.debug("Restored light %s", lid)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ import httpx
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from nukiblinker import discovery, event_router
@@ -106,13 +108,19 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         try:
             body = await request.json()
             current = request.app.state.config
-            # Preserve masked secrets — GET returns "***"
-            nuki = body.get("nuki", {})
+            # Preserve whole sections the UI omitted (so a partial PUT never
+            # wipes existing credentials), then restore masked secrets — GET
+            # returns "***" for secret fields.
+            if "nuki" not in body:
+                body["nuki"] = current.nuki.model_dump()
+            nuki = body["nuki"]
             if nuki.get("api_token") in ("***", ""):
                 nuki["api_token"] = current.nuki.api_token
             if nuki.get("web_api_token") in ("***", ""):
                 nuki["web_api_token"] = current.nuki.web_api_token
-            hue = body.get("hue", {})
+            if "hue" not in body:
+                body["hue"] = current.hue.model_dump()
+            hue = body["hue"]
             if hue.get("api_key") in ("***", ""):
                 hue["api_key"] = current.hue.api_key
             # Preserve server config if not provided by the UI
@@ -451,7 +459,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return FileResponse(
                 temp_path,
                 media_type='text/csv',
-                filename=filename
+                filename=filename,
+                background=BackgroundTask(os.unlink, temp_path),
             )
         except Exception as e:
             logger.error("Failed to export event log: %s", e, exc_info=True)
@@ -513,7 +522,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 request.app.state.clients.event_validator.max_delay_seconds = config.event_validation.max_delay_seconds
 
             # Save configuration
-            save_config(config, "config.yaml")
+            save_config(config, request.app.state.config_path)
 
             logger.info("Event validation config updated: %s", data)
             return JSONResponse({
@@ -604,7 +613,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 )
 
             # Save configuration
-            save_config(config, "config.yaml")
+            save_config(config, request.app.state.config_path)
 
             logger.info("Night mode config updated: %s", data)
             return JSONResponse({
@@ -680,7 +689,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 config.event_log.timezone = str(data["timezone"])
 
             # Save configuration
-            save_config(config, "config.yaml")
+            save_config(config, request.app.state.config_path)
 
             logger.info("Event log config updated: %s", data)
             return JSONResponse({
@@ -719,10 +728,33 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             context_override: dict | None = None
             if name is not None:
                 context_override = {"name": name}
-            await event_router.dispatch(
-                event_type, payload, request.app.state.config,
-                request.app.state.clients, context_override=context_override,
+
+            config = request.app.state.config
+            clients = request.app.state.clients
+
+            # Apply night mode so a test fired at night mirrors real behaviour.
+            rule = getattr(config.events, event_type)
+            if config.night_mode.enabled and getattr(clients, "night_mode", None) is not None:
+                rule = clients.night_mode.apply_night_mode(rule)
+
+            actions = await event_router.dispatch_with_actions(
+                event_type, payload, config, clients, rule,
+                context_override=context_override,
             )
+
+            # Record test events in the event log, like real callbacks. The
+            # detailed actions (which may embed exception text) are kept in the
+            # Event Log only — they are deliberately NOT echoed in the HTTP
+            # response to avoid leaking internal error detail (CodeQL
+            # py/stack-trace-exposure).
+            if config.event_log.enabled and getattr(clients, "event_log", None) is not None:
+                validation_result = clients.event_validator.validate_event(payload)
+                clients.event_log.log_event(
+                    payload=payload,
+                    event_type=event_type,
+                    actions=actions,
+                    validation_result=validation_result,
+                )
             return JSONResponse({"status": "fired", "event": event_type})
         except Exception as e:
             logger.error("Test event failed: %s", e, exc_info=True)

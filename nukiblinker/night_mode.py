@@ -57,22 +57,22 @@ class NightMode:
         if not self.is_enabled():
             return False
 
-        now = datetime.now().time()
+        now = datetime.now()
+        now_min = now.hour * 60 + now.minute
 
-        # Apply grace period
-        grace_delta = timedelta(minutes=self.grace_minutes)
+        # Work in minutes-of-day and wrap with modulo so the grace period is
+        # correct even when it pushes a boundary across midnight (e.g. a
+        # start of 00:02 with a 5-minute grace → effective start 23:57).
+        start_min = self.start_time.hour * 60 + self.start_time.minute
+        end_min = self.end_time.hour * 60 + self.end_time.minute
+        effective_start = (start_min - self.grace_minutes) % 1440
+        effective_end = (end_min + self.grace_minutes) % 1440
 
-        # Calculate effective start and end times with grace period
-        if self.start_time <= self.end_time:
-            # Same-day range (e.g., 22:00 to 07:00 is invalid, would be 22:00 to 23:59)
-            effective_start = (datetime.combine(datetime.today(), self.start_time) - grace_delta).time()
-            effective_end = (datetime.combine(datetime.today(), self.end_time) + grace_delta).time()
-            return effective_start <= now <= effective_end
-        else:
-            # Overnight range (e.g., 22:00 to 07:00)
-            effective_start = (datetime.combine(datetime.today(), self.start_time) - grace_delta).time()
-            effective_end = (datetime.combine(datetime.today(), self.end_time) + grace_delta).time()
-            return now >= effective_start or now <= effective_end
+        if effective_start <= effective_end:
+            # Window does not cross midnight.
+            return effective_start <= now_min <= effective_end
+        # Window crosses midnight (overnight range, or a grace-induced wrap).
+        return now_min >= effective_start or now_min <= effective_end
 
     def apply_night_mode(self, rule: EventRuleConfig) -> EventRuleConfig:
         """Return modified rule for night mode.

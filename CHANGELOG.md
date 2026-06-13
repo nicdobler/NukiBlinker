@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI failure reporting now keeps a single issue per branch (deduplicated via a hidden marker) instead of opening a new issue on every failing commit, and auto-closes that issue when CI goes green again.
 
 ### Fixed
+- **Code review**: Batch of bug fixes from a full-codebase review:
+  - Web UI feature-config endpoints (`/api/config/event-validation|night-mode|event-log`) now persist to the launch `--config` path instead of a hardcoded `./config.yaml`, preventing config drift / lost changes in the Dockerized deploy.
+  - `PUT /api/config` no longer wipes stored Nuki/Hue credentials when the request omits the `nuki`/`hue` sections (omitted sections are preserved like masked secrets).
+  - Event deduplication no longer collapses two genuinely distinct `ring_to_open`/`door_opened` events: the discriminator now prefers a per-event `timestamp` (falling back to `state` for burst suppression when no timestamp is present).
+  - Chromecast name-based playback no longer leaks a `Zeroconf`/`CastBrowser` per event, and cast socket clients are now disconnected after playback; `volume_level == None` is handled when saving/restoring volume.
+  - Event-log CSV export now renders a `0.00` ms processing time instead of a blank cell, and the temporary CSV file is deleted after the response is sent.
+  - `/api/test/event` now mirrors the real pipeline (applies night mode and records the event in the Event Log). The detailed action list — which may embed exception text — is kept in the Event Log only and is no longer echoed in the HTTP response (CodeQL `py/stack-trace-exposure`).
+  - Hue custom-blink restore honours the light's original colour mode (`ct`/`xy`/`hs`) instead of forcing it into hue/sat.
+  - Night mode grace period now wraps correctly across midnight (minutes-of-day arithmetic).
+  - Server computes the validation result once per callback and reuses it across logging branches.
 - **#101**: AirPlay playback logged `'set' object can't be awaited` and the real playback error was hidden. `pyatv`'s `AppleTV.close()` is synchronous and returns a `Set[asyncio.Task]`, so it must not be awaited — it is now called without `await`.
 - **#97**: A single real interaction fired multiple notifications. Opener `state == 1` ("online") was misclassified as a ring — rings are now detected from `ringactionState`/`ringactionTimestamp`. Added event deduplication (default 120 s window) that collapses the burst of callbacks one interaction emits while still letting a genuine second ring through.
 - **#96**: Event-log CSV export now opens cleanly in Excel (UTF-8 BOM + `sep=,` hint), shows timestamps in a configurable local timezone split into `Date`/`Time` columns, and can be filtered by device.

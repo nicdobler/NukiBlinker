@@ -9,6 +9,7 @@ from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from nukiblinker import event_router
+from nukiblinker.event_validator import ValidationResult
 from nukiblinker.logging_config import get_logger
 
 logger = get_logger("server")
@@ -40,8 +41,8 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         logger.info("Callback received: %s", payload)
 
-        # Event validation
-        validation_result = None
+        # Event validation. Compute the result once and reuse it everywhere
+        # (logging branches, dispatch) instead of recomputing per branch.
         if app.state.config.event_validation.enabled:
             validation_result = app.state.clients.event_validator.validate_event(payload)
             if not validation_result.valid:
@@ -55,6 +56,10 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                         validation_result=validation_result
                     )
                 return JSONResponse({"status": "rejected", "reason": validation_result.reason})
+        else:
+            validation_result = ValidationResult(
+                valid=True, delay_seconds=0.0, reason="validation disabled"
+            )
 
         # Classify event
         event_type = event_router.classify(payload, app.state.config)
@@ -66,7 +71,7 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                     payload=payload,
                     event_type=None,
                     actions=["Ignored: no matching rule"],
-                    validation_result=validation_result or app.state.clients.event_validator.validate_event(payload)
+                    validation_result=validation_result
                 )
             return JSONResponse({"status": "ignored"})
 
@@ -80,8 +85,7 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                     payload=payload,
                     event_type=event_type,
                     actions=[f"Suppressed: duplicate within {window}s"],
-                    validation_result=validation_result
-                    or app.state.clients.event_validator.validate_event(payload),
+                    validation_result=validation_result,
                 )
             return JSONResponse({"status": "duplicate", "event": event_type})
 
@@ -138,7 +142,7 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
                 payload=payload,
                 event_type=event_type,
                 actions=actions,
-                validation_result=validation_result or clients.event_validator.validate_event(payload),
+                validation_result=validation_result,
                 processing_time_ms=processing_time_ms
             )
 
@@ -153,7 +157,7 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
                 payload=payload,
                 event_type=event_type,
                 actions=[f"Error: {str(e)}"],
-                validation_result=validation_result or clients.event_validator.validate_event(payload),
+                validation_result=validation_result,
                 processing_time_ms=processing_time_ms
             )
 

@@ -121,6 +121,23 @@ class TestNightMode:
             m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=7, minute=3))
             assert night_mode.is_night_time() is True  # Should be night due to grace period
 
+    def test_is_night_time_grace_wraps_past_midnight(self):
+        """Regression: grace period that crosses midnight must wrap correctly.
+
+        With start 00:02 and a 5-minute grace, the effective window starts at
+        23:57 the previous day. The old naive time() arithmetic evaluated this
+        as not-night at 23:58.
+        """
+        night_mode = NightMode(start_time="00:02", end_time="06:00", grace_minutes=5)
+
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=58))
+            assert night_mode.is_night_time() is True  # inside grace before midnight
+
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=50))
+            assert night_mode.is_night_time() is False  # before the grace window
+
     def test_apply_night_mode_disabled(self):
         """Test apply_night_mode when night mode is disabled."""
         night_mode = NightMode(start_time="invalid", end_time="07:00")

@@ -79,6 +79,26 @@ class TestPlay:
             await client.play(["192.168.1.50"], "http://audio.mp3", 0.5)
 
 
+class TestResourceCleanup:
+    @pytest.mark.asyncio
+    async def test_disconnects_devices_after_play(self, client):
+        """Regression: cast socket clients are torn down after playback."""
+        cc = _make_cc("Kitchen")
+        with patch.object(ChromecastClient, "_connect_by_ip", return_value=cc):
+            await client.play(["192.168.1.50"], "http://audio.mp3", 0.5)
+        cc.disconnect.assert_called_once()
+
+    def test_drain_discovery_cleanup_closes_resources(self, client):
+        """Regression: mDNS browser/Zeroconf created during discovery are closed."""
+        browser = MagicMock()
+        zconf = MagicMock()
+        client._discovery_cleanup.append((browser, zconf))
+        client._drain_discovery_cleanup()
+        browser.stop_discovery.assert_called_once()
+        zconf.close.assert_called_once()
+        assert client._discovery_cleanup == []
+
+
 class TestListSpeakers:
     @pytest.mark.asyncio
     async def test_returns_discovered_speakers(self, client):

@@ -74,3 +74,27 @@ class TestDeduplicator:
         dedup = Deduplicator(window_seconds=120, enabled=False, time_func=clock)
         assert dedup.is_duplicate(_ring("T1"), "ring") is False
         assert dedup.is_duplicate(_ring("T1"), "ring") is False
+
+    def test_open_distinct_timestamps_pass(self):
+        """Two genuinely distinct door opens (different timestamps) are not collapsed.
+
+        Regression: previously the discriminator for non-ring events was the
+        constant ``state``, so a second real open within the window was wrongly
+        suppressed.
+        """
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        a = {"nukiId": 1, "state": 5, "timestamp": "2026-06-13T10:00:00Z"}
+        b = {"nukiId": 1, "state": 5, "timestamp": "2026-06-13T10:00:30Z"}
+        assert dedup.is_duplicate(a, "door_opened") is False
+        clock.advance(30)
+        assert dedup.is_duplicate(b, "door_opened") is False
+
+    def test_open_same_timestamp_is_duplicate(self):
+        """Repeated callbacks for the same open (same timestamp) are suppressed."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        p = {"nukiId": 1, "state": 5, "timestamp": "2026-06-13T10:00:00Z"}
+        assert dedup.is_duplicate(p, "door_opened") is False
+        clock.advance(5)
+        assert dedup.is_duplicate(p, "door_opened") is True
