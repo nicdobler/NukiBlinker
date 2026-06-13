@@ -536,3 +536,23 @@ class TestWebUINewEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert len(data["events"]) == 20
+
+    def test_subconfig_update_writes_to_configured_path(self, test_client):
+        """Regression: feature-config endpoints persist to the launch config
+        path, not a hardcoded ./config.yaml."""
+        import yaml
+
+        response = test_client.put("/api/config/night-mode", json={"start_time": "23:30"})
+        assert response.status_code == 200
+
+        cfg_path = Path(test_client.app.state.config_path)
+        assert cfg_path.exists()
+        saved = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        assert saved["night_mode"]["start_time"] == "23:30"
+
+    def test_test_event_records_in_event_log(self, test_client, mock_clients):
+        """Regression: /api/test/event logs the event like a real callback."""
+        before = mock_clients.event_log.get_event_count()
+        response = test_client.post("/api/test/event/ring")
+        assert response.status_code == 200
+        assert mock_clients.event_log.get_event_count() == before + 1

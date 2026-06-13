@@ -246,3 +246,30 @@ speaker audio.
 - [x] README, deploy/README, CHANGELOG updated
 - [ ] **Mac/CI**: run `poetry lock` (poetry.lock still references pyatv), then `make test` + `make lint`
 - [ ] Merge PR, close issue #106
+
+---
+
+## Code-review fixes (full-codebase bug hunt)
+
+**Branch**: `fix/review-observations` | **PR**: _pending_
+
+Context: Ran `/review` over the whole codebase, then `/fix-bug` for all findings.
+Pure bug fixes — no spec changes required (Agents.md §0 "When to skip").
+
+Fixes applied:
+- [x] **#1 (high)** `web_ui.py`: 3 feature-config endpoints saved to hardcoded `"config.yaml"` instead of `app.state.config_path` → config drift in Docker deploy. Now use `config_path`.
+- [x] **#2 (high)** `web_ui.py` `put_config`: partial PUT omitting `nuki`/`hue` wiped credentials. Omitted sections now preserved from current config.
+- [x] **#3 (med)** `deduplication.py`: non-ring discriminator was constant `state`, collapsing distinct opens. Now prefers per-event `timestamp`, falls back to `state`.
+- [x] **#4 (med)** `chromecast_client.py`: `Zeroconf`/`CastBrowser` leaked per event; cast clients never disconnected. Added per-call cleanup + `volume_level is None` guard.
+- [x] **#5 (low)** `event_log.py`: CSV `processing_time_ms == 0.0` rendered blank (falsy). Now `is not None`.
+- [x] **#6 (low)** `web_ui.py`: CSV export temp file leaked. Deleted via `BackgroundTask(os.unlink, ...)`.
+- [x] **#7 (low)** `web_ui.py` `test_event`: bypassed night mode + event log. Now mirrors the real pipeline.
+- [x] **Obs** `hue_client.py`: restore now honours `colormode` (`ct`/`xy`/`hs`).
+- [x] **Obs** `night_mode.py`: grace period wraps across midnight (minutes-of-day arithmetic).
+- [x] **Obs** `server.py`: `validation_result` computed once and reused.
+
+Regression tests added: `test_deduplication.py` (timestamp discriminator), `test_night_mode.py` (midnight wrap), `test_hue_client.py` (ct restore), `test_event_log.py` (0.00 ms), `test_server.py` (validation disabled), `test_web_ui.py` (secret preservation + dispatch_with_actions), `test_web_ui_new_endpoints.py` (config_path persistence + test_event logging), `test_chromecast.py` (cleanup/disconnect).
+
+- [x] `python -m py_compile` clean on all changed files (work-laptop syntax check only)
+- [ ] **Mac/CI**: run `make test` + `make lint` (not run on Windows work laptop)
+- [ ] Open PR, verify green, merge

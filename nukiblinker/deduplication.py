@@ -50,7 +50,15 @@ class Deduplicator:
         if event_type == "ring":
             discriminator = payload.get("ringactionTimestamp")
         else:
-            discriminator = payload.get("state")
+            # Prefer a per-event timestamp so two genuinely distinct events of
+            # the same type (whose ``state`` is constant, e.g. door_opened=5,
+            # ring_to_open=7) are not collapsed. Fall back to ``state`` when the
+            # bridge payload carries no timestamp (preserving burst suppression).
+            discriminator = (
+                payload.get("timestamp")
+                or payload.get("ringactionTimestamp")
+                or payload.get("state")
+            )
         return (payload.get("nukiId"), event_type, discriminator)
 
     def is_duplicate(self, payload: dict, event_type: str) -> bool:

@@ -112,3 +112,11 @@ class TestNukiCallback:
         client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:05+00:00"))
         second = client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:40+00:00"))
         assert second.json()["event"] == "ring"
+
+    def test_callback_with_validation_disabled(self, app, client):
+        """Regression: with validation disabled the callback must still process
+        (validation_result is computed once as a default, never left undefined)."""
+        app.state.config.event_validation.enabled = False
+        r = client.post("/nuki/callback", json=_ring_payload())
+        assert r.status_code == 200
+        assert r.json()["event"] == "ring"

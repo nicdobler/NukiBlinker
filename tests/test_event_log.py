@@ -258,6 +258,18 @@ class TestEventLog:
         assert "111" in csv_content
         assert "222" not in csv_content
 
+    def test_export_to_csv_renders_zero_processing_time(self):
+        """Regression: a 0.0 ms processing time must render as 0.00, not blank."""
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        event_log.log_event(
+            {"deviceType": 2, "nukiId": 1, "state": 1}, "ring", ["a"], vr,
+            processing_time_ms=0.0,
+        )
+        csv_content = event_log.export_to_csv()
+        data_row = csv_content.strip().split("\n")[-1].strip()
+        assert data_row.endswith("0.00")
+
     def test_get_devices_and_filtered_count(self):
         event_log = EventLog(persist_to_file=False)
         vr = ValidationResult(valid=True, delay_seconds=0.0)

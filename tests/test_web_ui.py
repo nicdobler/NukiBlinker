@@ -68,6 +68,14 @@ class TestPutConfig:
         r = client.put("/api/config", json={"server": {"port": "invalid"}})
         assert r.status_code == 400
 
+    def test_omitted_secret_sections_are_preserved(self, app, client):
+        """Regression: a partial PUT that omits the nuki/hue sections must not
+        wipe the stored credentials."""
+        r = client.put("/api/config", json={"server": {"port": 8080}})
+        assert r.status_code == 200
+        assert app.state.config.nuki.api_token == "secret-token"
+        assert app.state.config.hue.api_key == "secret-key"
+
 
 class TestStatus:
     def test_returns_status(self, client):
@@ -92,10 +100,12 @@ class TestPauseResume:
 class TestTestEvent:
     def test_fire_ring(self, client):
         with patch("nukiblinker.web_ui.event_router") as mock_er:
-            mock_er.dispatch = AsyncMock()
+            mock_er.dispatch_with_actions = AsyncMock(return_value=["Hue lights blinked"])
             r = client.post("/api/test/event/ring")
             assert r.status_code == 200
             assert r.json()["event"] == "ring"
+            assert r.json()["actions"] == ["Hue lights blinked"]
+            mock_er.dispatch_with_actions.assert_awaited_once()
 
     def test_unknown_event_type(self, client):
         r = client.post("/api/test/event/unknown")
