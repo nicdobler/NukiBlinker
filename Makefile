@@ -1,5 +1,9 @@
 install:
 	poetry install
+
+# Only when dependencies change. Kept out of `install` so routine runs
+# (e.g. `make validate`) never rewrite poetry.lock and dirty the tree (#112).
+lock:
 	poetry lock
 
 test:
@@ -46,4 +50,4 @@ report:
 cleanup-branches:
 	powershell -ExecutionPolicy Bypass -File script/cleanup-branches.ps1
 
-.PHONY: install test coverage lint format clean run-tests validate cleanup build run runLocal report cleanup-branches
+.PHONY: install lock test coverage lint format clean run-tests validate cleanup build run runLocal report cleanup-branches
