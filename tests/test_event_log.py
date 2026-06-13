@@ -50,7 +50,7 @@ class TestEventLog:
         assert event_log.max_entries == 1000
         assert event_log.retention_days == 7
         assert event_log.persist_to_file is True
-        assert event_log.file_path == Path("logs/event_log.json")
+        assert event_log.file_path == Path("logs/event_log.db")
         assert len(event_log.entries) == 0
 
     def test_init_custom(self):
@@ -238,7 +238,7 @@ class TestEventLog:
             actions=["x"],
             validation_result=ValidationResult(valid=True, delay_seconds=0.0),
         )
-        event_log.entries.append(entry)
+        event_log.store_entry(entry)
 
         csv_content = event_log.export_to_csv(tz="Europe/Madrid")
         assert "2026-06-13,01:30:00" in csv_content
@@ -323,7 +323,7 @@ class TestEventLog:
             actions=["Old action"],
             validation_result=old_validation
         )
-        event_log.entries.append(old_entry)
+        event_log.store_entry(old_entry)
 
         # Add a recent event
         recent_payload = {"deviceType": 2, "state": 7, "recent": True}
@@ -361,9 +361,9 @@ class TestEventLog:
         assert event_log.entries[2].payload["index"] == 4
 
     def test_file_persistence(self):
-        """Test file persistence functionality."""
+        """Test SQLite file persistence functionality."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            file_path = Path(temp_dir) / "test_event_log.json"
+            file_path = Path(temp_dir) / "test_event_log.db"
             event_log = EventLog(
                 persist_to_file=True,
                 file_path=str(file_path),
@@ -380,18 +380,12 @@ class TestEventLog:
                 validation_result=validation_result
             )
 
-            # File should be created
+            # DB file should be created
+            assert event_log.db_path == file_path
             assert file_path.exists()
+            assert event_log.get_event_count() == 1
 
-            # Load and verify content
-            with file_path.open('r') as f:
-                data = json.load(f)
-
-            assert len(data) == 1
-            assert data[0]["event_type"] == "ring"
-            assert data[0]["payload"] == payload
-
-            # Create new EventLog instance and verify loading
+            # Create new EventLog instance and verify loading from the DB
             event_log2 = EventLog(
                 persist_to_file=True,
                 file_path=str(file_path),
@@ -402,10 +396,41 @@ class TestEventLog:
             assert event_log2.entries[0].event_type == "ring"
             assert event_log2.entries[0].payload == payload
 
-    def test_file_persistence_disabled(self):
-        """Test that file persistence can be disabled."""
+    def test_legacy_json_path_maps_to_db_and_migrates(self):
+        """A configured .json path resolves to a sibling .db and imports old data."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            file_path = Path(temp_dir) / "test_event_log.json"
+            json_path = Path(temp_dir) / "event_log.json"
+            db_path = Path(temp_dir) / "event_log.db"
+
+            # Seed a legacy JSON log as the old backend would have written it.
+            legacy = [{
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "event_type": "ring",
+                "payload": {"deviceType": 2, "nukiId": 42},
+                "actions": ["Hue lights blinked"],
+                "validation_result": {"valid": True, "delay_seconds": 1.0, "reason": None},
+                "processing_time_ms": 12.0,
+            }]
+            with json_path.open("w", encoding="utf-8") as f:
+                json.dump(legacy, f)
+
+            event_log = EventLog(persist_to_file=True, file_path=str(json_path))
+
+            # The configured path is preserved, but the real DB is the .db sibling.
+            assert event_log.file_path == json_path
+            assert event_log.db_path == db_path
+            assert db_path.exists()
+
+            # The legacy entry was imported and the JSON renamed aside.
+            assert event_log.get_event_count() == 1
+            assert event_log.entries[0].payload["nukiId"] == 42
+            assert not json_path.exists()
+            assert (Path(temp_dir) / "event_log.json.migrated").exists()
+
+    def test_file_persistence_disabled(self):
+        """Test that file persistence can be disabled (in-memory DB)."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "test_event_log.db"
             event_log = EventLog(
                 persist_to_file=False,
                 file_path=str(file_path)
@@ -421,7 +446,8 @@ class TestEventLog:
                 validation_result=validation_result
             )
 
-            # File should NOT be created
+            # No file should be created (in-memory backend)
+            assert event_log.db_path is None
             assert not file_path.exists()
 
     def test_thread_safety(self):

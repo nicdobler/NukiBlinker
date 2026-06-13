@@ -7,3 +7,4 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml
       - ./homekit:/app/.homekit
+      - ./logs:/app/logs

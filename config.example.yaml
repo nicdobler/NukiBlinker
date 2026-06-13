@@ -76,10 +76,10 @@ night_mode:
 # Event logging - maintains event history for troubleshooting
 event_log:
   enabled: true
-  max_entries: 1000                # Maximum entries in memory
+  max_entries: 1000                # Maximum entries kept in the database
   retention_days: 7                # Keep entries for 7 days
   persist_to_file: true
-  file_path: "logs/event_log.json"
+  file_path: "logs/event_log.db"   # SQLite DB on the ./logs volume (a legacy .json path is auto-migrated)
   timezone: "Europe/Madrid"        # IANA tz for the CSV Date/Time columns
 
 # Event deduplication - collapse the burst of callbacks one interaction emits

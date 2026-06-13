@@ -273,3 +273,33 @@ Regression tests added: `test_deduplication.py` (timestamp discriminator), `test
 - [x] `python -m py_compile` clean on all changed files (work-laptop syntax check only)
 - [ ] **Mac/CI**: run `make test` + `make lint` (not run on Windows work laptop)
 - [ ] Open PR, verify green, merge
+
+---
+
+## Event log: slow load + lost between versions → SQLite backend
+
+**Branch**: `feat/event-log-sqlite` | **PR**: _pending_
+
+Context: User reported the event log takes long to load and is lost between app
+versions. Root causes: (1) `logs/` was never mounted as a volume → wiped on every
+`docker compose build`; (2) JSON backend rewrote the whole file on every event
+and parsed it all at startup. Chosen solution (user approved): embedded SQLite on
+a mounted volume — no extra container. Spec-first per Agents.md §0.
+
+- [x] Spec: `tech-spec.md` (SQLite data model, schema, query mapping, migration, docker volume) + `product-spec.md` (storage + Unreleased feature)
+- [ ] `event_log.py`: SQLite backend, same public API, `entries` read property, `store_entry()`, legacy `.json` auto-migration to `.db`
+- [ ] `config.py` + `config.example.yaml`: default `file_path` → `logs/event_log.db`
+- [ ] `docker-compose.yml`: add `./logs:/app/logs` volume
+- [ ] Tests: update `test_event_log.py`, `test_integration_event_pipeline.py`, `test_web_ui_new_endpoints.py`, `test_new_services_extra.py` to the SQLite backend
+- [ ] `README.md` + `CHANGELOG.md [Unreleased]`
+- [ ] `python -m py_compile` syntax check (work laptop only)
+- [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
+- [ ] Open PR, verify green, merge
+
+Decisions:
+- SQLite chosen over Postgres/MySQL (no extra container/ops; Simplicity First) and
+  over a plain JSON-in-volume file (would fix persistence but not the per-event
+  full-file rewrite slowness).
+- Single connection per instance, `check_same_thread=False` + existing Lock, WAL
+  for file DBs, `:memory:` when `persist_to_file=False`.
+- Back-compat `entries` property + `store_entry()` keep most existing tests intact.
