@@ -23,7 +23,11 @@ git fetch --all --prune --quiet
 BRANCH="${1:-}"
 
 if [ -z "$BRANCH" ]; then
-  mapfile -t BRANCHES < <(
+  # Portable array fill (macOS ships bash 3.2, which has no `mapfile`).
+  BRANCHES=()
+  while IFS= read -r line; do
+    [ -n "$line" ] && BRANCHES+=("$line")
+  done < <(
     git for-each-ref --format='%(refname:short)' refs/remotes/origin \
       | sed 's#^origin/##' \
       | grep -vE '^(HEAD|main)$' \
