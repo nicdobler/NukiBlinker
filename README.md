@@ -133,11 +133,11 @@ Prevents stale events from triggering notifications by checking event timestamps
 
 #### Event Logging
 Comprehensive event history for monitoring and troubleshooting:
-- In-memory storage with configurable retention
-- Optional file persistence for durability
+- Embedded **SQLite** storage (`logs/event_log.db`) with configurable retention — fast to load and **persists across application/container updates** (when `./logs` is mounted as a volume)
 - Detailed action tracking with processing times
 - CSV export for analysis
-- Web UI viewer with pagination and search
+- Web UI viewer with pagination and device filtering
+- A legacy `event_log.json` is migrated into the database automatically on first start
 
 #### Night Mode
 Reduces notifications during specified hours:
@@ -185,10 +185,10 @@ night_mode:
 ```yaml
 event_log:
   enabled: true
-  max_entries: 1000       # Maximum events in memory
+  max_entries: 1000       # Maximum events kept in the database
   retention_days: 7       # How long to keep events
-  persist_to_file: true   # Save to disk for durability
-  file_path: "logs/event_log.json"
+  persist_to_file: true   # Persist to the SQLite DB (false = in-memory only)
+  file_path: "logs/event_log.db"  # SQLite DB on the ./logs volume (legacy .json auto-migrated)
   timezone: "Europe/Madrid"  # IANA tz for the CSV Date/Time columns
 ```
 
@@ -248,6 +248,10 @@ mkdir -p nukiblinker && cd nukiblinker
 cp config.example.yaml config.yaml
 ```
 
+The `docker-compose.yml` mounts `./logs:/app/logs` so the event-log SQLite
+database (`logs/event_log.db`) survives `docker compose build` rebuilds. Without
+this volume the event history is wiped on every redeploy.
+
 Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or configure later via the web UI).
 
 ### Start / update
@@ -255,6 +259,16 @@ Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or conf
 ```sh
 docker compose build && docker compose up -d
 ```
+
+Or use the one-command helper from the project directory:
+
+```sh
+./update.sh
+```
+
+It pulls the latest code + image, ensures the `logs/` volume dir exists, restarts
+the container, and prunes dangling images. Pass `BUILD=1 ./update.sh` to build the
+image locally instead of pulling it.
 
 ### View logs
 
@@ -446,8 +460,24 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 | `make install` | Install/update deps | Mac |
 | `make runLocal` | Run locally (real devices) | Mac |
 | `make build` | Build Docker image | Mac |
+| `make run-tests` | Lint + tests on the current branch | Mac |
+| `make validate` | Pick a branch (menu or arg) → checkout → install → run-tests | Mac |
+| `make cleanup` | Return to main, pull, prune merged local branches | Mac |
 
 > **Note**: No testing or building on the work laptop. Code only.
+
+### Branch workflow (Mac)
+
+```sh
+make run-tests                         # validate the branch you're already on
+make validate                          # fetch + pick a branch + checkout + validate
+./scripts/validate.sh feat/my-branch   # (or validate a specific branch directly)
+make cleanup                           # after the PR is merged: back to main + prune
+```
+
+`make validate` fetches with prune, lets you pick a branch, checks it out,
+installs deps, and runs `make run-tests` (lint + tests). Once the PR is merged on
+GitHub, `make cleanup` switches to `main`, pulls, and deletes merged local branches.
 
 ### Tech Stack
 

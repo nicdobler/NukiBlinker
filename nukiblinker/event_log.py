@@ -2,12 +2,19 @@
 
 Provides persistent event logging with web UI access for troubleshooting
 and monitoring Nuki event processing.
+
+The log is persisted in an embedded SQLite database (stdlib ``sqlite3`` — no
+extra dependency or container). Each event is a single ``INSERT`` and the web UI
+reads events with indexed, paginated queries, so the log no longer rewrites a
+whole JSON file on every event nor loses its history between application versions
+(provided the DB file lives on a mounted volume).
 """
 
 import json
 import logging
 import csv
 import io
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -46,35 +53,105 @@ class EventLogEntry:
         }
 
 
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    nuki_id INTEGER,
+    device_type INTEGER,
+    device_name TEXT,
+    event_type TEXT,
+    payload TEXT NOT NULL,
+    actions TEXT NOT NULL,
+    valid INTEGER NOT NULL,
+    delay_seconds REAL,
+    reason TEXT,
+    processing_time_ms REAL
+);
+"""
+
+
 class EventLog:
-    """Persistent event logging with web UI access."""
+    """Persistent event logging with web UI access, backed by SQLite."""
 
     def __init__(self, max_entries: int = 1000, retention_days: int = 7,
-                 persist_to_file: bool = True, file_path: str = "logs/event_log.json"):
+                 persist_to_file: bool = True, file_path: str = "logs/event_log.db"):
         """Initialize event log.
 
         Args:
-            max_entries: Maximum number of entries to keep in memory
+            max_entries: Maximum number of entries to keep
             retention_days: How long to keep entries (default 7 days)
-            persist_to_file: Whether to persist log to file
-            file_path: Path to persistence file
+            persist_to_file: Whether to persist to an on-disk SQLite DB. When
+                False, an in-memory (``:memory:``) database is used.
+            file_path: Path to the SQLite database file. A legacy ``.json`` path
+                is transparently mapped to a sibling ``.db`` (and the old JSON is
+                migrated on first start), so existing configs keep working.
         """
         self.max_entries = max_entries
         self.retention_days = retention_days
         self.persist_to_file = persist_to_file
+        # Preserve the configured path for back-compat (web UI echoes it).
         self.file_path = Path(file_path)
-        self.entries: List[EventLogEntry] = []
         self._lock = Lock()
+        self._legacy_json_path: Optional[Path] = None
 
-        # Ensure log directory exists
         if self.persist_to_file:
-            self.file_path.parent.mkdir(parents=True, exist_ok=True)
-            self._load_from_file()
+            if self.file_path.suffix.lower() == ".json":
+                # Map a legacy JSON path to a clean sibling .db file.
+                self.db_path: Optional[Path] = self.file_path.with_name(
+                    self.file_path.stem + ".db"
+                )
+                self._legacy_json_path = self.file_path
+            else:
+                self.db_path = self.file_path
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+        else:
+            self.db_path = None
+            self._conn = sqlite3.connect(":memory:", check_same_thread=False)
+
+        self._conn.row_factory = sqlite3.Row
+        self._conn.executescript(_SCHEMA)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_nuki_id ON events(nuki_id)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
+        self._conn.commit()
+
+        if self.persist_to_file and self._legacy_json_path is not None:
+            self._migrate_legacy_json()
 
         logger.info(
-                "EventLog initialized: max_entries=%d, retention_days=%d, persist=%s",
-                max_entries, retention_days, persist_to_file
-            )
+            "EventLog initialized: backend=sqlite, db=%s, max_entries=%d, "
+            "retention_days=%d, persist=%s",
+            self.db_path if self.db_path is not None else ":memory:",
+            max_entries, retention_days, persist_to_file
+        )
+
+    @property
+    def entries(self) -> List[EventLogEntry]:
+        """Back-compat read accessor: all rows in chronological (oldest-first) order."""
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM events ORDER BY id ASC").fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
+    def close(self):
+        """Close the underlying SQLite connection."""
+        with self._lock:
+            try:
+                self._conn.close()
+            except sqlite3.Error:
+                pass
+
+    def store_entry(self, entry: EventLogEntry):
+        """Insert a pre-built entry and enforce retention/max-entries.
+
+        Used by ``log_event``, the legacy-JSON migration, and tests that need a
+        custom timestamp.
+        """
+        with self._lock:
+            self._insert_entry(entry)
+            self._cleanup_old_entries_locked()
+            self._conn.commit()
 
     def log_event(self, payload: Dict[str, Any], event_type: Optional[str],
                   actions: List[str], validation_result: ValidationResult,
@@ -97,17 +174,107 @@ class EventLog:
             processing_time_ms=processing_time_ms
         )
 
-        with self._lock:
-            self.entries.append(entry)
-            self._cleanup_old_entries()
-
-            if self.persist_to_file:
-                self._save_to_file()
+        self.store_entry(entry)
 
         logger.debug(
                 "Event logged: type=%s, actions=%d, valid=%s",
                 event_type, len(actions), validation_result.valid
             )
+
+    def _insert_entry(self, entry: EventLogEntry):
+        """Insert one entry. Caller must hold ``self._lock``."""
+        payload = entry.payload or {}
+        ts = entry.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        self._conn.execute(
+            "INSERT INTO events (timestamp, nuki_id, device_type, device_name, "
+            "event_type, payload, actions, valid, delay_seconds, reason, "
+            "processing_time_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                ts.astimezone(timezone.utc).isoformat(),
+                payload.get("nukiId"),
+                payload.get("deviceType"),
+                payload.get("name"),
+                entry.event_type,
+                json.dumps(payload, ensure_ascii=False),
+                json.dumps(entry.actions, ensure_ascii=False),
+                1 if entry.validation_result.valid else 0,
+                entry.validation_result.delay_seconds,
+                entry.validation_result.reason,
+                entry.processing_time_ms,
+            ),
+        )
+
+    def _row_to_entry(self, row: sqlite3.Row) -> EventLogEntry:
+        """Reconstruct an EventLogEntry from a DB row."""
+        validation_result = ValidationResult(
+            valid=bool(row["valid"]),
+            delay_seconds=row["delay_seconds"],
+            reason=row["reason"],
+        )
+        return EventLogEntry(
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+            event_type=row["event_type"],
+            payload=json.loads(row["payload"]),
+            actions=json.loads(row["actions"]),
+            validation_result=validation_result,
+            processing_time_ms=row["processing_time_ms"],
+        )
+
+    def _migrate_legacy_json(self):
+        """Import a legacy JSON event log into the SQLite DB (one-time)."""
+        legacy = self._legacy_json_path
+        if legacy is None or not legacy.exists():
+            return
+
+        with self._lock:
+            count = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        if count:
+            return  # DB already populated — don't double-import
+
+        try:
+            with legacy.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            logger.warning(
+                "Legacy event log %s is not valid JSON, skipping migration: %s",
+                legacy, e
+            )
+            return
+
+        migrated = 0
+        with self._lock:
+            for item in data:
+                try:
+                    vr = item["validation_result"]
+                    entry = EventLogEntry(
+                        timestamp=datetime.fromisoformat(item["timestamp"]),
+                        event_type=item.get("event_type"),
+                        payload=item["payload"],
+                        actions=item["actions"],
+                        validation_result=ValidationResult(
+                            valid=vr["valid"],
+                            delay_seconds=vr["delay_seconds"],
+                            reason=vr.get("reason"),
+                        ),
+                        processing_time_ms=item.get("processing_time_ms"),
+                    )
+                    self._insert_entry(entry)
+                    migrated += 1
+                except (KeyError, ValueError, TypeError) as e:
+                    logger.warning("Failed to migrate a legacy event log entry: %s", e)
+            self._cleanup_old_entries_locked()
+            self._conn.commit()
+
+        try:
+            legacy.rename(legacy.parent / (legacy.name + ".migrated"))
+        except OSError as e:
+            logger.warning("Could not rename migrated legacy log %s: %s", legacy, e)
+
+        logger.info(
+            "Migrated %d entries from legacy JSON event log %s", migrated, legacy
+        )
 
     def get_recent_events(self, limit: int = 100, offset: int = 0,
                           device_id: Optional[int] = None) -> List[EventLogEntry]:
@@ -119,21 +286,32 @@ class EventLog:
             device_id: Optional nukiId to filter by
 
         Returns:
-            List of event log entries
+            List of event log entries, newest first.
         """
         with self._lock:
-            # Return entries in reverse chronological order (newest first)
-            items = list(reversed(self.entries))
-        if device_id is not None:
-            items = [e for e in items if e.payload.get("nukiId") == device_id]
-        return items[offset:offset + limit]
+            if device_id is not None:
+                rows = self._conn.execute(
+                    "SELECT * FROM events WHERE nuki_id = ? "
+                    "ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (device_id, limit, offset),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM events ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
+        return [self._row_to_entry(row) for row in rows]
 
     def get_event_count(self, device_id: Optional[int] = None) -> int:
         """Get total number of events in log (optionally filtered by device)."""
         with self._lock:
             if device_id is None:
-                return len(self.entries)
-            return sum(1 for e in self.entries if e.payload.get("nukiId") == device_id)
+                row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
+            else:
+                row = self._conn.execute(
+                    "SELECT COUNT(*) FROM events WHERE nuki_id = ?", (device_id,)
+                ).fetchone()
+        return row[0]
 
     def get_devices(self) -> List[Dict[str, Any]]:
         """Return the distinct devices seen in the log (for the UI filter).
@@ -142,18 +320,19 @@ class EventLog:
             List of {"nukiId", "deviceType", "name"} dicts, newest-seen first.
         """
         with self._lock:
-            entries = list(reversed(self.entries))
-        devices: Dict[Any, Dict[str, Any]] = {}
-        for entry in entries:
-            nuki_id = entry.payload.get("nukiId")
-            if nuki_id is None or nuki_id in devices:
-                continue
-            devices[nuki_id] = {
-                "nukiId": nuki_id,
-                "deviceType": entry.payload.get("deviceType"),
-                "name": entry.payload.get("name"),
+            rows = self._conn.execute(
+                "SELECT nuki_id, device_type, device_name, MAX(id) AS last_id "
+                "FROM events WHERE nuki_id IS NOT NULL "
+                "GROUP BY nuki_id ORDER BY last_id DESC"
+            ).fetchall()
+        return [
+            {
+                "nukiId": row["nuki_id"],
+                "deviceType": row["device_type"],
+                "name": row["device_name"],
             }
-        return list(devices.values())
+            for row in rows
+        ]
 
     def export_to_csv(self, device_id: Optional[int] = None,
                       tz: str = "Europe/Madrid") -> str:
@@ -189,12 +368,18 @@ class EventLog:
         ])
 
         with self._lock:
-            entries = list(reversed(self.entries))  # Newest first
+            if device_id is not None:
+                rows = self._conn.execute(
+                    "SELECT * FROM events WHERE nuki_id = ? ORDER BY id DESC",
+                    (device_id,),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM events ORDER BY id DESC"
+                ).fetchall()
 
-        for entry in entries:
-            if device_id is not None and entry.payload.get("nukiId") != device_id:
-                continue
-
+        for row in rows:
+            entry = self._row_to_entry(row)
             local_ts = entry.timestamp.astimezone(zone)
 
             writer.writerow([
@@ -216,87 +401,30 @@ class EventLog:
         return "\ufeff" + "sep=,\r\n" + output.getvalue()
 
     def clear_log(self):
-        """Clear all events from log."""
+        """Clear all events from log (the DB file itself is kept)."""
         with self._lock:
-            self.entries.clear()
-            if self.persist_to_file and self.file_path.exists():
-                self.file_path.unlink()
+            self._conn.execute("DELETE FROM events")
+            self._conn.commit()
 
         logger.info("Event log cleared")
 
+    def _cleanup_old_entries_locked(self):
+        """Enforce retention + max-entries. Caller must hold ``self._lock``."""
+        if self.retention_days:
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(days=self.retention_days)
+            ).isoformat()
+            self._conn.execute("DELETE FROM events WHERE timestamp < ?", (cutoff,))
+
+        if self.max_entries:
+            self._conn.execute(
+                "DELETE FROM events WHERE id NOT IN "
+                "(SELECT id FROM events ORDER BY id DESC LIMIT ?)",
+                (self.max_entries,),
+            )
+
     def _cleanup_old_entries(self):
-        """Remove entries older than retention period."""
-        if not self.retention_days:
-            return
-
-        cutoff_time = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
-
-        # Remove old entries
-        original_count = len(self.entries)
-        self.entries = [entry for entry in self.entries if entry.timestamp > cutoff_time]
-
-        # Also enforce max entries limit
-        if len(self.entries) > self.max_entries:
-            self.entries = self.entries[-self.max_entries:]
-
-        removed_count = original_count - len(self.entries)
-        if removed_count > 0:
-            logger.debug("Cleaned up %d old event log entries", removed_count)
-
-    def _save_to_file(self):
-        """Save event log to file."""
-        try:
-            # Only save the most recent entries to avoid huge files
-            entries_to_save = self.entries[-self.max_entries:]
-            data = [entry.to_dict() for entry in entries_to_save]
-
-            # Write to temporary file first, then rename to avoid corruption
-            temp_file = self.file_path.with_suffix('.tmp')
-            with temp_file.open('w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            temp_file.rename(self.file_path)
-
-        except Exception as e:
-            logger.error("Failed to save event log to file %s: %s", self.file_path, e)
-
-    def _load_from_file(self):
-        """Load event log from file."""
-        if not self.file_path.exists():
-            return
-
-        try:
-            with self.file_path.open('r', encoding='utf-8') as f:
-                data = json.load(f)
-
-            entries = []
-            for entry_data in data:
-                try:
-                    # Reconstruct ValidationResult
-                    vr_data = entry_data["validation_result"]
-                    validation_result = ValidationResult(
-                        valid=vr_data["valid"],
-                        delay_seconds=vr_data["delay_seconds"],
-                        reason=vr_data.get("reason")
-                    )
-
-                    # Reconstruct EventLogEntry
-                    entry = EventLogEntry(
-                        timestamp=datetime.fromisoformat(entry_data["timestamp"]),
-                        event_type=entry_data.get("event_type"),
-                        payload=entry_data["payload"],
-                        actions=entry_data["actions"],
-                        validation_result=validation_result,
-                        processing_time_ms=entry_data.get("processing_time_ms")
-                    )
-                    entries.append(entry)
-
-                except Exception as e:
-                    logger.warning("Failed to load event log entry: %s", e)
-                    continue
-
-            self.entries = entries
-            logger.info("Loaded %d event log entries from file", len(entries))
-
-        except Exception as e:
-            logger.error("Failed to load event log from file %s: %s", self.file_path, e)
+        """Public wrapper that locks and commits the retention/cap cleanup."""
+        with self._lock:
+            self._cleanup_old_entries_locked()
+            self._conn.commit()

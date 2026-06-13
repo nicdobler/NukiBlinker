@@ -120,7 +120,7 @@ class EventLogConfig(BaseModel):
     max_entries: int = 1000
     retention_days: int = 7
     persist_to_file: bool = True
-    file_path: str = "logs/event_log.json"
+    file_path: str = "logs/event_log.db"  # SQLite DB (legacy .json is auto-migrated)
     timezone: str = "Europe/Madrid"  # IANA tz for CSV Date/Time columns
 
 

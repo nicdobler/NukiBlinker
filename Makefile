@@ -17,6 +17,20 @@ format:
 clean:
 	find . -type d -name '__pycache__' -exec rm -rf {} +
 
+# --- Mac branch workflow ---------------------------------------------------
+# run-tests : lint + tests on the CURRENT branch
+# validate  : fetch + pick a branch (menu or arg) + checkout + run-tests
+# cleanup   : return to main, pull, and prune merged local branches
+run-tests: lint test
+
+validate:
+	bash scripts/validate.sh
+
+cleanup:
+	git checkout main
+	git pull --ff-only
+	bash script/cleanup-branches.sh
+
 build:
 	docker build --tag nukiblinker .
 
@@ -31,3 +45,5 @@ report:
 
 cleanup-branches:
 	powershell -ExecutionPolicy Bypass -File script/cleanup-branches.ps1
+
+.PHONY: install test coverage lint format clean run-tests validate cleanup build run runLocal report cleanup-branches

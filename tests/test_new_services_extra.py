@@ -224,7 +224,7 @@ class TestEventLogExtra:
         assert data["processing_time_ms"] == 42.0
 
     def test_persistence_roundtrip(self, tmp_path):
-        file_path = tmp_path / "events.json"
+        file_path = tmp_path / "events.db"
         log = EventLog(max_entries=10, persist_to_file=True, file_path=str(file_path))
         log.log_event(
             payload={"deviceType": 2},
@@ -232,7 +232,7 @@ class TestEventLogExtra:
             actions=["played"],
             validation_result=self._make_result(),
         )
-        assert file_path.exists()
+        assert log.db_path.exists()
 
         reloaded = EventLog(max_entries=10, persist_to_file=True, file_path=str(file_path))
         assert reloaded.get_event_count() == 1
@@ -247,7 +247,7 @@ class TestEventLogExtra:
             actions=[],
             validation_result=self._make_result(),
         )
-        log.entries.append(old_entry)
+        log.store_entry(old_entry)
         log.log_event(
             payload={},
             event_type="recent",

@@ -268,7 +268,9 @@ Key settings:
 - Export functionality: download log as CSV
 - Real-time updates: new events appear automatically in the log
 
-**Storage**: In-memory with optional file persistence for crash recovery.
+**Storage**: A small embedded **SQLite** database (`logs/event_log.db`) stored on
+a mounted volume, so the history survives application/container updates. See the
+*SQLite event log storage* feature below.
 
 ### Night Mode (#56)
 
@@ -304,6 +306,27 @@ Key settings:
 - CSV is written with a UTF-8 BOM and an Excel `sep=,` hint so columns and accents render correctly across locales.
 - Timestamps are converted to a configurable local timezone (`event_log.timezone`, default `Europe/Madrid`) and split into separate **Date** (`YYYY-MM-DD`) and **Time** (`HH:MM:SS`) columns.
 - The Event Log viewer and CSV export can be **filtered by device** (`nukiId`).
+
+## New Features (Unreleased)
+
+### SQLite event log storage
+
+**Problem**: The event log loaded slowly and the history disappeared whenever the
+application was updated. It was stored as a single JSON file that was rewritten
+in full on every event and lived inside the container's ephemeral storage, so a
+redeploy wiped it.
+
+**Solution**: Store events in a small embedded **SQLite** database
+(`logs/event_log.db`) kept on a mounted volume. No extra database server or
+container is needed.
+
+**Benefits**:
+- The event history **persists across application/container updates**.
+- The log loads fast — events are appended one row at a time and the viewer reads
+  them with indexed, paginated queries instead of parsing one big file.
+- Filtering by device and CSV export behave exactly as before.
+- Existing installations are migrated automatically: an old `event_log.json` is
+  imported into the new database on first start.
 
 ## Future Considerations
 

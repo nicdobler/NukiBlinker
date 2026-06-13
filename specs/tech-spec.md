@@ -825,7 +825,13 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml       # read-write for web UI
       - ./homekit:/app/.homekit               # HomeKit pairing state
+      - ./logs:/app/logs                       # SQLite event log DB (persists across image rebuilds)
 ```
+
+> **Note**: The `./logs` volume is required so the event-log SQLite database
+> (`logs/event_log.db`) survives `docker compose build`. Without it the DB lives
+> in the container's ephemeral writable layer and the history is wiped on every
+> redeploy.
 
 > **Note**: `network_mode: host` is required for mDNS-based speaker discovery and HomeKit. Port 8080 is exposed directly on the host (no port mapping needed). On WSL2, enable mirrored networking for full multicast support.
 
@@ -868,30 +874,35 @@ class EventValidator:
 
 ### Event Log Service (`event_log.py`)
 
-Persistent event logging with web UI access:
+Persistent event logging with web UI access. **The backend is SQLite** (stdlib
+`sqlite3`, no extra dependency or container) — see the [SQLite-backed Event Log](#sqlite-backed-event-log-unreleased)
+section below for the data model and rationale. The public API is unchanged so
+`server.py` and `web_ui.py` are not affected:
 
 ```python
 class EventLog:
-    def __init__(self, max_entries: int = 1000, retention_days: int = 7):
-        self.entries: list[EventLogEntry] = []
-        self.max_entries = max_entries
-        self.retention_days = retention_days
-    
-    def log_event(self, payload: dict, event_type: str, actions: list[str], validation_result: ValidationResult):
-        """Add event to log with full context."""
-        entry = EventLogEntry(
-            timestamp=datetime.now(timezone.utc),
-            event_type=event_type,
-            payload=payload,
-            actions=actions,
-            validation_result=validation_result
-        )
-        self.entries.append(entry)
-        self._cleanup_old_entries()
-    
-    def get_recent_events(self, limit: int = 100) -> list[EventLogEntry]:
-        """Return recent events for web UI."""
-        return self.entries[-limit:]
+    def __init__(self, max_entries=1000, retention_days=7,
+                 persist_to_file=True, file_path="logs/event_log.db"):
+        # persist_to_file=True  -> sqlite3.connect(db_path) on disk
+        # persist_to_file=False -> sqlite3.connect(":memory:") (tests)
+        ...
+
+    def log_event(self, payload, event_type, actions, validation_result,
+                  processing_time_ms=None):
+        """Build an EventLogEntry and append it as one INSERT, then enforce
+        retention/max_entries with bounded DELETEs (no full-file rewrite)."""
+
+    def get_recent_events(self, limit=100, offset=0, device_id=None):
+        """SELECT ... ORDER BY id DESC LIMIT ? OFFSET ? [WHERE nuki_id = ?]."""
+
+    def get_event_count(self, device_id=None): ...   # SELECT COUNT(*)
+    def get_devices(self): ...                        # GROUP BY nuki_id
+    def export_to_csv(self, device_id=None, tz="Europe/Madrid"): ...
+    def clear_log(self): ...                          # DELETE FROM events
+
+    @property
+    def entries(self):
+        """Back-compat read accessor: all rows in chronological (id ASC) order."""
 ```
 
 ### Night Mode Service (`night_mode.py`)
@@ -954,7 +965,7 @@ class EventLogConfig(BaseModel):
     max_entries: int = 1000
     retention_days: int = 7
     persist_to_file: bool = True
-    file_path: str = "logs/event_log.json"
+    file_path: str = "logs/event_log.db"   # SQLite DB (a legacy .json path is auto-migrated, see Unreleased)
 
 class AppConfig(BaseModel):
     # ... existing fields ...
@@ -1075,6 +1086,68 @@ class AppConfig(BaseModel):
     # ... existing ...
     deduplication: DeduplicationConfig = DeduplicationConfig()
 ```
+
+## New Features (Unreleased)
+
+### SQLite-backed Event Log (Unreleased)
+
+**Problem**: The event log was persisted as a single `logs/event_log.json` file
+that was (a) **rewritten in full on every event** (`json.dump(..., indent=2)`
+under the lock) and **fully parsed/reconstructed at startup**, making it slow as
+it grew; and (b) stored inside the container's ephemeral layer (the `logs/` dir
+was **not** a mounted volume), so the entire history was wiped on every
+`docker compose build` redeploy.
+
+**Solution**: Replace the JSON backend with an embedded **SQLite** database
+(stdlib `sqlite3` — no new dependency, no extra container) and mount `./logs` as
+a volume. Writes become single `INSERT`s, reads are indexed and paginated in
+SQL, and the DB file survives image rebuilds.
+
+**Connection model**: one `sqlite3` connection per `EventLog` instance opened
+with `check_same_thread=False` and guarded by the existing `threading.Lock`
+(callbacks are logged from FastAPI background-task threads). File DBs run in
+`PRAGMA journal_mode=WAL` for concurrent reads during writes. When
+`persist_to_file=False` the connection targets `:memory:` (used by the test
+suite).
+
+**Schema** (`events` table):
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | monotonic insertion order (drives "newest first") |
+| `timestamp` | TEXT | ISO 8601 **UTC** (`astimezone(utc).isoformat()`) — lexicographically sortable |
+| `nuki_id` | INTEGER | denormalized `payload.nukiId` for the device filter |
+| `device_type` | INTEGER | denormalized `payload.deviceType` (for `get_devices`) |
+| `device_name` | TEXT | denormalized `payload.name` (for `get_devices`) |
+| `event_type` | TEXT | `ring` / `ring_to_open` / `door_opened` / NULL |
+| `payload` | TEXT | full callback payload as JSON |
+| `actions` | TEXT | actions list as JSON |
+| `valid` | INTEGER | `validation_result.valid` (0/1) |
+| `delay_seconds` | REAL | `validation_result.delay_seconds` |
+| `reason` | TEXT | `validation_result.reason` |
+| `processing_time_ms` | REAL | nullable |
+
+Indexes: `idx_events_nuki_id (nuki_id)`, `idx_events_timestamp (timestamp)`.
+
+**Query mapping** (same public behaviour as the old in-memory list):
+
+- `get_recent_events(limit, offset, device_id)` → `SELECT * FROM events [WHERE nuki_id=?] ORDER BY id DESC LIMIT ? OFFSET ?`.
+- `get_event_count(device_id)` → `SELECT COUNT(*) ...`.
+- `get_devices()` → `SELECT nuki_id, device_type, device_name, MAX(id) FROM events WHERE nuki_id IS NOT NULL GROUP BY nuki_id ORDER BY MAX(id) DESC` (SQLite returns the bare columns from the `MAX(id)` row → latest device metadata; newest-seen first).
+- `export_to_csv(device_id, tz)` → filtered `SELECT ... ORDER BY id DESC`, same 12 columns / BOM / `sep=,` hint as before.
+- `clear_log()` → `DELETE FROM events` (the DB file is kept).
+- Retention/cap (`_cleanup_old_entries`): `DELETE FROM events WHERE timestamp < :cutoff` then `DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT :max_entries)`.
+
+**Legacy JSON auto-migration**: when `file_path` ends in `.json`, the actual DB
+is the sibling `*.db` and, on first start, a real legacy JSON file is imported
+(each entry inserted) and then renamed to `*.json.migrated`. The configured
+`.json` path is preserved on `self.file_path` for back-compat; the resolved DB
+path is exposed as `self.db_path`.
+
+**Back-compat**: a read-only `entries` property returns all rows in chronological
+(`id ASC`) order, and `store_entry(entry)` inserts a pre-built `EventLogEntry`
+(used by `log_event`, the migration, and tests that need a custom timestamp).
+`EventLogEntry` / `to_dict()` are unchanged.
 
 ## Logging
 
