@@ -260,6 +260,16 @@ Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or conf
 docker compose build && docker compose up -d
 ```
 
+Or use the one-command helper from the project directory:
+
+```sh
+./update.sh
+```
+
+It pulls the latest code + image, ensures the `logs/` volume dir exists, restarts
+the container, and prunes dangling images. Pass `BUILD=1 ./update.sh` to build the
+image locally instead of pulling it.
+
 ### View logs
 
 ```sh
@@ -450,8 +460,21 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 | `make install` | Install/update deps | Mac |
 | `make runLocal` | Run locally (real devices) | Mac |
 | `make build` | Build Docker image | Mac |
+| `./scripts/test.sh` | Pick a branch → install, lint, test, then wait for merge to main and clean up | Mac |
 
 > **Note**: No testing or building on the work laptop. Code only.
+
+### Validating a branch (Mac)
+
+```sh
+./scripts/test.sh                 # interactive branch picker
+./scripts/test.sh feat/my-branch  # validate a specific branch
+```
+
+It fetches with prune, lets you pick a branch, runs `make install` + `make lint` +
+`make test`, and — if green — waits until the branch's PR is merged into `main`
+(via `gh`, falling back to git ancestry), then switches to `main`, pulls, and
+deletes the merged branch locally and on the remote.
 
 ### Tech Stack
 

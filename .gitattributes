@@ -1,0 +1,3 @@
+# Keep shell scripts LF so the shebang works when checked out on macOS/Linux,
+# even when authored on the Windows work laptop.
+*.sh text eol=lf

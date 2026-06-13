@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HomeKit pairing failures: accessory category changed from `VIDEO_DOOR_BELL` to `SENSOR` (iOS rejects video doorbells without a camera stream), and the HAP driver now binds/advertises on the LAN IP resolved by `server.public_host` / auto-detect instead of letting zeroconf pick an interface
 
 ### Added
+- **Ops**: `update.sh` (project root, executable) — one-command update for the Mini PC: pulls latest code + image, ensures the `logs/` volume dir exists, restarts the container, and prunes dangling images (`BUILD=1` to build locally).
+- **Dev**: `scripts/test.sh` (executable) — interactive branch validation for the Mac: fetch + prune, pick a branch, run `make install`/`make lint`/`make test`, then wait for the PR to be merged into `main` and clean up the branch locally and on the remote.
+- **Repo**: `.gitattributes` enforcing `eol=lf` for `*.sh` so scripts authored on the Windows work laptop keep a working shebang on macOS/Linux.
 - **Docs**: Added architecture diagrams to `specs/tech-spec.md` — a component diagram (external systems + internal modules), a class diagram (`Clients` container and service clients), and a callback processing pipeline sequence diagram.
 - **Docs**: Added a Documentation index to `README.md` linking the product/tech specs, changelog, config template, and deploy notes.
 - **Docs**: Aligned specs and README with the code — corrected the default chime to `chime.wav` (generated at Docker build) and the base image to `python:3.14-slim`; added `server.public_host` and removed the non-existent `homekit.address` from the tech-spec config model; clarified that event validation and night mode are global (not per-event); documented the `GET /api/homekit/qr` endpoint; and completed the test-suite table.
