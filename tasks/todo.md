@@ -2,6 +2,31 @@
 
 ---
 
+## Code-review follow-ups (#143, #144, #145) — parallel orchestration ✅ DONE
+
+**PRs**: #146 (#143), #147 (#144), #148 (#145) — all squash-merged to `main`, issues closed.
+Note: launcher merged #146 then its single merge-pass skipped #147/#148 (rebase
+restarted their CI → seen as PENDING). Finished manually: merged #147, rebased
+#148 (CHANGELOG conflict resolved — kept both entries), CI green, merged #148.
+
+Source: `/review` of event pipeline (event_router, deduplication, event_validator,
+night_mode, notifier). Wrap-up mode: **Auto**. Execution: **real parallel** via
+`script/orchestrate-parallel.ps1 -Issues 143,144,145 -Wait -Merge` (one Windsurf
+window per issue; paste `/orchestrate-run` in each).
+
+- **#143** (bug, `fix/`): `event_validator` naive ISO timestamps → naive datetime
+  vs aware `now` raises `TypeError`, swallowed by fail-safe → validation silently
+  skipped. Fix: normalize naive → UTC. Add regression test.
+- **#144** (refactor, `feat/`): `night_mode.get_next_change_time` redundant
+  identical if/else branches + grace-period inconsistency with `is_night_time`.
+- **#145** (refactor, `feat/`): `resolve_person` Web-API path emits explicit
+  `trigger: None`; route through `_result()` so the key is omitted when unknown.
+
+Batching: disjoint file sets (event_validator.py / night_mode.py / event_router.py)
+→ parallel-safe, merge in any order.
+
+---
+
 ## #123 Config hygiene + secret persistence — separate `secrets.yaml`
 
 **Branch**: `fix/123-secrets-separate-file` | **PR**: _pending_
