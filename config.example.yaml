@@ -1,17 +1,17 @@
+# NOTE: secrets (nuki.api_token, nuki.web_api_token, hue.api_key) are NOT stored
+# here — they live in secrets.yaml (see secrets.example.yaml). The web UI writes
+# them there, and an old config.yaml with inline secrets is migrated on next save.
+
 nuki:
   bridge_ip: "192.168.1.100"
   bridge_port: 8080
-  api_token: "your-nuki-bridge-api-token"
   # opener_id: 12345              # optional: filter to a specific Opener
   # opener_name: "Front Door"     # optional: friendly name shown in the Event Log
   # lock_id: 67890                # optional: filter to a specific Smart Lock
   # lock_name: "Flat Door"        # optional: friendly name shown in the Event Log
-  # web_api_token: ""            # optional: Nuki Web API token to resolve real
-  #                               # user names/triggers (cloud, read-only)
 
 hue:
   bridge_ip: "192.168.1.101"
-  api_key: "your-hue-bridge-api-key"
   lights: [1, 2, 3]               # light IDs to blink
   groups: []                       # or group IDs (e.g. [1] for "Living room")
 

@@ -6,6 +6,7 @@ import yaml
 from nukiblinker.config import (
     AppConfig,
     BlinkConfig,
+    default_secrets_path,
     load_config,
     save_config,
     summarize_config,
@@ -194,6 +195,164 @@ class TestBlinkModeMigration:
         # Legacy mode migrated; removed custom fields are ignored.
         assert cfg.events.ring_to_open.blink.mode == "long"
         assert not hasattr(cfg.events.ring_to_open.blink, "custom")
+
+
+class TestSecretSeparation:
+    """Secrets are persisted to a separate secrets.yaml, never inline (#123)."""
+
+    def _read(self, path):
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    def test_secrets_written_to_secrets_file_not_config(self, tmp_path):
+        cfg = AppConfig()
+        cfg.nuki.bridge_ip = "10.0.0.1"
+        cfg.nuki.api_token = "nuki-secret"
+        cfg.nuki.web_api_token = "web-secret"
+        cfg.hue.api_key = "hue-secret"
+        config_path = tmp_path / "config.yaml"
+        save_config(cfg, config_path)
+
+        config_data = self._read(config_path)
+        secrets_data = self._read(default_secrets_path(config_path))
+
+        # Non-secrets stay in config.yaml
+        assert config_data["nuki"]["bridge_ip"] == "10.0.0.1"
+        # Secrets are stripped from config.yaml
+        assert "api_token" not in config_data["nuki"]
+        assert "web_api_token" not in config_data["nuki"]
+        assert "api_key" not in config_data["hue"]
+        # Secrets land in secrets.yaml
+        assert secrets_data["nuki"]["api_token"] == "nuki-secret"
+        assert secrets_data["nuki"]["web_api_token"] == "web-secret"
+        assert secrets_data["hue"]["api_key"] == "hue-secret"
+
+    def test_roundtrip_overlays_secrets(self, tmp_path):
+        cfg = AppConfig()
+        cfg.nuki.api_token = "tok"
+        cfg.hue.api_key = "key"
+        config_path = tmp_path / "config.yaml"
+        save_config(cfg, config_path)
+
+        reloaded = load_config(config_path)
+        assert reloaded.nuki.api_token == "tok"
+        assert reloaded.hue.api_key == "key"
+
+    def test_empty_secret_does_not_overwrite_stored(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        # First save stores a real token
+        first = AppConfig()
+        first.nuki.api_token = "keep-me"
+        save_config(first, config_path)
+
+        # Second save comes from a config where the secret is empty (the #116 bug)
+        second = AppConfig()
+        second.nuki.api_token = ""
+        save_config(second, config_path)
+
+        reloaded = load_config(config_path)
+        assert reloaded.nuki.api_token == "keep-me"
+
+    def test_masked_secret_does_not_overwrite_stored(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        first = AppConfig()
+        first.hue.api_key = "real-key"
+        save_config(first, config_path)
+
+        masked = AppConfig()
+        masked.hue.api_key = "***"
+        save_config(masked, config_path)
+
+        reloaded = load_config(config_path)
+        assert reloaded.hue.api_key == "real-key"
+
+    def test_new_secret_value_updates_stored(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        first = AppConfig()
+        first.nuki.api_token = "old"
+        save_config(first, config_path)
+
+        updated = AppConfig()
+        updated.nuki.api_token = "new"
+        save_config(updated, config_path)
+
+        reloaded = load_config(config_path)
+        assert reloaded.nuki.api_token == "new"
+
+    def test_inline_secrets_migrated_on_save(self, tmp_path):
+        # An old config.yaml with inline secrets still loads...
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.dump({"nuki": {"bridge_ip": "10.0.0.1", "api_token": "legacy"}}),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_path)
+        assert cfg.nuki.api_token == "legacy"
+
+        # ...and on the next save the secret moves out of config.yaml.
+        save_config(cfg, config_path)
+        config_data = self._read(config_path)
+        secrets_data = self._read(default_secrets_path(config_path))
+        assert "api_token" not in config_data["nuki"]
+        assert secrets_data["nuki"]["api_token"] == "legacy"
+
+    def test_secrets_file_overrides_config_inline(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.dump({"nuki": {"api_token": "from-config"}}), encoding="utf-8"
+        )
+        default_secrets_path(config_path).write_text(
+            yaml.dump({"nuki": {"api_token": "from-secrets"}}), encoding="utf-8"
+        )
+        cfg = load_config(config_path)
+        assert cfg.nuki.api_token == "from-secrets"
+
+
+class TestObsoleteFieldNormalization:
+    """message / fallback_name are dropped from ring & door_opened on save (#123)."""
+
+    def _read(self, path):
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+    def test_obsolete_audio_fields_stripped_on_save(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        save_config(AppConfig(), config_path)
+        events = self._read(config_path)["events"]
+
+        for event in ("ring", "door_opened"):
+            audio = events[event]["audio"]
+            assert "message" not in audio
+            assert "fallback_name" not in audio
+
+    def test_ring_to_open_keeps_message(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        save_config(AppConfig(), config_path)
+        rto_audio = self._read(config_path)["events"]["ring_to_open"]["audio"]
+        assert "message" in rto_audio
+        assert "fallback_name" in rto_audio
+
+    def test_legacy_obsolete_fields_cleaned_on_resave(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.dump(
+                {
+                    "events": {
+                        "door_opened": {
+                            "audio": {
+                                "mode": "chime",
+                                "message": "stale",
+                                "fallback_name": "stale",
+                            }
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_path)
+        save_config(cfg, config_path)
+        audio = self._read(config_path)["events"]["door_opened"]["audio"]
+        assert "message" not in audio
+        assert "fallback_name" not in audio
 
 
 class TestValidation:
