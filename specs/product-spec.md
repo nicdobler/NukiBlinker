@@ -328,6 +328,37 @@ container is needed.
 - Existing installations are migrated automatically: an old `event_log.json` is
   imported into the new database on first start.
 
+### Event log & logging troubleshooting fixes (#115)
+
+**Problem**: When troubleshooting, several gaps made the logs hard to use: real
+Nuki ring events were all marked *Invalid* in the Event Log (only test events
+looked correct); the Event Log viewer only showed the first page ("Load More"
+went blank); the CSV export omitted the raw payload; devices were identified by
+numeric `nukiId` rather than a friendly name; and the application's own log only
+went to the console (lost on container restart).
+
+**Solution**:
+- **Ring validation**: validation now uses the ring time (`ringactionTimestamp`)
+  for ring events instead of the lock-state `timestamp` field (which the Bridge
+  documents as the *retrieval time of the lock state* and is frequently stale),
+  so genuine rings are no longer rejected as "too old".
+- **Pagination**: the Event Log viewer uses **Previous / Next** buttons with a
+  "Page X of Y" indicator instead of "Load More".
+- **Export**: the CSV export gains a **`Payload (JSON)`** column. Export always
+  covers every row currently in the database (its scope is the configured
+  retention / `max_entries`, not what is shown on screen).
+- **Device names**: the Event Log viewer, device filter and CSV show the device
+  **name**. Because real callbacks carry no name, the Nuki **Device Filter**
+  remembers the names of the selected Opener/Lock and they are used to label
+  events by `nukiId`.
+- **Application log to file**: the app log is written to a rotating file under
+  the `logs/` volume (`logs/nukiblinker.log`), rotating **weekly** and keeping a
+  configurable number of old files for basic housekeeping. Console logging is
+  unchanged.
+
+> The "send a support bundle (app log + event log for a time window) to a GitHub
+> issue" button is tracked separately in issue #117.
+
 ## Future Considerations
 
 - Support for multiple Hue Bridges or light groups with different patterns.

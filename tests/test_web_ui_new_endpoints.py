@@ -356,6 +356,23 @@ class TestWebUINewEndpoints:
         assert data["total_count"] == 1
         assert all(e["payload"]["nukiId"] == 111 for e in data["events"])
 
+    def test_event_log_resolves_device_name_from_config(self, test_client, mock_clients):
+        """#115: real callbacks (no `name`) are labelled from the Device Filter config."""
+        cfg = test_client.app.state.config
+        cfg.nuki.opener_id = 111
+        cfg.nuki.opener_name = "Front Door"
+        vr = mock_clients.event_validator.validate_event({})
+        mock_clients.event_log.log_event(
+            {"deviceType": 2, "nukiId": 111}, "ring", ["a"], vr)
+
+        # Viewer enriches each event with the resolved device_name.
+        log = test_client.get("/api/events/log").json()
+        assert log["events"][0]["device_name"] == "Front Door"
+
+        # The device filter dropdown also shows the resolved name.
+        devices = test_client.get("/api/events/devices").json()["devices"]
+        assert any(d["nukiId"] == 111 and d["name"] == "Front Door" for d in devices)
+
     def test_clear_event_log(self, test_client, mock_clients):
         """Test clearing event log."""
         # Add test events

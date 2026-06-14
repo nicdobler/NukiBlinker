@@ -260,6 +260,9 @@ class TestEventLog:
 
     def test_export_to_csv_renders_zero_processing_time(self):
         """Regression: a 0.0 ms processing time must render as 0.00, not blank."""
+        import csv as _csv
+        import io as _io
+
         event_log = EventLog(persist_to_file=False)
         vr = ValidationResult(valid=True, delay_seconds=0.0)
         event_log.log_event(
@@ -267,8 +270,44 @@ class TestEventLog:
             processing_time_ms=0.0,
         )
         csv_content = event_log.export_to_csv()
-        data_row = csv_content.strip().split("\n")[-1].strip()
-        assert data_row.endswith("0.00")
+        # Drop the BOM + sep hint, parse the real CSV body.
+        body = csv_content.replace("\ufeff", "").split("\r\n", 1)[1]
+        rows = list(_csv.reader(_io.StringIO(body)))
+        header, data_row = rows[0], rows[1]
+        assert data_row[header.index("Processing Time (ms)")] == "0.00"
+
+    def test_export_to_csv_includes_payload_column(self):
+        """#115: the CSV export carries the full raw payload as JSON."""
+        import csv as _csv
+        import io as _io
+
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        payload = {"deviceType": 2, "nukiId": 1, "state": 1, "ringactionState": True}
+        event_log.log_event(payload, "ring", ["a"], vr)
+
+        csv_content = event_log.export_to_csv()
+        body = csv_content.replace("\ufeff", "").split("\r\n", 1)[1]
+        rows = list(_csv.reader(_io.StringIO(body)))
+        header, data_row = rows[0], rows[1]
+        assert "Payload (JSON)" in header
+        assert json.loads(data_row[header.index("Payload (JSON)")]) == payload
+
+    def test_export_to_csv_resolves_device_name(self):
+        """#115: a missing payload `name` is filled from the device_names map."""
+        import csv as _csv
+        import io as _io
+
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        # Real callback: nukiId but no `name`.
+        event_log.log_event({"deviceType": 2, "nukiId": 999, "state": 1}, "ring", ["a"], vr)
+
+        csv_content = event_log.export_to_csv(device_names={999: "Front Door"})
+        body = csv_content.replace("\ufeff", "").split("\r\n", 1)[1]
+        rows = list(_csv.reader(_io.StringIO(body)))
+        header, data_row = rows[0], rows[1]
+        assert data_row[header.index("Device Name")] == "Front Door"
 
     def test_get_devices_and_filtered_count(self):
         event_log = EventLog(persist_to_file=False)

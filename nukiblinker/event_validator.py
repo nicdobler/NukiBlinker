@@ -90,10 +90,16 @@ class EventValidator:
             )
 
     def _extract_timestamp(self, payload: dict) -> Optional[datetime]:
-        """Extract timestamp from Nuki callback payload.
+        """Extract the event timestamp from a Nuki callback payload.
 
-        Nuki Bridge HTTP API v1.13 may include timestamp field.
-        If not present, we cannot validate the event time.
+        Field precedence (#115): for an active ring, the Bridge's top-level
+        ``timestamp`` is the *"retrieval of this lock state"* (per Bridge API
+        §4) and is frequently stale, which made genuine rings be rejected as
+        "too old". The actual ring time is ``ringactionTimestamp``, so it is
+        preferred whenever a ring action is currently occurring
+        (``ringactionState`` truthy). Otherwise we fall back to ``timestamp``
+        and a few alternative field names. If nothing is found we cannot
+        validate the event and treat it as valid (handled by the caller).
 
         Args:
             payload: Nuki callback payload
@@ -101,24 +107,25 @@ class EventValidator:
         Returns:
             Event timestamp in UTC or None if not found
         """
-        # Check for timestamp field (may not be present in all Nuki Bridge versions)
-        timestamp = payload.get("timestamp")
-        if timestamp is not None:
+        # An active ring action carries the real ring time in
+        # ringactionTimestamp; prefer it over the stale lock-state timestamp.
+        if payload.get("ringactionState") and payload.get("ringactionTimestamp") is not None:
             try:
-                return self._parse_timestamp_value(timestamp)
+                return self._parse_timestamp_value(payload["ringactionTimestamp"])
             except (ValueError, OSError) as e:
-                logger.debug("Failed to parse timestamp %s: %s", timestamp, e)
-                return None
+                logger.debug("Failed to parse ringactionTimestamp %s: %s",
+                             payload.get("ringactionTimestamp"), e)
 
-        # Check for other possible timestamp fields
-        for field in ["time", "created_at", "eventTime"]:
-            if field in payload:
-                logger.debug("Found alternative timestamp field: %s", field)
-                try:
-                    return self._parse_timestamp_value(payload[field])
-                except (ValueError, OSError) as e:
-                    logger.debug("Failed to parse alternative timestamp %s: %s", payload[field], e)
-                    continue
+        # Fall back to the generic timestamp fields, in order of preference.
+        for field in ("timestamp", "time", "created_at", "eventTime"):
+            value = payload.get(field)
+            if value is None:
+                continue
+            try:
+                return self._parse_timestamp_value(value)
+            except (ValueError, OSError) as e:
+                logger.debug("Failed to parse %s %s: %s", field, value, e)
+                continue
 
         logger.debug("No timestamp found in payload")
         return None

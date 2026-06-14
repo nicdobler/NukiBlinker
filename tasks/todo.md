@@ -323,3 +323,32 @@ lock surfaced on the next `make cleanup`.
 - [x] Docs: CHANGELOG `[Unreleased]` + `tasks/lessons.md`
 - [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
 - [ ] Merge PR #113
+
+---
+
+## Event log fixes + app log to file (#115)
+
+**Branch**: `fix/event-log-and-app-logging` | **PR**: #119
+
+Context: User parked `feat/hue-blink-select-lselect` to troubleshoot the event log
+and app logging. Real Nuki callbacks were all logged as `Invalid` while test events
+worked; the event-log viewer only showed page 1 ("Load More" went blank); CSV export
+lacked the payload; devices were shown by ID; and there was no app log file. The
+"send logs to a GitHub issue" button was split out to issue #117 (separate session).
+
+Phases (each with tests):
+- [x] Phase 0: specs (product + tech) + CHANGELOG
+- [x] Phase 1: validator prefers `ringactionTimestamp` (real rings no longer Invalid) + regression test
+- [x] Phase 2: store `opener_name`/`lock_name` in Nuki Device Filter config; resolve `nukiId`->name in viewer/filter/CSV
+- [x] Phase 3: Prev/Next pagination + page indicator; add `Payload (JSON)` CSV column; verify export scope
+- [x] Phase 4: app log to file with weekly `TimedRotatingFileHandler` + `LoggingConfig`
+- [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
+- [x] Push branch + open PR (#119)
+
+Decisions:
+- Root cause of "all real events Invalid": validator read the lock-state `timestamp`
+  ("retrieval of this lock state", often stale) instead of the actual ring time
+  (`ringactionTimestamp`). Test events send `{}` -> no timestamp -> valid.
+- Device naming reuses the existing Device Filter config (`opener_id`/`lock_id`)
+  by also persisting their names, rather than depending on a live bridge call at view time.
+- GitHub support-bundle button deferred to #117 (PAT + ZIP via Contents API, time window).

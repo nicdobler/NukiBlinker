@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import uvicorn
 
 from nukiblinker.config import AppConfig, load_config, summarize_config
-from nukiblinker.logging_config import get_logger, setup_logging
+from nukiblinker.logging_config import add_file_logging, get_logger, setup_logging
 from nukiblinker.server import create_app
 from nukiblinker.web_ui import mount_web_ui
 
@@ -173,6 +173,13 @@ def main() -> None:  # pragma: no cover
     logger.info("Starting NukiBlinker")
 
     config = load_config(args.config)
+    # Now that the config is available, also write logs to a rotating file (#115).
+    add_file_logging(
+        config.logging.file_path,
+        when=config.logging.rotation_when,
+        backup_count=config.logging.backup_count,
+        level=args.log_level,
+    )
     logger.info("Config loaded from %s: %s", args.config, summarize_config(config))
     clients = _build_clients(config)
 
