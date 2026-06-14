@@ -49,7 +49,7 @@ Summarize your understanding before proposing changes.
 
 - Implement one step at a time. Keep each change small and focused.
 - Write or update tests **immediately** after each step — not later.
-- Do not move to the next step until the current one passes tests.
+- Tests are validated in CI (not locally); push and let CI confirm before relying on a step.
 - Use workflows: `/new-feature`, `/fix-bug`, `/add-tests`.
 
 ## 4. Subagent Strategy
@@ -60,12 +60,20 @@ Summarize your understanding before proposing changes.
 - One task per subagent for focused execution.
 - Summarize between steps to prevent context drift across long conversations.
 
-## 5. Verification Before Done
+## 5. Verification Before Done (CI is the gate)
 
-- Never mark a task complete without proving it works.
+- **CI is the only test environment.** Do not run `make test`, `make lint`, `poetry install`, or `docker build` on the work laptop.
+- Prove work by pushing the branch and letting **GitHub Actions** run lint + test.
+- Never mark a task complete until CI is green on the branch.
 - Diff behavior between main and your changes when relevant.
 - Ask yourself: "Would a staff engineer approve this?"
-- Run `make test` and `make lint`, check logs, demonstrate correctness.
+
+## 5a. Autonomous CI Loop
+
+- After pushing, **work autonomously**: poll CI status, read failing job logs, diagnose the root cause, fix, and re-push.
+- Iterate until CI is green without waiting for the user to prompt you.
+- Apply the **Reset rule** (Rule 7): if 2 fix attempts fail on the same failure, STOP and re-plan.
+- Report a concise status after each CI run (pass/fail + what you changed).
 
 ## 6. Demand Elegance (Balanced)
 
@@ -101,8 +109,17 @@ Summarize your understanding before proposing changes.
 - A single branch may contain multiple bug fixes or multiple features — grouping related work is fine.
 - Before starting any work, create or switch to a branch (e.g. `feat/...`, `fix/...`, `chore/...`).
 - **Always create new branches from `main`** — switch to `main` and pull latest changes (`git checkout main && git pull`) before creating the branch.
-- Merge to `main` only via pull request after verification (`make test` + `make lint` pass).
+- Merge to `main` only via pull request after **CI is green**.
 - If the current branch is `main`, **stop and create a new branch** before making any commit.
+
+## 10a. Wrap-Up Mode (per-session decision)
+
+At the **start of each session**, ask the user which wrap-up mode applies (default to **Approval** if unspecified):
+
+- **Auto wrap-up** — once CI is green, run `/wrap-up` autonomously (merge PR, switch to main, pull, clean up branches).
+- **Approval** — once CI is green, stop and wait. The user reviews/approves the PR and tells you when to wrap up.
+
+Never merge to `main` in Approval mode without explicit go-ahead.
 
 ## Task Management
 
@@ -130,8 +147,9 @@ Available workflows:
 ### ALWAYS
 - Work on a feature/fix branch — never commit directly to `main`.
 - Include context loading (Rule 1) before any non-trivial task.
-- Run `make test` and `make lint` before marking any task complete.
+- Push the branch and confirm **CI is green** before marking any task complete.
 - Write or update tests alongside every code change.
+- Confirm the session's **wrap-up mode** (Rule 10a) before merging anything.
 - Update specs after implementation if behavior drifted from the spec.
 - **Update README.md** when adding/removing features or config options.
 - **Update CHANGELOG.md** when merging PRs to `main`.
@@ -146,10 +164,12 @@ Available workflows:
 
 ### NEVER
 - Push or commit directly to `main`. Always use a branch.
+- Run `make test`, `make lint`, `poetry install`, or `docker build` on the work laptop — CI is the test environment.
 - Delete tests without explicit user approval.
 - Skip the spec update for new features.
-- Commit code that fails `make test` or `make lint`.
+- Merge a branch whose CI is not green.
 - Hardcode IP addresses, API keys, or credentials — use config/env.
+- Merge to `main` in Approval wrap-up mode without explicit user go-ahead.
 
 ## Session Handoff
 
@@ -166,20 +186,20 @@ This ensures the next session can pick up without context loss.
 | Environment | Role | What runs here |
 |---|---|---|
 | **Work laptop** (Windows) | Code only | Write code, push to GitHub. **No testing, no Poetry, no Docker.** |
-| **Personal Mac** | Test & validate | `git clone`, `make install`, `make test`, `make lint`. Push when green. |
-| **GitHub Actions** | CI | Lint → test. Triggered on push/PR to `main`. |
+| **GitHub Actions** | CI — the test gate | Lint → test. Triggered on push/PR to `main`. Sole validation environment. |
 | **Mini PC** (Windows + WSL2) | Production | `git pull && docker compose build && docker compose up -d`. Local build, no registry. |
 
 ### Deployment flow
 ```
-Work laptop → push → GitHub → PR → Mac validates → merge to main
-    → GitHub Actions: lint + test
+Work laptop → push branch → GitHub → CI (lint + test) → PR
+    → CI green → merge to main (auto or after user approval)
     → Mini PC: git pull && docker compose build && docker compose up -d
 ```
 
 ### NEVER on work laptop
 - Run `make test`, `make lint`, `poetry install`, or `docker build`.
-- These commands are reserved for the Mac or CI.
+- These commands are reserved for CI.
+- Verification happens exclusively in GitHub Actions CI.
 
 ## Core Principles
 
