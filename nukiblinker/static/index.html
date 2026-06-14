@@ -50,6 +50,11 @@
         .discover-results { margin-top: 0.5rem; }
         .discover-item { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0.6rem; background: #0f172a; border-radius: 6px; margin-bottom: 0.3rem; font-size: 0.8rem; cursor: pointer; border: 1px solid #334155; }
         .discover-item:hover { border-color: #3b82f6; }
+        .checkbox-list { margin-top: 0.5rem; max-height: 300px; overflow-y: auto; }
+        .check-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; background: #0f172a; border-radius: 6px; margin-bottom: 0.3rem; font-size: 0.8rem; border: 1px solid #334155; cursor: pointer; color: #e2e8f0; }
+        .check-item:hover { border-color: #3b82f6; }
+        .check-item input { width: auto; margin: 0; }
+        .check-item .meta { margin-left: auto; color: #64748b; }
         .pair-box { background: #0f172a; border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; border: 1px solid #334155; }
         .pair-box .instructions { font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; }
         .pair-box .instructions strong { color: #f59e0b; }
@@ -177,12 +182,16 @@
         </div>
         <div class="card">
             <h2>Lights &amp; Groups</h2>
-            <label>Light IDs <span class="opt">(comma-separated)</span></label>
-            <div class="inline-btn"><input id="hueLights" placeholder="1,2,3"><button class="btn-secondary btn-sm" onclick="hueListLights()">List Lights</button></div>
-            <div id="hueLightResults" class="discover-results"></div>
-            <label style="margin-top:0.5rem">Group IDs <span class="opt">(comma-separated)</span></label>
-            <div class="inline-btn"><input id="hueGroups" placeholder="0,1"><button class="btn-secondary btn-sm" onclick="hueListGroups()">List Groups</button></div>
-            <div id="hueGroupResults" class="discover-results"></div>
+            <p class="help" style="margin-bottom:0.5rem">Tick the lights and groups NukiBlinker should blink. The list is fetched from your Hue Bridge.</p>
+            <div class="btn-row"><button class="btn-secondary btn-sm" onclick="refreshHueDevices()">Refresh from bridge</button></div>
+            <div class="section">
+                <h3>Lights</h3>
+                <div id="hueLightsList" class="checkbox-list"><p class="help">Loading…</p></div>
+            </div>
+            <div class="section">
+                <h3>Groups</h3>
+                <div id="hueGroupsList" class="checkbox-list"><p class="help">Loading…</p></div>
+            </div>
         </div>
     </div>
 
@@ -602,7 +611,8 @@ async function loadBaseConfig() {
         setVal('nukiToken', d.nuki?.api_token); setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
         setVal('nukiOpenerName', d.nuki?.opener_name); setVal('nukiLockName', d.nuki?.lock_name);
         setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
-        setVal('hueLights', (d.hue?.lights || []).join(',')); setVal('hueGroups', (d.hue?.groups || []).join(','));
+        hueSelection = { lights: (d.hue?.lights || []).map(Number), groups: (d.hue?.groups || []).map(Number) };
+        refreshHueDevices();  // fetch + render checkboxes (#126); preserves stored ids on failure
         document.getElementById('speakersChromecast').value = (d.speakers?.chromecast || []).join('\n');
         const vol = Math.round((d.speakers?.volume ?? 0.5) * 100);
         document.getElementById('speakersVolume').value = vol;
@@ -629,8 +639,8 @@ async function saveBaseConfig() {
             api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId'),
             opener_name: val('nukiOpenerName'), lock_name: val('nukiLockName') },
         hue: { bridge_ip: val('hueIp'), api_key: val('hueKey'),
-            lights: val('hueLights').split(',').map(s=>s.trim()).filter(Boolean).map(Number),
-            groups: val('hueGroups').split(',').map(s=>s.trim()).filter(Boolean).map(Number) },
+            lights: collectHueIds('light', hueSelection.lights),
+            groups: collectHueIds('group', hueSelection.groups) },
         speakers: { chromecast: document.getElementById('speakersChromecast').value.split('\n').map(s=>s.trim()).filter(Boolean),
             volume: parseInt(val('speakersVolume')) / 100 },
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
@@ -752,32 +762,59 @@ async function huePair() {
         }
     } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
 }
-async function hueListLights() {
-    const el = document.getElementById('hueLightResults');
-    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
+/* --- Hue lights/groups as checkbox lists (#126) --- */
+// Selected ids loaded from config; preserved even when the bridge is unreachable.
+let hueSelection = { lights: [], groups: [] };
+
+function renderHueCheckboxes(container, kind, items, selectedIds) {
+    const sel = new Set((selectedIds || []).map(Number));
+    const known = new Set(items.map(i => Number(i.id)));
+    // Keep stored ids that the bridge no longer reports, so saving never drops them.
+    const extras = (selectedIds || []).map(Number).filter(id => !known.has(id))
+        .map(id => ({ id, name: 'ID ' + id, meta: 'stored — not on bridge' }));
+    const all = items.concat(extras);
+    if (!all.length) { container.innerHTML = '<p class="help">None found on the bridge.</p>'; return; }
+    container.innerHTML = all.map(i =>
+        `<label class="check-item"><input type="checkbox" class="hue-${kind}" value="${i.id}" ${sel.has(Number(i.id)) ? 'checked' : ''}>` +
+        `<span>${i.name}</span><span class="meta">ID ${i.id}${i.meta ? ' · ' + i.meta : ''}</span></label>`
+    ).join('');
+}
+
+function renderHueFallback(container, kind, selectedIds, msg) {
+    // Bridge unreachable: render stored ids as checked boxes so a save preserves them.
+    const note = `<p class="help" style="color:#f59e0b">Bridge unavailable (${msg || 'unreachable'}). Showing stored IDs — they'll be preserved on save.</p>`;
+    const items = (selectedIds || []).map(Number);
+    if (!items.length) { container.innerHTML = note + '<p class="help">No IDs stored.</p>'; return; }
+    container.innerHTML = note + items.map(id =>
+        `<label class="check-item"><input type="checkbox" class="hue-${kind}" value="${id}" checked>` +
+        `<span>ID ${id}</span><span class="meta">stored</span></label>`
+    ).join('');
+}
+
+async function refreshHueDevices() {
+    const lightsEl = document.getElementById('hueLightsList');
+    const groupsEl = document.getElementById('hueGroupsList');
+    if (lightsEl) lightsEl.innerHTML = '<p class="help">Querying bridge…</p>';
+    if (groupsEl) groupsEl.innerHTML = '<p class="help">Querying bridge…</p>';
     try {
         const data = await (await fetch(`${API}/hue/lights`)).json();
-        if (data.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${data.error}</p>`; return; }
-        const entries = Object.entries(data);
-        if (!entries.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No lights found</p>'; return; }
-        el.innerHTML = entries.map(([id, l]) => `<div class="discover-item" onclick="addToList('hueLights','${id}')"><span>${l.state?.on ? '\u25cf' : '\u25cb'} ${l.name||'Light '+id}</span><span style="color:#64748b">ID ${id} \u00b7 ${l.type||''}</span></div>`).join('');
-    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed</p>'; }
-}
-async function hueListGroups() {
-    const el = document.getElementById('hueGroupResults');
-    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
+        if (data.error) throw new Error(data.error);
+        const items = Object.entries(data).map(([id, l]) => ({ id, name: l.name || ('Light ' + id), meta: l.type || '' }));
+        renderHueCheckboxes(lightsEl, 'light', items, hueSelection.lights);
+    } catch (e) { renderHueFallback(lightsEl, 'light', hueSelection.lights, e.message); }
     try {
         const data = await (await fetch(`${API}/hue/groups`)).json();
-        if (data.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${data.error}</p>`; return; }
-        const entries = Object.entries(data);
-        if (!entries.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No groups found</p>'; return; }
-        el.innerHTML = entries.map(([id, g]) => `<div class="discover-item" onclick="addToList('hueGroups','${id}')"><span>${g.name||'Group '+id}</span><span style="color:#64748b">ID ${id} \u00b7 ${(g.lights||[]).length} lights</span></div>`).join('');
-    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed</p>'; }
+        if (data.error) throw new Error(data.error);
+        const items = Object.entries(data).map(([id, g]) => ({ id, name: g.name || ('Group ' + id), meta: ((g.lights || []).length) + ' lights' }));
+        renderHueCheckboxes(groupsEl, 'group', items, hueSelection.groups);
+    } catch (e) { renderHueFallback(groupsEl, 'group', hueSelection.groups, e.message); }
 }
-function addToList(inputId, value) {
-    const el = document.getElementById(inputId);
-    const existing = el.value.split(',').map(s => s.trim()).filter(Boolean);
-    if (!existing.includes(value)) { existing.push(value); el.value = existing.join(','); }
+
+function collectHueIds(kind, fallbackIds) {
+    const boxes = document.querySelectorAll(`.hue-${kind}`);
+    // Nothing rendered yet (e.g. tab never opened) — preserve the stored ids.
+    if (!boxes.length) return (fallbackIds || []).map(Number);
+    return Array.from(boxes).filter(b => b.checked).map(b => Number(b.value));
 }
 
 /* --- Speaker Discovery --- */

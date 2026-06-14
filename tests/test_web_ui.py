@@ -107,6 +107,44 @@ class TestPutConfig:
         assert app.state.config.github.token == "ghp-new"
 
 
+class TestHueDeviceLists:
+    """#126: the Hue tab renders lights/groups as checkboxes from these endpoints."""
+
+    def test_lights_returns_bridge_list(self, app, client):
+        app.state.config.hue.bridge_ip = "192.168.1.101"  # api_key set in fixture
+        lights = {"1": {"name": "Lamp", "type": "Color", "state": {"on": True}}}
+        with patch("nukiblinker.hue_client.HueClient.list_lights",
+                   new_callable=AsyncMock, return_value=lights):
+            r = client.get("/api/hue/lights")
+        assert r.status_code == 200
+        assert r.json()["1"]["name"] == "Lamp"
+
+    def test_groups_returns_bridge_list(self, app, client):
+        app.state.config.hue.bridge_ip = "192.168.1.101"
+        groups = {"1": {"name": "Living room", "lights": ["1", "2"]}}
+        with patch("nukiblinker.hue_client.HueClient.list_groups",
+                   new_callable=AsyncMock, return_value=groups):
+            r = client.get("/api/hue/groups")
+        assert r.status_code == 200
+        assert r.json()["1"]["name"] == "Living room"
+
+    def test_lights_not_configured_returns_400(self, app, client):
+        """No bridge IP → the UI keeps stored ids and shows the fallback."""
+        app.state.config.hue.bridge_ip = ""
+        r = client.get("/api/hue/lights")
+        assert r.status_code == 400
+        assert "not configured" in r.json()["error"]
+
+    def test_lights_unreachable_returns_502(self, app, client):
+        """Bridge unreachable → 502; the UI falls back to stored ids."""
+        app.state.config.hue.bridge_ip = "192.168.1.101"
+        with patch("nukiblinker.hue_client.HueClient.list_lights",
+                   new_callable=AsyncMock, side_effect=httpx.ConnectError("refused")):
+            r = client.get("/api/hue/lights")
+        assert r.status_code == 502
+        assert "unreachable" in r.json()["error"]
+
+
 class TestStatus:
     def test_returns_status(self, client):
         r = client.get("/api/status")
