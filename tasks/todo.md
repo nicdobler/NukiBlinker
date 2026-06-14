@@ -328,7 +328,7 @@ lock surfaced on the next `make cleanup`.
 
 ## Event log fixes + app log to file (#115)
 
-**Branch**: `fix/event-log-and-app-logging` | **PR**: _pending_
+**Branch**: `fix/event-log-and-app-logging` | **PR**: #119
 
 Context: User parked `feat/hue-blink-select-lselect` to troubleshoot the event log
 and app logging. Real Nuki callbacks were all logged as `Invalid` while test events
@@ -343,7 +343,7 @@ Phases (each with tests):
 - [x] Phase 3: Prev/Next pagination + page indicator; add `Payload (JSON)` CSV column; verify export scope
 - [x] Phase 4: app log to file with weekly `TimedRotatingFileHandler` + `LoggingConfig`
 - [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
-- [ ] Push branch + open PR
+- [x] Push branch + open PR (#119)
 
 Decisions:
 - Root cause of "all real events Invalid": validator read the lock-state `timestamp`
