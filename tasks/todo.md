@@ -447,3 +447,50 @@ branch; wall-clock concurrency needs one window per worktree.
 - [x] `CHANGELOG.md` `[Unreleased]` → Added
 - [ ] **CI**: lint + test (sole validation env)
 - [ ] Merge PR
+
+---
+
+## `/orchestrate 129 130 126 125 124 117 121` — batch of 7 issues
+
+**Wrap-up mode**: Approval per PR (user decides each merge). Each issue isolated in
+its own worktree+branch from `origin/main`. CI is the sole gate.
+
+**Batching decision**:
+- Parallel-safe (disjoint files): #121 (event_router/dedup), #130 (scripts folder), #129 (config.py + deploy).
+- Sequential UI chain (share `static/index.html` + `web_ui.py` + `config.py`): #124 → #125 → #126 → #117. #124 first (adds `GithubConfig`, unblocks #117); #117 last.
+
+**Status (all pushed, CI GREEN, awaiting approval)**:
+- [x] #121 `fix/121-rto-double-notify` | **PR #133** | CI green — RTO ring+ring_to_open collapsed via `(nukiId, ringactionTimestamp)` correlation.
+- [x] #130 `chore/130-unify-scripts` | **PR #134** | CI green — `scripts/validate.sh` → `script/`, removed `scripts/`.
+- [x] #129 `fix/129-secrets-isadirectory` | **PR #135** | CI green — `is_file()` guard + deploy directory-artifact repair.
+- [x] #124 `feat/124-general-settings-tab` | **PR #136** | CI green — General tab (logging + GitHub config), `GithubConfig` secret.
+
+**UI chain (sequential, each branched from updated `main` after the previous merge)**:
+- [x] #125 `feat/125-simplify-event-config` | **PR #137** | merged — chime-only ring/door, Event Log settings relocated, validation vs dedup split + `/api/config/deduplication`.
+- [x] #126 `feat/126-hue-checkbox-list` | **PR #138** | merged — lights/groups as checkboxes from the bridge, fallback preserves stored IDs.
+- [x] #117 `feat/117-support-bundle` | **PR #139** | merged — `support_bundle.py`, `POST /api/support/github-issue`, Event Log tab UI, `EventLog.get_events_in_range`.
+
+**Outcome (mode switched to Auto wrap-up mid-session)**: all 7 PRs (#133–#139)
+went green and were squash-merged into `main` in dependency order. The only
+rebase needed was #135 (CHANGELOG `### Fixed` conflict with #133) — resolved by
+keeping both entries. Worktrees + merged local branches cleaned up. `main` is at
+`d38487b`. Note: this `tasks/todo.md` log is an uncommitted working-tree change
+on `main` (Rule 10 — never commit to `main` directly).
+
+---
+
+## #141 Nuki web integration — Web API token field in the UI
+
+**Branch**: `feat/141-nuki-web-api-token-ui` | **PR**: _pending_
+
+Context: issue #141 — no UI field to enter the Nuki **Web API** token used to
+resolve the RTO user name. Backend already supported `nuki.web_api_token`
+(config field, secret masking/preservation in `web_ui.py`, `NukiWebClient`
+instantiation in `__main__.py`); only the web UI input was missing. Wrap-up
+mode: **Auto**.
+
+- [x] Spec gate: product-spec Nuki tab section documents the masked Web API token field.
+- [x] `index.html`: add `nukiWebToken` password input + load (`loadBaseConfig`) + save (`saveBaseConfig`) wiring.
+- [x] `test_web_ui.py`: fixture sets `web_api_token`; tests for GET masking, omitted-section preservation, masked `***` no-overwrite, and new-value save.
+- [x] Docs: README (Nuki tab row + setup step 6), CHANGELOG `[Unreleased] / Added`.
+- [ ] Push branch → CI green → auto wrap-up (squash-merge).

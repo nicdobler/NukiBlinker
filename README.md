@@ -68,6 +68,7 @@ Go to the **Nuki** tab.
 3. Click **Save** in the bottom bar.
 4. Click **Register Callback** — this tells the Bridge to send events (ring, door open) to NukiBlinker.
 5. Optionally, click **List Devices** and click on a device to filter events to a specific Opener or Smart Lock.
+6. Optionally, enter a **Web API Token** (read-only cloud token from [web.nuki.io](https://web.nuki.io) → API → Web API Tokens) to resolve the real user name/trigger for Ring-to-Open announcements. It is stored as a secret in `secrets.yaml`.
 
 ### 2. Connect the Hue Bridge
 
@@ -117,7 +118,7 @@ The web UI provides a tabbed interface covering all configuration:
 | Tab | Features |
 |---|---|
 | **Status** | Pause/resume, test events, server host/port |
-| **Nuki** | Bridge connection, network discovery, callback registration, device filter (opener/lock ID) |
+| **Nuki** | Bridge connection, network discovery, callback registration, device filter (opener/lock ID), optional Web API token |
 | **Hue** | Bridge connection, network discovery, guided pairing (button press → pair), light & group selection |
 | **Speakers** | Chromecast names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |

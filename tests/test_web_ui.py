@@ -24,6 +24,7 @@ def _make_clients():
 def app(tmp_path):
     config = AppConfig()
     config.nuki.api_token = "secret-token"
+    config.nuki.web_api_token = "web-secret"
     config.hue.api_key = "secret-key"
     config.github.token = "ghp-secret"
     clients = _make_clients()
@@ -46,6 +47,7 @@ class TestGetConfig:
         assert r.status_code == 200
         data = r.json()
         assert data["nuki"]["api_token"] == "***"
+        assert data["nuki"]["web_api_token"] == "***"
         assert data["hue"]["api_key"] == "***"
         assert data["github"]["token"] == "***"
 
@@ -82,7 +84,27 @@ class TestPutConfig:
         r = client.put("/api/config", json={"server": {"port": 8080}})
         assert r.status_code == 200
         assert app.state.config.nuki.api_token == "secret-token"
+        assert app.state.config.nuki.web_api_token == "web-secret"
         assert app.state.config.hue.api_key == "secret-key"
+
+    def test_masked_web_api_token_does_not_overwrite(self, app, client):
+        """#141: sending nuki.web_api_token='***' keeps the stored token but
+        still updates other nuki fields."""
+        r = client.put("/api/config", json={
+            "nuki": {"api_token": "***", "web_api_token": "***",
+                     "bridge_ip": "10.0.0.9"},
+        })
+        assert r.status_code == 200
+        assert app.state.config.nuki.web_api_token == "web-secret"
+        assert app.state.config.nuki.bridge_ip == "10.0.0.9"
+
+    def test_new_web_api_token_is_saved(self, app, client):
+        """#141: a non-empty web_api_token from the UI updates the stored value."""
+        r = client.put("/api/config", json={
+            "nuki": {"api_token": "***", "web_api_token": "fresh-web-token"},
+        })
+        assert r.status_code == 200
+        assert app.state.config.nuki.web_api_token == "fresh-web-token"
 
     def test_omitted_github_section_preserves_token(self, app, client):
         """#124: a PUT without the github section keeps the stored PAT."""

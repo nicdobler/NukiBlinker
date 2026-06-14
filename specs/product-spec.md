@@ -187,6 +187,7 @@ A simple, single-page web interface for configuring NukiBlinker.
 1. **Nuki Bridge**
    - IP and port (auto-discovered if possible; manual fallback).
    - API token.
+   - **Web API token** (optional, #141): a masked secret field to enter the Nuki **Web API** token used to resolve real user names/triggers for Ring-to-Open and Door-opened events. Stored in `secrets.yaml`; masked (`***`) on read and preserved on save like the other secrets.
    - Device picker — select which Opener and/or Smart Lock to listen to.
 
 2. **Hue Bridge**
