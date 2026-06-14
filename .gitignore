@@ -15,6 +15,9 @@ secrets.yaml
 .homekit/
 homekit/
 
+# Orchestrated task brief dropped into a worktree by orchestrate-parallel
+.orchestrate-task.md
+
 # Python
 dist/
 build/

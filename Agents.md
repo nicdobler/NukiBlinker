@@ -83,8 +83,13 @@ Summarize your understanding before proposing changes.
   branch, implements, pushes, runs the autonomous CI loop, and merges in order
   with rebases — then cleans up and documents.
 - A single Cascade conversation executes issues **sequentially** but **isolated**
-  per branch. True wall-clock concurrency still requires one Windsurf window per
-  worktree running `/new-feature` or `/fix-bug`.
+  per branch. For true wall-clock concurrency on **independent** issues, run
+  `script/orchestrate-parallel.ps1 -Issues <n…> -Wait` (`.sh` on Linux/WSL2): it
+  creates a worktree + branch + `.orchestrate-task.md` brief per issue and opens
+  one Windsurf window each. In every new window type **`/orchestrate-run`** and
+  that agent executes its brief autonomously. The launcher then polls GitHub
+  until all PRs are green (`-Wait`) and can squash-merge in order (`-Merge`).
+  Keep this for disjoint file sets; chain dependent/overlapping issues sequentially.
 
 ## 5. Verification Before Done (CI is the gate)
 
@@ -164,6 +169,7 @@ Predefined step-by-step workflows:
 - `.windsurf/workflows/*.md` — Windsurf format.
 
 Available workflows:
+- `/orchestrate-run` — Run inside a worktree spawned by `script/orchestrate-parallel`: read `.orchestrate-task.md` and deliver that one issue end-to-end (no merge).
 - `/new-feature` — Full loop: context -> spec -> plan -> implement -> test -> review.
 - `/fix-bug` — Diagnose -> root cause -> fix -> regression test -> document.
 - `/add-tests` — Analyze coverage gaps -> generate tests -> verify.

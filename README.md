@@ -514,6 +514,22 @@ auto-decides which are parallel-safe vs sequential, isolates each in a worktree,
 implements them, pushes, watches CI, and merges in order — driven from one
 command in the orchestrator window.
 
+#### Real parallel runs (one window per issue)
+
+A single Cascade window processes issues sequentially. For genuine wall-clock
+parallelism on **independent** issues, use the launcher:
+
+```powershell
+.\script\orchestrate-parallel.ps1 -Issues 140,141,142 -Wait   # -Merge to auto-merge
+```
+
+It creates a worktree + branch + task brief per issue and **opens one Windsurf
+window per issue**. In each new window, type **`/orchestrate-run`** — that agent
+reads its `.orchestrate-task.md` and runs autonomously (implement → test → push →
+PR → CI green). Cascade can't auto-inject a prompt, so this one paste is required.
+With `-Wait` the launcher polls GitHub until every PR is green; with `-Merge` it
+then squash-merges in issue order. Linux/WSL2: `script/orchestrate-parallel.sh`.
+
 ### Tech Stack
 
 - **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
