@@ -184,6 +184,98 @@ async def test_build_and_send_github_auth_error(tmp_path):
         )
 
 
+class TestGithubErrorDetail:
+    def test_json_message(self):
+        import httpx
+
+        resp = httpx.Response(404, json={"message": "Not Found"},
+                              request=httpx.Request("PUT", "https://api.github.com/x"))
+        assert sb._github_error_detail(resp) == "Not Found"
+
+    def test_json_message_with_errors(self):
+        import httpx
+
+        resp = httpx.Response(
+            422,
+            json={"message": "Validation Failed", "errors": [{"field": "sha"}]},
+            request=httpx.Request("PUT", "https://api.github.com/x"),
+        )
+        detail = sb._github_error_detail(resp)
+        assert "Validation Failed" in detail and "sha" in detail
+
+    def test_non_json_body(self):
+        import httpx
+
+        resp = httpx.Response(500, text="upstream boom",
+                              request=httpx.Request("PUT", "https://api.github.com/x"))
+        assert sb._github_error_detail(resp) == "upstream boom"
+
+    def test_empty_body(self):
+        import httpx
+
+        resp = httpx.Response(503, request=httpx.Request("PUT", "https://api.github.com/x"))
+        assert sb._github_error_detail(resp) == "no response body"
+
+
+@pytest.mark.asyncio
+async def test_build_and_send_github_404_includes_detail(tmp_path):
+    """A 404 (bad repo / no access) surfaces the repo, status and GitHub message (#149)."""
+    import httpx
+
+    class _NotFound:
+        def __init__(self, *a, **k):
+            pass
+
+        async def commit_file(self, *a, **k):
+            req = httpx.Request("PUT", "https://api.github.com/repos/x/y/contents/z")
+            resp = httpx.Response(404, json={"message": "Not Found"}, request=req)
+            raise httpx.HTTPStatusError("not found", request=req, response=resp)
+
+        async def create_issue(self, *a, **k):  # pragma: no cover - not reached
+            return {}
+
+    cfg = AppConfig()
+    clients = MagicMock()
+    clients.event_log = EventLog(persist_to_file=False)
+    with pytest.raises(sb.SupportBundleError) as exc:
+        await sb.build_and_send(
+            cfg, clients, token="tok", repo="x/y",
+            reference="2026-06-14T12:00:00+00:00", window_minutes=5,
+            github_client=_NotFound(),
+        )
+    msg = str(exc.value)
+    assert "x/y" in msg and "404" in msg and "Not Found" in msg
+
+
+@pytest.mark.asyncio
+async def test_build_and_send_github_generic_error_includes_detail(tmp_path):
+    """A non-auth/non-404 error includes the HTTP status and GitHub message (#149)."""
+    import httpx
+
+    class _ServerError:
+        def __init__(self, *a, **k):
+            pass
+
+        async def commit_file(self, *a, **k):
+            req = httpx.Request("PUT", "https://api.github.com/repos/x/y/contents/z")
+            resp = httpx.Response(422, json={"message": "Validation Failed"}, request=req)
+            raise httpx.HTTPStatusError("unprocessable", request=req, response=resp)
+
+        async def create_issue(self, *a, **k):  # pragma: no cover - not reached
+            return {}
+
+    cfg = AppConfig()
+    clients = MagicMock()
+    clients.event_log = EventLog(persist_to_file=False)
+    with pytest.raises(sb.SupportBundleError, match="422") as exc:
+        await sb.build_and_send(
+            cfg, clients, token="tok", repo="x/y",
+            reference="2026-06-14T12:00:00+00:00", window_minutes=5,
+            github_client=_ServerError(),
+        )
+    assert "Validation Failed" in str(exc.value)
+
+
 class TestSupportEndpoint:
     @pytest.fixture
     def client(self, tmp_path):
