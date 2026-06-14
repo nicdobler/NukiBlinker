@@ -1,7 +1,6 @@
 """Tests for application logging configuration (#115)."""
 
 import logging
-from pathlib import Path
 
 import pytest
 
