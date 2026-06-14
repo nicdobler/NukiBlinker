@@ -80,16 +80,18 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
     2. Nuki Bridge ``/log`` — best-effort, with retry (the bridge writes the log
        slightly after firing the callback). May have no name for anonymous rings.
 
-    Returns context dict: {"name": "Nico"} (plus "trigger" when known) or
-    {"name": fallback}.
+    Returns context dict: {"name": "Nico", "name_source": ...} (plus "trigger"
+    when known). ``name_source`` is one of "web_api", "bridge_log" or
+    "fallback" — the last meaning no identity was resolved (e.g. an anonymous
+    Ring-to-Open), which is expected, not a failure (#155).
     """
     nuki_id = payload.get("nukiId")
     # Trigger code (how the action was performed). Captured for observability so
     # the user can confirm the real code before any suppression is wired (#97).
     resolved_trigger: int | None = None
 
-    def _result(name: str) -> dict:
-        out: dict = {"name": name}
+    def _result(name: str, source: str) -> dict:
+        out: dict = {"name": name, "name_source": source}
         if resolved_trigger is not None:
             out["trigger"] = resolved_trigger
         return out
@@ -100,27 +102,30 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
             from nukiblinker.nuki_web_client import TRIGGER_NAMES
 
             entries = await nuki_web.get_recent_log(smartlock_id=nuki_id, limit=20)
-            for entry in entries:
-                name = entry.get("name")
+            if entries:
+                # Only the MOST RECENT entry corresponds to this event. Scanning
+                # older entries for a name risks attributing a stale identity
+                # (e.g. yesterday's manual open) to a fresh anonymous
+                # Ring-to-Open (#155).
+                recent = entries[0]
+                resolved_trigger = recent.get("trigger")
+                name = recent.get("name")
                 if name:
-                    resolved_trigger = entry.get("trigger")
                     logger.info(
                         "Resolved person via Web API: name=%s trigger=%s(%s) source=%s",
                         name, resolved_trigger,
                         TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                        entry.get("source"),
+                        recent.get("source"),
                     )
-                    return _result(name)
-            # No named entry. Surface the most recent trigger for observability
-            # (#97) but still fall back to the bridge log for a name.
-            if entries:
-                resolved_trigger = entries[0].get("trigger")
+                    return _result(name, "web_api")
+                # Anonymous open: surface the trigger for observability (#97)
+                # but fall back to the bridge log for a name.
                 logger.info(
-                    "Web API: no named entry for nukiId=%s; most recent "
+                    "Web API: most recent entry for nukiId=%s is anonymous; "
                     "trigger=%s(%s) source=%s",
                     nuki_id, resolved_trigger,
                     TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                    entries[0].get("source"),
+                    recent.get("source"),
                 )
             else:
                 logger.debug("Nuki Web API log had no entry for nukiId=%s", nuki_id)
@@ -128,7 +133,7 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
             logger.warning("Nuki Web API resolution failed — falling back to bridge log", exc_info=True)
 
     if nuki_id is None or nuki_client is None:
-        return _result(fallback_name)
+        return _result(fallback_name, "fallback")
     try:
         name = ""
         # The bridge writes the activity log slightly after firing the
@@ -146,12 +151,12 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
                 "No name in bridge log for nukiId=%s after %d attempts — using fallback",
                 nuki_id, _RESOLVE_PERSON_ATTEMPTS,
             )
-            name = fallback_name
+            return _result(fallback_name, "fallback")
         logger.info("Resolved person: %s (nukiId=%s)", name, nuki_id)
-        return _result(name)
+        return _result(name, "bridge_log")
     except Exception:
         logger.warning("Failed to resolve person for nukiId=%s — using fallback", nuki_id, exc_info=True)
-        return _result(fallback_name)
+        return _result(fallback_name, "fallback")
 
 
 async def dispatch(
@@ -209,6 +214,11 @@ async def dispatch_with_actions(
 
     logger.info("Dispatching event '%s' with context %s", event_type, context)
     actions = await notifier.notify_with_actions(rule, config, clients, context)
+
+    # Surface an anonymous open in the Event Log so a name-less Ring-to-Open is
+    # not mistaken for a failure — it has no associated identity by design (#155).
+    if context.get("name_source") == "fallback":
+        actions.insert(0, "Name: anonymous (no identity resolved)")
 
     # Surface the resolved trigger in the Event Log so the user can confirm the
     # real trigger code (e.g. physical button) before any suppression is wired (#97).

@@ -540,3 +540,23 @@ mode: **Auto**.
 - [x] `test_web_ui.py`: fixture sets `web_api_token`; tests for GET masking, omitted-section preservation, masked `***` no-overwrite, and new-value save.
 - [x] Docs: README (Nuki tab row + setup step 6), CHANGELOG `[Unreleased] / Added`.
 - [ ] Push branch → CI green → auto wrap-up (squash-merge).
+
+---
+
+## #155 — Anonymous Ring-to-Open clarity + Web API stale-name fix
+
+**Branch**: `fix/155-anonymous-and-stale-name` | **PR**: _pending_
+
+Context: support-bundle issue #155 reported a Ring-to-Open at ~12:22 where "no
+name was retrieved from Nuki Web". Investigation: a Nuki RTO is **anonymous**
+(no associated identity), so the fallback name is the *expected* outcome, not a
+failure. The bundle window (11:01-11:31 UTC) didn't even cover the event
+(10:22 UTC), explaining the 0 event-log entries. No confirmed defect; user
+chose two improvements. Wrap-up mode: **Auto**.
+
+- [x] Spec gate: tech-spec Nuki Web API section documents most-recent-only resolution + `name_source` provenance.
+- [x] `event_router.resolve_person`: only trust most-recent Web API entry (stale-name fix #155); add `name_source` (`web_api`/`bridge_log`/`fallback`).
+- [x] `event_router.dispatch_with_actions`: surface `"Name: anonymous (no identity resolved)"` when `name_source == fallback`.
+- [x] Tests: updated 13 resolve_person assertions for `name_source`; added stale-name regression + anonymous-indicator tests.
+- [x] Docs: CHANGELOG `[Unreleased] / Fixed`, tech-spec.
+- [ ] Push branch → CI green → auto wrap-up (squash-merge).
