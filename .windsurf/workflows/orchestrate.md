@@ -13,12 +13,32 @@ The orchestrator (Cascade in this window) drives everything end to end: batching
 worktree isolation, implementation, push, CI loop, and ordered merges.
 
 ### Honest model note
-Cascade is a single agent per conversation, so issues are executed **sequentially
-by the orchestrator**, but each is **isolated on its own worktree+branch**. The
-"parallelism" is logical: independent issues get independent branches and can be
-merged in any order; dependent/overlapping issues are chained. Wall-clock
-concurrency would require opening each worktree in its own Windsurf window and
-running `/new-feature` or `/fix-bug` there.
+Cascade is a single agent per conversation, so within ONE window issues are executed
+**sequentially by the orchestrator**, each **isolated on its own worktree+branch**.
+That "parallelism" is logical: independent issues get independent branches mergeable
+in any order; dependent/overlapping issues are chained.
+
+### Two ways to run
+
+- **Sequential (this window)**: follow Steps 1–7 below. One Cascade does everything,
+  one issue at a time. Best for dependent issues (a shared-file chain) and for small
+  batches where wall-clock time doesn't matter.
+- **Real parallel (multi-window)**: for independent issues, use the launcher
+  `script/orchestrate-parallel.ps1` (`.sh` on Linux/WSL2). It creates a worktree +
+  branch + task brief per issue and **opens one Windsurf window per issue**. In each
+  new window you type a single command — **`/orchestrate-run`** — and that agent
+  reads its `.orchestrate-task.md` and runs autonomously (Cascade has no API to
+  auto-inject the prompt, so this one paste is required). With `-Wait` the launcher
+  **polls GitHub until every PR is green**; with `-Merge` it then squash-merges in
+  issue order, rebasing the rest. Example:
+
+  // turbo
+  ```powershell
+  .\script\orchestrate-parallel.ps1 -Issues 140,141,142 -Wait
+  ```
+
+  Use this only for issues with **disjoint file sets**; chain dependent/overlapping
+  issues sequentially instead (see Step 2 batching).
 
 ## Step 1: Gather the issues
 
