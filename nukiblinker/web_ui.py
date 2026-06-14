@@ -540,6 +540,10 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
         config = request.app.state.config
         token = config.github.token or os.environ.get("GITHUB_TOKEN", "")
         if not token:
+            logger.warning(
+                "Support bundle rejected (400): GitHub token not configured "
+                "(github.token / GITHUB_TOKEN both empty)"
+            )
             return JSONResponse(
                 {"error": "GitHub token not configured — set github.token in the "
                           "General tab or the GITHUB_TOKEN environment variable"},
@@ -561,6 +565,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             logger.info("Support bundle delivered: %s", result.get("issue_url"))
             return JSONResponse(result)
         except support_bundle.SupportBundleError as e:
+            logger.warning("Support bundle rejected (400): %s", e)
             return JSONResponse({"error": str(e)}, status_code=400)
         except Exception as e:
             logger.error("Support bundle failed: %s", e, exc_info=True)

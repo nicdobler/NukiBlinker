@@ -247,6 +247,26 @@ def _issue_body(start: datetime, end: datetime, config, n_events: int, bundle_ur
     )
 
 
+def _github_error_detail(response: httpx.Response) -> str:
+    """Extract a concise, human-readable reason from a GitHub error response.
+
+    GitHub returns a JSON body with a ``message`` (and sometimes ``errors``);
+    fall back to a truncated raw body when it is not JSON.
+    """
+    try:
+        data = response.json()
+    except Exception:
+        text = (response.text or "").strip().replace("\n", " ")
+        return text[:200] if text else "no response body"
+    if isinstance(data, dict):
+        message = data.get("message") or "unknown error"
+        errors = data.get("errors")
+        if errors:
+            return f"{message} ({json.dumps(errors, ensure_ascii=False)})"[:300]
+        return str(message)[:300]
+    return str(data)[:200]
+
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
@@ -314,12 +334,24 @@ async def build_and_send(
         )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
+        detail = _github_error_detail(exc.response)
+        logger.warning(
+            "GitHub API rejected support bundle: HTTP %s on %s — %s",
+            status, exc.request.url if exc.request else "?", detail,
+        )
         if status in (401, 403):
             raise SupportBundleError(
-                "GitHub rejected the token — check it has contents:write + issues:write scopes"
+                "GitHub rejected the token — check it has contents:write + "
+                f"issues:write scopes (HTTP {status}: {detail})"
             ) from exc
-        raise SupportBundleError(f"GitHub API error (HTTP {status})") from exc
+        if status == 404:
+            raise SupportBundleError(
+                f"GitHub repo '{repo}' not found or token lacks access "
+                f"(HTTP 404: {detail})"
+            ) from exc
+        raise SupportBundleError(f"GitHub API error (HTTP {status}: {detail})") from exc
     except httpx.HTTPError as exc:
+        logger.warning("Could not reach GitHub for support bundle: %s", exc)
         raise SupportBundleError("Could not reach GitHub — network error") from exc
 
     return {
