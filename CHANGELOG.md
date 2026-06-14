@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`/orchestrate` workflow (multi-issue driver)**: a one-command Windsurf workflow that takes a list of GitHub issue numbers, reads each issue, decides which are parallel-safe (disjoint file sets) vs sequential (overlap/dependency), isolates each in its own git worktree+branch, implements them (via `/new-feature` or `/fix-bug`), pushes, runs the autonomous CI loop, and merges in order with rebases — then cleans up and documents. Documented in `Agents.md` (Subagent Strategy + workflow list) and `README.md`.
 - **Parallel-agent tooling (git worktrees)**: new `script/worktree.ps1` (and `script/worktree.sh` for Linux/WSL2) with `new`/`list`/`remove` subcommands to manage git worktrees in a sibling `../NukiBlinker-wt/<branch-slug>` folder, so multiple agents can work in parallel on isolated working trees, each on its own branch from `origin/main`. Added the `/worktree` Windsurf workflow and documented the strategy in `Agents.md` (Subagent Strategy) and `README.md` (Development). Agents only edit and push; CI remains the sole test gate.
 
 ### Removed
