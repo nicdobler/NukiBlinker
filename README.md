@@ -25,7 +25,8 @@ All project documentation lives in this repository (versioned alongside the code
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
 - **Event deduplication**: collapses the burst of callbacks one real interaction emits (a genuine second ring still notifies)
-- **Event logging**: comprehensive event history with detailed action tracking, device filtering, and Excel-friendly CSV export (local timezone, separate Date/Time columns)
+- **Event logging**: comprehensive event history with detailed action tracking, device filtering by **name**, Previous/Next pagination, and Excel-friendly CSV export (local timezone, separate Date/Time columns, full payload JSON)
+- **Application log to file**: rotating app log (`logs/nukiblinker.log`) with basic weekly housekeeping, alongside console output
 - **Optional Nuki Web API**: resolve real user names and action triggers from the cloud activity log (read-only)
 - **Night mode**: time-based notification adjustments (disables audio during quiet hours)
 - **Web UI**: comprehensive tabbed config UI at `http://localhost:8080/` — device discovery, guided pairing, full event rules, event log viewer
@@ -135,8 +136,8 @@ Prevents stale events from triggering notifications by checking event timestamps
 Comprehensive event history for monitoring and troubleshooting:
 - Embedded **SQLite** storage (`logs/event_log.db`) with configurable retention — fast to load and **persists across application/container updates** (when `./logs` is mounted as a volume)
 - Detailed action tracking with processing times
-- CSV export for analysis
-- Web UI viewer with pagination and device filtering
+- CSV export for analysis (includes a `Payload (JSON)` column with the full raw payload)
+- Web UI viewer with Previous/Next pagination and device filtering **by name** (the Nuki Device Filter remembers the Opener/Lock names; real callbacks carry no name)
 - A legacy `event_log.json` is migrated into the database automatically on first start
 
 #### Night Mode
@@ -160,6 +161,7 @@ See `config.example.yaml` for all options. Key sections:
 - **night_mode** — Quiet hours and notification adjustments
 - **event_log** — Logging configuration, retention, and CSV timezone
 - **deduplication** — Suppress duplicate events from one interaction (enabled, window_seconds)
+- **logging** — Application log file: path, weekly rotation, and number of files kept
 - **server** — Host and port
 
 ### New Configuration Options
@@ -190,6 +192,14 @@ event_log:
   persist_to_file: true   # Persist to the SQLite DB (false = in-memory only)
   file_path: "logs/event_log.db"  # SQLite DB on the ./logs volume (legacy .json auto-migrated)
   timezone: "Europe/Madrid"  # IANA tz for the CSV Date/Time columns
+```
+
+#### Application Log File
+```yaml
+logging:
+  file_path: "logs/nukiblinker.log"  # on the ./logs volume; empty disables file logging
+  rotation_when: "W0"     # weekly (Monday); TimedRotatingFileHandler `when`
+  backup_count: 4         # number of rotated files kept
 ```
 
 #### Event Deduplication
@@ -454,30 +464,21 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 
 | Command | Description | Where |
 |---|---|---|
-| `make test` | Run pytest with coverage | Mac / CI |
-| `make lint` | Run flake8 | Mac / CI |
-| `make format` | Show Black diff | Mac |
-| `make install` | Install/update deps | Mac |
-| `make runLocal` | Run locally (real devices) | Mac |
-| `make build` | Build Docker image | Mac |
-| `make run-tests` | Lint + tests on the current branch | Mac |
-| `make validate` | Pick a branch (menu or arg) → checkout → install → run-tests | Mac |
-| `make cleanup` | Return to main, pull, prune merged local branches | Mac |
+| `make lint` | Run flake8 | CI |
+| `make test` | Run pytest with coverage | CI |
+| `make build` | Build Docker image | Mini PC (prod) |
 
-> **Note**: No testing or building on the work laptop. Code only.
+> **Note**: All testing and linting run in **GitHub Actions CI** only. No testing, linting, Poetry, or Docker on the work laptop — code only.
 
-### Branch workflow (Mac)
+### Branch workflow (CI as the test gate)
 
-```sh
-make run-tests                         # validate the branch you're already on
-make validate                          # fetch + pick a branch + checkout + validate
-./scripts/validate.sh feat/my-branch   # (or validate a specific branch directly)
-make cleanup                           # after the PR is merged: back to main + prune
+```
+push feat/my-branch  →  GitHub Actions runs lint + test
+     →  CI green  →  open PR  →  merge to main
 ```
 
-`make validate` fetches with prune, lets you pick a branch, checks it out,
-installs deps, and runs `make run-tests` (lint + tests). Once the PR is merged on
-GitHub, `make cleanup` switches to `main`, pulls, and deletes merged local branches.
+Verification happens exclusively in CI. Push the branch, let GitHub Actions run
+`make lint` + `make test`, read failing job logs, fix, and re-push until CI is green.
 
 ### Tech Stack
 

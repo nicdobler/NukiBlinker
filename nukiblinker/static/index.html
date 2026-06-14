@@ -145,6 +145,8 @@
                 <div><label>Opener ID</label><input id="nukiOpenerId" type="number" placeholder="e.g. 123456789"></div>
                 <div><label>Lock ID</label><input id="nukiLockId" type="number" placeholder="e.g. 987654321"></div>
             </div>
+            <input id="nukiOpenerName" type="hidden">
+            <input id="nukiLockName" type="hidden">
             <button class="btn-secondary btn-sm" onclick="nukiListDevices()">List Devices</button>
             <div id="nukiDeviceResults" class="discover-results"></div>
         </div>
@@ -410,8 +412,9 @@
                     Loading event log...
                 </div>
             </div>
-            <div class="btn-row" style="margin-top:1rem;">
-                <button class="btn-secondary btn-sm" onclick="loadMoreEvents()">Load More</button>
+            <div class="btn-row" style="margin-top:1rem; align-items:center; gap:0.5rem;">
+                <button id="eventLogPrev" class="btn-secondary btn-sm" onclick="prevEvents()">Previous</button>
+                <button id="eventLogNext" class="btn-secondary btn-sm" onclick="nextEvents()">Next</button>
                 <span id="eventLogInfo" style="color:#64748b; font-size:0.8rem;"></span>
             </div>
         </div>
@@ -528,6 +531,7 @@ async function loadBaseConfig() {
         const d = await (await fetch(`${API}/config`)).json();
         setVal('nukiIp', d.nuki?.bridge_ip); setVal('nukiPort', d.nuki?.bridge_port || 8080);
         setVal('nukiToken', d.nuki?.api_token); setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
+        setVal('nukiOpenerName', d.nuki?.opener_name); setVal('nukiLockName', d.nuki?.lock_name);
         setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
         setVal('hueLights', (d.hue?.lights || []).join(',')); setVal('hueGroups', (d.hue?.groups || []).join(','));
         document.getElementById('speakersChromecast').value = (d.speakers?.chromecast || []).join('\n');
@@ -547,7 +551,8 @@ async function loadBaseConfig() {
 async function saveBaseConfig() {
     const body = {
         nuki: { bridge_ip: val('nukiIp'), bridge_port: parseInt(val('nukiPort')) || 8080,
-            api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId') },
+            api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId'),
+            opener_name: val('nukiOpenerName'), lock_name: val('nukiLockName') },
         hue: { bridge_ip: val('hueIp'), api_key: val('hueKey'),
             lights: val('hueLights').split(',').map(s=>s.trim()).filter(Boolean).map(Number),
             groups: val('hueGroups').split(',').map(s=>s.trim()).filter(Boolean).map(Number) },
@@ -603,10 +608,16 @@ async function nukiListDevices() {
         if (!devices.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No devices found</p>'; return; }
         el.innerHTML = devices.map(d => {
             const type = d.deviceType === 2 ? 'Opener' : d.deviceType === 0 ? 'Smart Lock' : 'Type ' + d.deviceType;
-            const target = d.deviceType === 2 ? 'nukiOpenerId' : 'nukiLockId';
-            return `<div class="discover-item" onclick="setVal('${target}','${d.nukiId}')"><span>${d.name||'Unknown'} <small style="color:#64748b">(${type})</small></span><span style="color:#64748b">ID: ${d.nukiId}</span></div>`;
+            const name = (d.name || 'Unknown').replace(/'/g, "\\'");
+            return `<div class="discover-item" onclick="pickNukiDevice(${d.deviceType},'${d.nukiId}','${name}')"><span>${d.name||'Unknown'} <small style="color:#64748b">(${type})</small></span><span style="color:#64748b">ID: ${d.nukiId}</span></div>`;
         }).join('');
     } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed to list devices</p>'; }
+}
+function pickNukiDevice(deviceType, nukiId, name) {
+    // Store the selected device ID + its friendly name so the Event Log can
+    // label events by name (real callbacks carry no name) (#115).
+    if (deviceType === 2) { setVal('nukiOpenerId', nukiId); setVal('nukiOpenerName', name); }
+    else { setVal('nukiLockId', nukiId); setVal('nukiLockName', name); }
 }
 
 /* --- Hue Discovery, Status & Pairing --- */
@@ -854,7 +865,8 @@ async function populateDeviceFilter() {
         const current = sel.value;
         const devices = data.devices || [];
         sel.innerHTML = '<option value="">All devices</option>' + devices.map(d => {
-            const label = (d.name || `Device ${d.nukiId}`) + ` (${d.nukiId})`;
+            // Identify devices by name (#115); fall back to the ID only when unknown.
+            const label = d.name || `Device ${d.nukiId}`;
             return `<option value="${d.nukiId}">${label}</option>`;
         }).join('');
         sel.value = current;
@@ -873,6 +885,8 @@ async function loadEventLog() {
     const container = document.getElementById('eventLogContainer');
     const statusEl = document.getElementById('eventLogStatus');
     const infoEl = document.getElementById('eventLogInfo');
+    const prevBtn = document.getElementById('eventLogPrev');
+    const nextBtn = document.getElementById('eventLogNext');
     
     try {
         statusEl.innerHTML = '<span style="color:#94a3b8;font-size:0.8rem;">Loading...</span>';
@@ -886,14 +900,22 @@ async function loadEventLog() {
         }
         
         const data = await response.json();
+        const total = data.total_count || 0;
         
-        if (data.events.length === 0 && eventLogOffset === 0) {
+        if (total === 0) {
             container.innerHTML = '<div style="text-align:center; color:#64748b; padding:2rem;">No events logged yet</div>';
             infoEl.textContent = '';
         } else {
             container.innerHTML = data.events.map(renderEventLogEntry).join('');
-            infoEl.textContent = `Showing ${eventLogOffset + 1}-${eventLogOffset + data.events.length} of ${data.total_count}`;
+            const page = Math.floor(eventLogOffset / EVENT_LOG_LIMIT) + 1;
+            const pages = Math.max(1, Math.ceil(total / EVENT_LOG_LIMIT));
+            const first = eventLogOffset + 1;
+            const last = eventLogOffset + data.events.length;
+            infoEl.textContent = `Page ${page} of ${pages} — events ${first}-${last} of ${total}`;
         }
+        // Disable Prev on the first page, Next on the last page.
+        if (prevBtn) prevBtn.disabled = eventLogOffset === 0;
+        if (nextBtn) nextBtn.disabled = eventLogOffset + EVENT_LOG_LIMIT >= total;
         
         statusEl.innerHTML = '';
     } catch (e) {
@@ -903,14 +925,23 @@ async function loadEventLog() {
     }
 }
 
-async function loadMoreEvents() {
+async function nextEvents() {
     eventLogOffset += EVENT_LOG_LIMIT;
+    await loadEventLog();
+}
+
+async function prevEvents() {
+    eventLogOffset = Math.max(0, eventLogOffset - EVENT_LOG_LIMIT);
     await loadEventLog();
 }
 
 function renderEventLogEntry(entry) {
     const timestamp = new Date(entry.timestamp).toLocaleString();
     const eventType = entry.event_type || 'Unknown';
+    const deviceName = entry.device_name || (entry.payload && entry.payload.name) || '';
+    const deviceLabel = deviceName
+        ? `<span style="font-size:0.75rem;color:#94a3b8;"> · ${deviceName}</span>`
+        : '';
     const validationClass = entry.validation_result.valid ? 'badge-ok' : 'badge-warn';
     const validationText = entry.validation_result.valid ? 'Valid' : `Invalid: ${entry.validation_result.reason}`;
     
@@ -926,7 +957,7 @@ function renderEventLogEntry(entry) {
         <div class="card" style="margin-bottom:0.75rem; padding:1rem;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
                 <div>
-                    <strong>${eventType}</strong> ${processingTime}
+                    <strong>${eventType}</strong>${deviceLabel} ${processingTime}
                     <div style="font-size:0.75rem;color:#64748b;">${timestamp}</div>
                 </div>
                 <span class="badge ${validationClass}" style="font-size:0.7rem;">${validationText}</span>

@@ -326,9 +326,38 @@ lock surfaced on the next `make cleanup`.
 
 ---
 
+## Event log fixes + app log to file (#115)
+
+**Branch**: `fix/event-log-and-app-logging` | **PR**: #119
+
+Context: User parked `feat/hue-blink-select-lselect` to troubleshoot the event log
+and app logging. Real Nuki callbacks were all logged as `Invalid` while test events
+worked; the event-log viewer only showed page 1 ("Load More" went blank); CSV export
+lacked the payload; devices were shown by ID; and there was no app log file. The
+"send logs to a GitHub issue" button was split out to issue #117 (separate session).
+
+Phases (each with tests):
+- [x] Phase 0: specs (product + tech) + CHANGELOG
+- [x] Phase 1: validator prefers `ringactionTimestamp` (real rings no longer Invalid) + regression test
+- [x] Phase 2: store `opener_name`/`lock_name` in Nuki Device Filter config; resolve `nukiId`->name in viewer/filter/CSV
+- [x] Phase 3: Prev/Next pagination + page indicator; add `Payload (JSON)` CSV column; verify export scope
+- [x] Phase 4: app log to file with weekly `TimedRotatingFileHandler` + `LoggingConfig`
+- [x] **Mac/CI**: `make test` + `make lint`
+- [x] Push branch + open PR (#119)
+
+Decisions:
+- Root cause of "all real events Invalid": validator read the lock-state `timestamp`
+  ("retrieval of this lock state", often stale) instead of the actual ring time
+  (`ringactionTimestamp`). Test events send `{}` -> no timestamp -> valid.
+- Device naming reuses the existing Device Filter config (`opener_id`/`lock_id`)
+  by also persisting their names, rather than depending on a live bridge call at view time.
+- GitHub support-bundle button deferred to #117 (PAT + ZIP via Contents API, time window).
+
+---
+
 ## Hue blink modes: none / short (select) / long (lselect)
 
-**Branch**: `feat/hue-blink-select-lselect` | **PR**: _pending_
+**Branch**: `feat/hue-blink-select-lselect` | **PR**: #114
 
 Context: User asked whether the built-in Hue alerts can have fewer blinks. The
 built-in `lselect` (~15s) is fixed; only `select` (single cycle) reduces it.
@@ -336,6 +365,10 @@ Decision (user): per-event choice between a 1-cycle and a 15-second blink,
 remove the broken `custom` mode, leave room for a future hardcoded pattern (no
 config), and guarantee lights return to their previous state — which the
 built-in `select`/`lselect` already do via the bridge.
+
+Note: rebased on top of `main` after #119 (event-log fixes) merged; the two
+PRs overlapped only in shared docs/config files (auto-merged) and this
+`tasks/todo.md` append (resolved by keeping both entries).
 
 - [x] Specs: product-spec Blink Modes (none/short/long) + tech-spec config model, HueClient, night mode
 - [x] `config.py`: `BlinkConfig` modes none/short/long; removed `CustomBlinkConfig`; `field_validator` migrates `alert`/`custom`→`long`; new defaults (ring=long, ring_to_open=short)
@@ -345,5 +378,5 @@ built-in `select`/`lselect` already do via the bridge.
 - [x] Web UI: Events tab selector none/short/long; removed custom inputs + `toggleCustomBlink` JS
 - [x] Tests: hue_client (alert kind), notifier, night_mode, config (migration), integration pipeline
 - [x] Docs: README, config.example.yaml, CHANGELOG `[Unreleased]`
-- [ ] **Mac/CI**: `make test` + `make lint` (not run on Windows work laptop)
+- [ ] **CI**: lint + test (sole validation env)
 - [ ] Merge PR

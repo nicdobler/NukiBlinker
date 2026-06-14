@@ -269,15 +269,14 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 | Environment | Role |
 |---|---|
 | Work laptop (Windows) | Code only. No testing, no Poetry, no Docker. |
-| Personal Mac | `make test` + `make lint` (unit tests, mocked). `make runLocal` for real-device testing. |
-| GitHub Actions | CI: lint → test. |
+| GitHub Actions | **Sole test gate**: lint → test on push/PR. |
 | Mini PC (Windows + WSL2) | Production: `git pull && docker compose build && up -d`. |
 
-### Testing on Mac
+### Testing in CI
 
-- **`make test`** — Unit/integration tests with mocked HTTP. No real devices needed.
-- **`make runLocal`** — Real-device testing. Direct LAN access, mDNS works, HomeKit advertising works. Best for end-to-end validation.
-- **`make build`** — Verify Docker image builds. Use `make runLocal` for real-device testing.
+- Verification happens **exclusively** in GitHub Actions CI — there is no local test environment.
+- CI runs `make lint` + `make test` (unit/integration tests with mocked HTTP) on every push/PR.
+- The agent works autonomously: push branch → poll CI → read failing logs → fix root cause → re-push, until CI is green.
 
 ## Event Flow
 
@@ -844,7 +843,13 @@ make build       # verify Docker image builds
 
 ### Event Validation Service (`event_validator.py`)
 
-Validates event timestamps before processing:
+Validates event timestamps before processing. The timestamp is extracted with a
+precedence that matches the Bridge payload semantics (#115): **`ringactionTimestamp`**
+(the actual ring time) is preferred, then `timestamp` / `time` / `created_at` /
+`eventTime`. The lock-state `timestamp` field is documented by the Bridge as the
+*retrieval time of the lock state* and is frequently stale, so using it for ring
+validation rejected genuine rings as "too old". When no timestamp is present
+(e.g. test events with an empty payload) the event is treated as valid.
 
 ```python
 class EventValidator:
@@ -955,12 +960,30 @@ class EventLogConfig(BaseModel):
     persist_to_file: bool = True
     file_path: str = "logs/event_log.db"   # SQLite DB (a legacy .json path is auto-migrated, see Unreleased)
 
+# #115: app log to a rotating file (weekly housekeeping)
+class LoggingConfig(BaseModel):
+    file_path: str = "logs/nukiblinker.log"  # empty disables file logging
+    rotation_when: str = "W0"                # TimedRotatingFileHandler `when` (weekly, Monday)
+    backup_count: int = 4                    # old files kept
+
+# #115: NukiConfig also persists the selected device names so the Event Log can
+# label events by name (real callbacks carry no `name`):
+#   opener_name: str = ""
+#   lock_name: str = ""
+
 class AppConfig(BaseModel):
     # ... existing fields ...
     event_validation: EventValidationConfig = EventValidationConfig()
     night_mode: NightModeConfig = NightModeConfig()
     event_log: EventLogConfig = EventLogConfig()
+    logging: LoggingConfig = LoggingConfig()
 ```
+
+`setup_logging()` adds a `logging.handlers.TimedRotatingFileHandler` (in addition
+to the existing console `StreamHandler`) when `logging.file_path` is set, creating
+the parent directory under the `logs/` volume. `export_to_csv` gains a
+`Payload (JSON)` column, and `get_recent_events`/`get_devices` results are labelled
+with device names resolved from `nuki.opener_name`/`nuki.lock_name`.
 
 ### Updated Web UI API Routes
 
