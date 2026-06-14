@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Parallel-agent tooling (git worktrees)**: new `script/worktree.ps1` (and `script/worktree.sh` for Linux/WSL2) with `new`/`list`/`remove` subcommands to manage git worktrees in a sibling `../NukiBlinker-wt/<branch-slug>` folder, so multiple agents can work in parallel on isolated working trees, each on its own branch from `origin/main`. Added the `/worktree` Windsurf workflow and documented the strategy in `Agents.md` (Subagent Strategy) and `README.md` (Development). Agents only edit and push; CI remains the sole test gate.
+
 ### Removed
 - **#106**: Removed the Apple HomePod / AirPlay 2 audio integration (`airplay_client.py`, `pyatv` dependency, `speakers.airplay` config field, AirPlay discovery, and the AirPlay card in the web UI). HomePod RTSP `SETUP` timed out unreliably and produced no audio; the masked `'set' object can't be awaited` warning behind it was the already-fixed #101 bug. HomePod owners are still notified via the HomeKit doorbell. Chromecast / Google Nest is now the only speaker audio channel. Existing `speakers.airplay` keys in `config.yaml` are ignored.
 

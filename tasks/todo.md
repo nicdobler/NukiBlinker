@@ -406,3 +406,25 @@ PRs overlapped only in shared docs/config files (auto-merged) and this
 - [x] Docs: README, config.example.yaml, CHANGELOG `[Unreleased]`
 - [ ] **CI**: lint + test (sole validation env)
 - [ ] Merge PR
+
+---
+
+## Parallel-agent tooling — git worktrees
+
+**Branch**: `chore/worktree-tooling` | **PR**: _pending_
+
+Context: User wants to launch independent agents in parallel on this repo
+without working-tree conflicts. Chose git worktrees (one folder + branch per
+agent, created from `origin/main`). Mode: **edit + push only** — no `.venv`, no
+local tests; CI stays the sole validation gate. Initial mount executed so a
+later session can just request "launch N subagents".
+
+- [x] `script/worktree.ps1` (new/list/remove) matching repo script style
+- [x] `script/worktree.sh` parity for Linux/WSL2
+- [x] `.windsurf/workflows/worktree.md` workflow (create/launch/push/merge/cleanup)
+- [x] `Agents.md`: Subagent Strategy → parallel-agents-via-worktrees + workflow list
+- [x] `README.md` Development: "Parallel agents (git worktrees)" section
+- [x] `CHANGELOG.md` `[Unreleased]` → Added
+- [x] Initial mount: created `../NukiBlinker-wt/` root + validated script
+- [ ] **CI**: lint + test (sole validation env)
+- [ ] Merge PR (Approval mode — awaiting go-ahead)

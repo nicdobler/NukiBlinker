@@ -491,6 +491,24 @@ push feat/my-branch  →  GitHub Actions runs lint + test
 Verification happens exclusively in CI. Push the branch, let GitHub Actions run
 `make lint` + `make test`, read failing job logs, fix, and re-push until CI is green.
 
+### Parallel agents (git worktrees)
+
+To run several agents in parallel without conflicts, give each one its own
+**git worktree** — a separate working folder sharing the same `.git`, on its own
+branch from `origin/main`. Worktrees live in the sibling folder
+`../NukiBlinker-wt/<branch-slug>` and are managed with `script/worktree.ps1`
+(`script/worktree.sh` on Linux/WSL2):
+
+```powershell
+.\script\worktree.ps1 -Action new    -Branch feat/my-task   # create folder + branch
+.\script\worktree.ps1 -Action list                          # list worktrees
+.\script\worktree.ps1 -Action remove -Branch feat/my-task   # remove after merge
+```
+
+Each agent only edits and pushes its branch — CI remains the sole test gate.
+Conflicts surface only at merge time, never between folders. See the `/worktree`
+workflow in `.windsurf/workflows/`.
+
 ### Tech Stack
 
 - **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**

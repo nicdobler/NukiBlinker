@@ -60,6 +60,20 @@ Summarize your understanding before proposing changes.
 - One task per subagent for focused execution.
 - Summarize between steps to prevent context drift across long conversations.
 
+### Parallel agents via git worktrees
+
+- To run **multiple agents in parallel** on the repo, give each one its own
+  **git worktree** (separate working dir, same `.git`) on its own branch from
+  `origin/main`. This keeps their working trees isolated — conflicts only ever
+  surface at merge time, never between folders.
+- Worktrees live in the sibling folder `../NukiBlinker-wt/<branch-slug>` and are
+  managed with `script/worktree.ps1` (`.sh` on Linux/WSL2): `new` / `list` / `remove`.
+- Agents in worktrees **only edit and push** — no `.venv`, no local install,
+  no local tests. CI is still the sole validation gate (Rule 5).
+- One branch = one worktree = one agent. Assign distinct module/file areas to
+  minimize merge conflicts. Merge one branch at a time, then rebase the rest.
+- Use the `/worktree` workflow to drive this end to end.
+
 ## 5. Verification Before Done (CI is the gate)
 
 - **CI is the only test environment.** Do not run `make test`, `make lint`, `poetry install`, or `docker build` on the work laptop.
@@ -141,6 +155,7 @@ Available workflows:
 - `/new-feature` — Full loop: context -> spec -> plan -> implement -> test -> review.
 - `/fix-bug` — Diagnose -> root cause -> fix -> regression test -> document.
 - `/add-tests` — Analyze coverage gaps -> generate tests -> verify.
+- `/worktree` — Launch independent agents in parallel via git worktrees (one folder + branch per agent, push-only).
 
 ## Guardrails
 
