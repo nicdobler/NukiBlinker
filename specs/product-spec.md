@@ -71,6 +71,7 @@ A single real interaction makes the Nuki Bridge emit several callbacks (status t
 
 - The dedup key is `(nukiId, event_type, discriminator)` where the discriminator is the **`ringactionTimestamp`** for rings and the lock **`state`** otherwise.
 - Because a genuine second ring carries a **new** `ringactionTimestamp`, ringing twice still produces two notifications — only repeated callbacks for the *same* ring/open are collapsed.
+- **Ring-to-Open correlation (#121)**: a single Ring-to-Open makes the Opener emit two callbacks ~10 s apart that classify as *different* event types — a `ring_to_open` (state 7) and a `ring` (`ringactionState` true) — so the per-type key above would let both fire. Since every Opener callback carries the same `ringactionTimestamp` (the ring that triggered the open), NukiBlinker also suppresses a second ring-family event sharing `(nukiId, ringactionTimestamp)` within the window, collapsing one RTO into a single notification. Two genuinely distinct rings carry different timestamps and are never collapsed.
 - Suppressed events are recorded in the Event Log with the reason, so the behaviour is auditable.
 
 ### Person Identification

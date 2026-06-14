@@ -13,6 +13,19 @@ suppresses equivalent ones within a configurable window. The dedup key is
   (which carries a new timestamp) is NOT treated as a duplicate, while repeated
   callbacks for the *same* ring are collapsed;
 - the lock ``state`` for every other event type.
+
+Ring-to-Open correlation (#121)
+-------------------------------
+A single Ring-to-Open interaction makes the Opener emit two callbacks that
+classify as *different* event types ~10s apart: a ``ring_to_open`` (state 7)
+and a ``ring`` (``ringactionState`` true). Because their ``event_type`` differs
+the per-type key above does not collapse them, so the user gets two
+notifications for one RTO. Every Opener callback carries the same
+``ringactionTimestamp`` (the time of the ring that triggered the open, Bridge
+API §4), so we additionally suppress a second RTO-family event sharing the
+key ``(nukiId, ringactionTimestamp)`` within the window — regardless of
+event_type. Two genuinely distinct rings carry different timestamps and are
+never collapsed.
 """
 
 from __future__ import annotations
@@ -42,6 +55,8 @@ class Deduplicator:
         self.enabled = enabled
         self._time = time_func
         self._recent: Dict[Tuple[Any, ...], float] = {}
+        # Cross-event RTO correlation: (nukiId, ringactionTimestamp) -> ts (#121)
+        self._interactions: Dict[Tuple[Any, ...], float] = {}
         self._lock = Lock()
 
     @staticmethod
@@ -60,6 +75,26 @@ class Deduplicator:
                 or payload.get("state")
             )
         return (payload.get("nukiId"), event_type, discriminator)
+
+    # Event types produced by a single Ring-to-Open interaction (#121).
+    _RTO_FAMILY = frozenset({"ring", "ring_to_open"})
+
+    @classmethod
+    def _interaction_key(cls, payload: dict, event_type: str) -> Tuple[Any, ...] | None:
+        """Build the cross-event RTO key, or None when not applicable.
+
+        A Ring-to-Open emits a ``ring_to_open`` and a ``ring`` that share the
+        same ``ringactionTimestamp``. Correlating on ``(nukiId,
+        ringactionTimestamp)`` lets us collapse the pair into one notification
+        (#121). Returns None for non-RTO events or when the payload carries no
+        ``ringactionTimestamp`` (nothing to correlate on).
+        """
+        if event_type not in cls._RTO_FAMILY:
+            return None
+        rats = payload.get("ringactionTimestamp")
+        if rats is None:
+            return None
+        return (payload.get("nukiId"), rats)
 
     def is_duplicate(self, payload: dict, event_type: str) -> bool:
         """Return True if an equivalent event was accepted within the window.
@@ -86,6 +121,23 @@ class Deduplicator:
                     key, now - last,
                 )
                 return True
+
+            # Ring-to-Open correlation (#121): a ring + ring_to_open from the
+            # same RTO share (nukiId, ringactionTimestamp). Suppress the second
+            # one even though its event_type differs.
+            ikey = self._interaction_key(payload, event_type)
+            if ikey is not None:
+                iseen = self._interactions.get(ikey)
+                if iseen is not None and (now - iseen) <= self.window_seconds:
+                    logger.info(
+                        "Ring-to-Open duplicate suppressed: %s as '%s' "
+                        "(within %.0fs of the first RTO callback)",
+                        ikey, event_type, now - iseen,
+                    )
+                    self._interactions[ikey] = now
+                    return True
+                self._interactions[ikey] = now
+
             self._recent[key] = now
             return False
 
@@ -97,3 +149,9 @@ class Deduplicator:
         ]
         for k in expired:
             del self._recent[k]
+        expired_i = [
+            k for k, ts in self._interactions.items()
+            if (now - ts) > self.window_seconds
+        ]
+        for k in expired_i:
+            del self._interactions[k]

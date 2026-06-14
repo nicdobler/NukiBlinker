@@ -1058,6 +1058,14 @@ class Deduplicator:
         ringactionTimestamp for 'ring' (so a genuine second ring with a new
         timestamp is NOT a duplicate) and the lock `state` otherwise.
         Records the event and prunes expired keys on every call.
+
+        Ring-to-Open correlation (#121): in addition to the per-type key, a
+        secondary cache keyed on (nukiId, ringactionTimestamp) collapses the
+        ring_to_open + ring pair that a single RTO emits ~10s apart. Both
+        Opener callbacks carry the same ringactionTimestamp, so the second
+        one is suppressed even though its event_type differs. Only the
+        ring/ring_to_open family with a present ringactionTimestamp is
+        correlated; distinct rings (different timestamps) are never collapsed.
         """
 ```
 

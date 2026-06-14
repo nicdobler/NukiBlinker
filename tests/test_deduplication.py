@@ -98,3 +98,63 @@ class TestDeduplicator:
         assert dedup.is_duplicate(p, "door_opened") is False
         clock.advance(5)
         assert dedup.is_duplicate(p, "door_opened") is True
+
+
+def _rto_open(ts):
+    """state 7 ring_to_open callback carrying the ring time (Bridge API §4)."""
+    return {"deviceType": 2, "nukiId": 1, "state": 7,
+            "ringactionState": False, "ringactionTimestamp": ts}
+
+
+def _rto_ring(ts):
+    """The follow-up state 1 callback with ringactionState true for the same RTO."""
+    return {"deviceType": 2, "nukiId": 1, "state": 1,
+            "ringactionState": True, "ringactionTimestamp": ts}
+
+
+class TestRingToOpenCorrelation:
+    """#121: one RTO emits ring_to_open + ring sharing ringactionTimestamp."""
+
+    def test_ring_after_ring_to_open_suppressed(self):
+        """ring_to_open fires; the paired ring (same ts) is suppressed."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        assert dedup.is_duplicate(_rto_open("T1"), "ring_to_open") is False
+        clock.advance(10)
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is True
+
+    def test_ring_to_open_after_ring_suppressed(self):
+        """Symmetric: ring first, then ring_to_open (same ts) is suppressed."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
+        clock.advance(10)
+        assert dedup.is_duplicate(_rto_open("T1"), "ring_to_open") is True
+
+    def test_distinct_rto_interactions_not_suppressed(self):
+        """Two RTOs with different ring timestamps each notify once."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        assert dedup.is_duplicate(_rto_open("T1"), "ring_to_open") is False
+        clock.advance(10)
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is True
+        clock.advance(10)
+        # A genuinely new RTO (new ringactionTimestamp) must pass.
+        assert dedup.is_duplicate(_rto_open("T2"), "ring_to_open") is False
+
+    def test_correlation_expires_after_window(self):
+        """A ring far after the ring_to_open is no longer correlated."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        assert dedup.is_duplicate(_rto_open("T1"), "ring_to_open") is False
+        clock.advance(121)
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
+
+    def test_ring_to_open_without_timestamp_not_correlated(self):
+        """No ringactionTimestamp → nothing to correlate, ring still notifies."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        bare = {"deviceType": 2, "nukiId": 1, "state": 7}
+        assert dedup.is_duplicate(bare, "ring_to_open") is False
+        clock.advance(10)
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
