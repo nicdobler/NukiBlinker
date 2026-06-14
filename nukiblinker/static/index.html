@@ -131,6 +131,9 @@
             <label>API Token <span class="req">*</span></label>
             <input id="nukiToken" type="password" placeholder="Enter Nuki Bridge API token">
             <p class="help">Find in Nuki App &rarr; Bridge &rarr; Manage Bridge &rarr; API Token</p>
+            <label>Web API Token <span style="color:#64748b;font-size:0.75rem">(optional)</span></label>
+            <input id="nukiWebToken" type="password" placeholder="Enter Nuki Web API token">
+            <p class="help">Cloud token (read-only) to resolve the real user name/trigger for Ring-to-Open events. Create one at web.nuki.io &rarr; API &rarr; Web API Tokens.</p>
             <div id="nukiDiscoverResults" class="discover-results"></div>
             <div class="section">
                 <h3>Callback Registration</h3>
@@ -627,7 +630,8 @@ async function loadBaseConfig() {
     try {
         const d = await (await fetch(`${API}/config`)).json();
         setVal('nukiIp', d.nuki?.bridge_ip); setVal('nukiPort', d.nuki?.bridge_port || 8080);
-        setVal('nukiToken', d.nuki?.api_token); setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
+        setVal('nukiToken', d.nuki?.api_token); setVal('nukiWebToken', d.nuki?.web_api_token);
+        setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
         setVal('nukiOpenerName', d.nuki?.opener_name); setVal('nukiLockName', d.nuki?.lock_name);
         setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
         hueSelection = { lights: (d.hue?.lights || []).map(Number), groups: (d.hue?.groups || []).map(Number) };
@@ -655,7 +659,8 @@ async function loadBaseConfig() {
 async function saveBaseConfig() {
     const body = {
         nuki: { bridge_ip: val('nukiIp'), bridge_port: parseInt(val('nukiPort')) || 8080,
-            api_token: val('nukiToken'), opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId'),
+            api_token: val('nukiToken'), web_api_token: val('nukiWebToken'),
+            opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId'),
             opener_name: val('nukiOpenerName'), lock_name: val('nukiLockName') },
         hue: { bridge_ip: val('hueIp'), api_key: val('hueKey'),
             lights: collectHueIds('light', hueSelection.lights),
