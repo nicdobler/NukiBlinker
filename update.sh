@@ -2,7 +2,8 @@
 # NukiBlinker — one-command update for the Mini PC (production).
 #
 # Pulls the latest code + image and restarts the container. Run this from the
-# project directory on the Mini PC (where docker-compose.yml and config.yaml live):
+# project directory on the Mini PC (where docker-compose.yml, config.yaml and
+# secrets.yaml live):
 #
 #   ./update.sh
 #
@@ -24,8 +25,21 @@ echo ""
 echo "[1/4] Pulling latest code..."
 git pull --ff-only
 
-# 2. Make sure the event-log volume directory exists (logs/event_log.db lives here)
+# 2. Make sure bind-mounted paths exist on the host BEFORE `docker compose up`,
+#    otherwise Docker creates a *directory* in their place.
+#    - logs/ : event-log volume (logs/event_log.db lives here)
+#    - secrets.yaml : secrets file split out of config.yaml (#123)
 mkdir -p logs
+if [ ! -f secrets.yaml ]; then
+  # Create an EMPTY secrets file (not a copy of secrets.example.yaml). On an
+  # existing install the real secrets may still be inline in config.yaml; an
+  # empty secrets.yaml lets those load unchanged and migrate to secrets.yaml on
+  # the next save. Copying the example would overlay placeholder tokens and
+  # clobber the real ones (#123).
+  echo "  secrets.yaml not found — creating an empty one (#123)."
+  echo "  Existing inline secrets in config.yaml migrate automatically on next save."
+  printf '# NukiBlinker secrets (#123). Managed by the web UI; safe to leave empty.\n' > secrets.yaml
+fi
 
 # 3. Refresh the image
 echo ""
