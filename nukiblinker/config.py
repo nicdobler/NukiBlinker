@@ -360,11 +360,11 @@ def save_config(
     main_data, secrets = _split_secrets(data, existing_secrets)
 
     main_bytes = _write_yaml_verified(path, main_data)
-    secrets_bytes = _write_yaml_verified(secrets_path, secrets)
-    logger.info(
-        "Config saved and verified (%d bytes config, %d bytes secrets) to %s / %s",
-        main_bytes, secrets_bytes, path, secrets_path,
-    )
+    _write_yaml_verified(secrets_path, secrets)
+    # Log only the non-secret config write — never log secret values, sizes, or
+    # paths derived from the secrets dict (CodeQL py/clear-text-logging).
+    logger.info("Config saved and verified (%d bytes) to %s", main_bytes, path)
+    logger.info("Secrets persisted (%d fields) to a separate file", len(SECRET_FIELDS))
 
 
 def summarize_config(config: AppConfig) -> str:
