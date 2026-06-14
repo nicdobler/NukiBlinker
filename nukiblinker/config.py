@@ -211,32 +211,91 @@ def get_public_host(config: AppConfig) -> str:
 # Load / Save
 # ---------------------------------------------------------------------------
 
+# Secret fields are persisted to a dedicated ``secrets.yaml`` next to
+# ``config.yaml`` (never inline), so rewriting the main config can never wipe a
+# stored secret (#123). Each entry is a (section, key) path into the config dict.
+SECRET_FIELDS: tuple[tuple[str, str], ...] = (
+    ("nuki", "api_token"),
+    ("nuki", "web_api_token"),
+    ("hue", "api_key"),
+)
 
-def load_config(path: str | Path) -> AppConfig:
-    """Load config from YAML file. Returns defaults if file is missing or empty."""
-    path = Path(path)
+# Value used by the web UI to mask a secret on GET; it must never be persisted
+# as an actual secret value.
+MASK_SENTINEL = "***"
+
+# Obsolete per-event audio fields dropped from the persisted config on save
+# (#123): a bare ring has no known visitor name, and ``door_opened`` only plays a
+# chime. The shared ``AudioConfig`` model keeps the fields for ``ring_to_open``.
+_OBSOLETE_AUDIO_EVENTS: tuple[str, ...] = ("ring", "door_opened")
+_OBSOLETE_AUDIO_FIELDS: tuple[str, ...] = ("message", "fallback_name")
+
+
+def default_secrets_path(config_path: str | Path) -> Path:
+    """Return the secrets file path that pairs with ``config_path``."""
+    config_path = Path(config_path)
+    return config_path.parent / "secrets.yaml"
+
+
+def _read_yaml_dict(path: Path) -> dict:
+    """Read a YAML file into a dict. Returns ``{}`` if missing/empty/invalid."""
     if not path.exists():
-        logger.warning("Config file %s not found — using defaults", path)
-        return AppConfig()
+        return {}
     text = path.read_text(encoding="utf-8").strip()
     if not text:
-        logger.warning("Config file %s is empty — using defaults", path)
-        return AppConfig()
+        return {}
     data = yaml.safe_load(text)
     if not isinstance(data, dict):
-        logger.warning("Config file %s is not a dict — using defaults", path)
-        return AppConfig()
-    return AppConfig.model_validate(data)
+        logger.warning("YAML file %s is not a dict — ignoring", path)
+        return {}
+    return data
 
 
-def save_config(config: AppConfig, path: str | Path) -> None:
-    """Persist config to YAML file with read-back verification."""
-    path = Path(path)
-    data = config.model_dump(mode="json")
+def _overlay_secrets(base: dict, secrets: dict) -> dict:
+    """Overlay non-empty secret values from ``secrets`` onto ``base`` in place."""
+    for section, key in SECRET_FIELDS:
+        value = secrets.get(section, {}).get(key)
+        if value:
+            base.setdefault(section, {})[key] = value
+    return base
+
+
+def _strip_obsolete_fields(data: dict) -> dict:
+    """Remove obsolete per-event audio fields from a config dict in place (#123)."""
+    events = data.get("events")
+    if not isinstance(events, dict):
+        return data
+    for event in _OBSOLETE_AUDIO_EVENTS:
+        audio = events.get(event, {}).get("audio")
+        if isinstance(audio, dict):
+            for field in _OBSOLETE_AUDIO_FIELDS:
+                audio.pop(field, None)
+    return data
+
+
+def _split_secrets(data: dict, existing_secrets: dict) -> tuple[dict, dict]:
+    """Split secrets out of ``data`` (mutated in place) into a secrets dict.
+
+    Secret preservation: an empty or masked (``***``) incoming value never
+    overwrites a stored secret — the existing value is kept. Only a new
+    non-empty value updates a secret. Returns ``(main_data, secrets)``.
+    """
+    secrets: dict = {}
+    for section, key in SECRET_FIELDS:
+        new_value = data.get(section, {}).pop(key, "")
+        if new_value and new_value != MASK_SENTINEL:
+            kept = new_value
+        else:
+            kept = existing_secrets.get(section, {}).get(key, "")
+        if kept:
+            secrets.setdefault(section, {})[key] = kept
+    return data, secrets
+
+
+def _write_yaml_verified(path: Path, data: dict) -> int:
+    """Write ``data`` as YAML to ``path`` with read-back verification."""
     yaml_text = yaml.dump(data, default_flow_style=False, allow_unicode=True)
     path.write_text(yaml_text, encoding="utf-8")
-
-    # Verify the write persisted correctly
     readback = path.read_text(encoding="utf-8")
     if readback != yaml_text:
         logger.error(
@@ -244,7 +303,68 @@ def save_config(config: AppConfig, path: str | Path) -> None:
             len(yaml_text), len(readback), path,
         )
         raise IOError(f"Config verification failed for {path}")
-    logger.info("Config saved and verified (%d bytes) to %s", len(yaml_text), path)
+    return len(yaml_text)
+
+
+def load_config(path: str | Path, secrets_path: str | Path | None = None) -> AppConfig:
+    """Load config from YAML, overlaying secrets from ``secrets.yaml``.
+
+    Non-secret settings come from ``path``; secrets are overlaid from
+    ``secrets_path`` (defaults to ``secrets.yaml`` beside ``path``). An old
+    config that still carries inline secrets loads unchanged and is migrated to
+    ``secrets.yaml`` on the next save. Returns defaults if the main file is
+    missing or empty.
+    """
+    path = Path(path)
+    secrets_path = Path(secrets_path) if secrets_path else default_secrets_path(path)
+
+    if not path.exists():
+        logger.warning("Config file %s not found — using defaults", path)
+        data: dict = {}
+    else:
+        text = path.read_text(encoding="utf-8").strip()
+        if not text:
+            logger.warning("Config file %s is empty — using defaults", path)
+            data = {}
+        else:
+            loaded = yaml.safe_load(text)
+            if not isinstance(loaded, dict):
+                logger.warning("Config file %s is not a dict — using defaults", path)
+                data = {}
+            else:
+                data = loaded
+
+    secrets = _read_yaml_dict(secrets_path)
+    data = _overlay_secrets(data, secrets)
+    return AppConfig.model_validate(data)
+
+
+def save_config(
+    config: AppConfig,
+    path: str | Path,
+    secrets_path: str | Path | None = None,
+) -> None:
+    """Persist config, splitting secrets into ``secrets.yaml`` (#123).
+
+    Non-secret settings are written to ``path`` (with secret fields and obsolete
+    audio fields stripped); secrets are written to ``secrets_path`` (defaults to
+    ``secrets.yaml`` beside ``path``). Empty/masked secrets never overwrite a
+    stored value. Both writes are read-back verified.
+    """
+    path = Path(path)
+    secrets_path = Path(secrets_path) if secrets_path else default_secrets_path(path)
+
+    data = config.model_dump(mode="json")
+    data = _strip_obsolete_fields(data)
+    existing_secrets = _read_yaml_dict(secrets_path)
+    main_data, secrets = _split_secrets(data, existing_secrets)
+
+    main_bytes = _write_yaml_verified(path, main_data)
+    _write_yaml_verified(secrets_path, secrets)
+    # Log only the non-secret config write — never log secret values, sizes, or
+    # paths derived from the secrets dict (CodeQL py/clear-text-logging).
+    logger.info("Config saved and verified (%d bytes) to %s", main_bytes, path)
+    logger.info("Secrets persisted (%d fields) to a separate file", len(SECRET_FIELDS))
 
 
 def summarize_config(config: AppConfig) -> str:

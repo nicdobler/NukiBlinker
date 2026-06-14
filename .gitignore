@@ -7,8 +7,9 @@ logs/
 *.log
 debug.log
 
-# Config with secrets
+# Config (may contain user settings) and secrets
 config.yaml
+secrets.yaml
 
 # HomeKit pairing state (runtime artifact)
 .homekit/

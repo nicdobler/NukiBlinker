@@ -9,7 +9,7 @@ cd ~/nukiblinker
 bash deploy/install.sh
 ```
 
-Then edit `~/nukiblinker/config.yaml` with your actual values and restart:
+Then edit `~/nukiblinker/config.yaml` (bridge IPs, settings) and `~/nukiblinker/secrets.yaml` (Nuki/Hue tokens — kept separate so UI saves can't wipe them, #123) with your actual values and restart:
 
 ```sh
 docker compose restart

@@ -157,9 +157,23 @@ Bundled chime sounds are stored in `nukiblinker/sounds/`. Future: user-uploadabl
 
 ## Configuration
 
-Settings are managed via a **web configuration page** served by NukiBlinker itself. The config is persisted to `config.yaml` on disk.
+Settings are managed via a **web configuration page** served by NukiBlinker itself. Non-secret settings are persisted to `config.yaml` and **secrets are persisted to a separate `secrets.yaml`** (see *Secret storage* below).
 
-An example template `config.example.yaml` is provided for initial bootstrap (before the web UI is available).
+Example templates `config.example.yaml` and `secrets.example.yaml` are provided for initial bootstrap (before the web UI is available).
+
+### Secret storage (`secrets.yaml`)
+
+Secrets (`nuki.api_token`, `nuki.web_api_token`, `hue.api_key`) are stored in a dedicated `secrets.yaml` next to `config.yaml`, never inline in `config.yaml`. This makes config rewrites safe by construction (#123): rewriting `config.yaml` from the UI can no longer wipe a stored secret.
+
+- **Load**: `config.yaml` is read first, then `secrets.yaml` is overlaid on top (secrets win).
+- **Save**: secret fields are split out of the dump — non-secrets go to `config.yaml` (with secret fields removed), secrets go to `secrets.yaml`.
+- **Secret preservation**: on save, an empty or masked (`***`) secret never overwrites a stored value — the existing `secrets.yaml` value is preserved. A secret is only updated when a new non-empty value is provided.
+- **Backward-compatible migration**: an old `config.yaml` that still carries inline secrets loads without error; on the next save the secrets are moved to `secrets.yaml` and stripped from `config.yaml`.
+- `secrets.yaml` is git-ignored and mounted as its own Docker volume.
+
+### Config hygiene (obsolete fields)
+
+On save, fields that no longer apply are dropped from `config.yaml` (#123): `ring.audio.message` / `ring.audio.fallback_name` and `door_opened.audio.message` / `door_opened.audio.fallback_name` — there is never a known visitor name for a bare ring, and `door_opened` only plays a chime. Old configs with these fields load without error and are cleaned on the next save.
 
 ### Web Configuration UI
 

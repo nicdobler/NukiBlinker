@@ -2,6 +2,32 @@
 
 ---
 
+## #123 Config hygiene + secret persistence — separate `secrets.yaml`
+
+**Branch**: `fix/123-secrets-separate-file` | **PR**: _pending_
+
+Context: #123 (split from #116 token loss + #118 config hygiene). Decision this
+session: store secrets in a **separate `secrets.yaml`** (user chose "separar
+secrets ahora"). Wrap-up mode: **Auto**. Secret transport: **file only** (no env
+var override).
+
+Design: secrets (`nuki.api_token`, `nuki.web_api_token`, `hue.api_key`) live in
+`secrets.yaml` next to `config.yaml`, never inline. `load_config` overlays
+secrets onto config; `save_config` splits secrets out, strips obsolete fields,
+writes both files with read-back verification. Secret preservation: empty/`***`
+never overwrites a stored secret. Old inline-secret configs migrate on next save.
+`AppConfig` keeps secret fields in memory → rest of app unchanged.
+
+- [x] Specs updated (product-spec Secret storage + hygiene; tech-spec config.py + volumes)
+- [x] config.py: SECRET_FIELDS, load overlay, save split + preserve + normalize
+- [x] web_ui.py: verified — GET mask / PUT preserve still consistent (defense in depth, no change)
+- [x] .gitignore (secrets.yaml), docker-compose volume, config.example cleanup, secrets.example.yaml, install.sh bootstrap
+- [x] Tests: migration, save preserves secrets, secrets absent from config.yaml, obsolete fields stripped
+- [x] README + CHANGELOG + deploy/README
+- [ ] CI green → auto wrap-up
+
+---
+
 ## #97 (follow-up) Surface the real trigger code for physical-button opens
 
 **Branch**: `fix/97-trigger-observability` | **PR**: _pending_

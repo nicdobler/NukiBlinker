@@ -11,7 +11,8 @@ All project documentation lives in this repository (versioned alongside the code
 | [`specs/product-spec.md`](specs/product-spec.md) | What & why — vision, event types, channels, acceptance criteria, non-goals |
 | [`specs/tech-spec.md`](specs/tech-spec.md) | How — architecture diagrams, component/class design, data model, APIs, CI |
 | [`CHANGELOG.md`](CHANGELOG.md) | Release history (Keep a Changelog + SemVer) |
-| [`config.example.yaml`](config.example.yaml) | Annotated configuration template |
+| [`config.example.yaml`](config.example.yaml) | Annotated configuration template (non-secrets) |
+| [`secrets.example.yaml`](secrets.example.yaml) | Secrets template (`secrets.yaml`) |
 | [`deploy/README.md`](deploy/README.md) | Bare-metal / systemd deployment notes |
 
 ## Features
@@ -46,10 +47,13 @@ All project documentation lives in this repository (versioned alongside the code
 
 ```sh
 cp config.example.yaml config.yaml
+cp secrets.example.yaml secrets.yaml
 docker compose up -d
 ```
 
 Open `http://localhost:8080/` on the Mini PC to configure via the web UI.
+
+> Secrets (Nuki/Hue tokens) live in `secrets.yaml`, **not** `config.yaml` (#123), so saving config from the UI can never wipe them. You can leave `secrets.yaml` empty and fill the tokens in via the web UI.
 
 ## Initial Setup Guide
 
@@ -150,10 +154,14 @@ Reduces notifications during specified hours:
 
 ## Configuration
 
-See `config.example.yaml` for all options. Key sections:
+See `config.example.yaml` (non-secrets) and `secrets.example.yaml` (secrets) for all options.
 
-- **nuki** — Bridge IP, port, API token, optional opener/lock ID filters, optional Web API token (cloud name/trigger resolution)
-- **hue** — Bridge IP, API key, light/group IDs
+**Secrets** (`nuki.api_token`, `nuki.web_api_token`, `hue.api_key`) are stored in `secrets.yaml`, never inline in `config.yaml` (#123). The web UI writes them there; an old `config.yaml` with inline secrets is migrated automatically on the next save.
+
+Key `config.yaml` sections:
+
+- **nuki** — Bridge IP, port, optional opener/lock ID filters
+- **hue** — Bridge IP, light/group IDs
 - **speakers** — Chromecast speaker names, volume
 - **homekit** — Enable/disable, setup code
 - **events** — Per-event rules (ring, ring_to_open, door_opened)
@@ -210,7 +218,9 @@ deduplication:
 ```
 
 #### Nuki Web API (optional name/trigger resolution)
+Stored in `secrets.yaml` (it is a secret), not `config.yaml`:
 ```yaml
+# secrets.yaml
 nuki:
   web_api_token: ""       # cloud token; resolves real names + how the door was opened
 ```
@@ -254,15 +264,16 @@ nuki:
 
 ```sh
 mkdir -p nukiblinker && cd nukiblinker
-# Copy docker-compose.yml and config.example.yaml from the repo
+# Copy docker-compose.yml, config.example.yaml and secrets.example.yaml from the repo
 cp config.example.yaml config.yaml
+cp secrets.example.yaml secrets.yaml
 ```
 
 The `docker-compose.yml` mounts `./logs:/app/logs` so the event-log SQLite
 database (`logs/event_log.db`) survives `docker compose build` rebuilds. Without
 this volume the event history is wiped on every redeploy.
 
-Edit `config.yaml` with your Nuki Bridge IP/token and Hue Bridge IP/key (or configure later via the web UI).
+Edit `config.yaml` with your Nuki/Hue Bridge IPs and `secrets.yaml` with your tokens/keys (or configure everything later via the web UI).
 
 ### Start / update
 
@@ -334,7 +345,7 @@ server:
 1. Open the **Nuki app** on your phone.
 2. Go to **Settings → Manage my devices → Nuki Bridge**.
 3. Enable **HTTP API** if not already enabled.
-4. The app shows the **API token** — copy it into `config.yaml` under `nuki.api_token`.
+4. The app shows the **API token** — copy it into `secrets.yaml` under `nuki.api_token` (or paste it in the web UI's Nuki tab).
 5. The bridge IP is shown in the same screen, or use the web UI's Nuki tab → **Discover** to find it automatically.
 
 Alternatively, you can discover the bridge and use its token directly from the web UI (Nuki tab → Discover → fill IP and token → Save).
@@ -356,7 +367,7 @@ curl -X POST http://<bridge-ip>/api -d '{"devicetype":"nukiblinker"}'
 # Response: [{"success":{"username":"<your-api-key>"}}]
 ```
 
-Copy the `username` value into `config.yaml` under `hue.api_key`.
+Copy the `username` value into `secrets.yaml` under `hue.api_key` (or pair from the web UI's Hue tab).
 
 ### Speakers not found (discovery returns empty)
 

@@ -261,7 +261,7 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 
 - **Target**: Mini PC running Windows with WSL2/Docker.
 - **Network**: Host networking (`network_mode: host`). Container shares the host's network stack directly. Required for mDNS/multicast (speaker discovery, HomeKit advertising). On WSL2, mirrored networking mode is recommended for full LAN multicast support.
-- **Persistence**: `config.yaml` is read-write (web UI saves to it). Mounted as a volume. Save operations include read-back verification to detect silent write failures.
+- **Persistence**: `config.yaml` (non-secrets) and `secrets.yaml` (secrets) are read-write (web UI saves to them). Both are mounted as volumes. Save operations include read-back verification to detect silent write failures.
 - **Startup diagnostics**: Logs a config summary at startup showing which integrations are configured (e.g., `nuki=192.168.1.100, hue=<not configured>`).
 
 ### Development Environments
@@ -332,6 +332,16 @@ sequenceDiagram
 ### Config (`config.py`)
 
 Pydantic models validate the YAML config. Supports both load and save (web UI writes back).
+
+**Secret separation (#123).** Secrets live in a dedicated `secrets.yaml` next to `config.yaml`, never inline in `config.yaml`:
+
+- `SECRET_FIELDS = (("nuki", "api_token"), ("nuki", "web_api_token"), ("hue", "api_key"))`.
+- `load_config(path, secrets_path=None)` — reads `config.yaml`, deep-overlays `secrets.yaml` (secrets win), then validates. `secrets_path` defaults to `path.parent / "secrets.yaml"`. An old `config.yaml` with inline secrets still loads (migrated on next save).
+- `save_config(config, path, secrets_path=None)` — dumps the model, **strips obsolete fields**, splits secrets out of the main dump, writes non-secrets to `config.yaml` and secrets to `secrets.yaml`. Both writes are read-back verified.
+- **Secret preservation**: on save, a secret value that is empty `""` or the mask sentinel `***` does not overwrite the existing `secrets.yaml` value — it is preserved. Only a new non-empty value updates a secret. This makes secret loss impossible by construction, independent of the web UI.
+- **Obsolete-field normalization**: `message` / `fallback_name` are stripped from `events.ring.audio` and `events.door_opened.audio` in the persisted `config.yaml` (the shared `AudioConfig` model keeps the fields for `ring_to_open`).
+
+`AppConfig` keeps the secret fields in memory (so `config.nuki.api_token` etc. are unchanged for the rest of the app); only persistence is split across the two files. The web UI still masks secrets on `GET /api/config` and the entry point / web UI pass only the `config.yaml` path — the secrets path is derived automatically.
 
 ```python
 class NukiConfig(BaseModel):
@@ -814,7 +824,8 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      - ./config.yaml:/app/config.yaml       # read-write for web UI
+      - ./config.yaml:/app/config.yaml       # read-write for web UI (non-secrets)
+      - ./secrets.yaml:/app/secrets.yaml     # read-write for web UI (secrets, #123)
       - ./homekit:/app/.homekit               # HomeKit pairing state
       - ./logs:/app/logs                       # SQLite event log DB (persists across image rebuilds)
 ```

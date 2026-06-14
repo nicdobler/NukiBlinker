@@ -34,7 +34,8 @@ else
     cd "$INSTALL_DIR"
 fi
 
-# 3. Config file
+# 3. Config files (non-secrets + secrets). Both are bind-mounted by
+#    docker-compose, so the host files must exist before `up`.
 if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
     cp "$INSTALL_DIR/config.example.yaml" "$INSTALL_DIR/config.yaml"
     echo ""
@@ -42,8 +43,20 @@ if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
     echo "   nano $INSTALL_DIR/config.yaml"
     echo ""
     echo "   At minimum, set:"
-    echo "     nuki.bridge_ip, nuki.api_token"
-    echo "     hue.bridge_ip, hue.api_key, hue.lights"
+    echo "     nuki.bridge_ip"
+    echo "     hue.bridge_ip, hue.lights"
+    echo ""
+fi
+
+if [ ! -f "$INSTALL_DIR/secrets.yaml" ]; then
+    cp "$INSTALL_DIR/secrets.example.yaml" "$INSTALL_DIR/secrets.yaml"
+    echo ""
+    echo ">> secrets.yaml created from example. Put your secrets here (or via the web UI):"
+    echo "   nano $INSTALL_DIR/secrets.yaml"
+    echo ""
+    echo "   At minimum, set:"
+    echo "     nuki.api_token"
+    echo "     hue.api_key"
     echo ""
 fi
 
