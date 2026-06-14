@@ -109,6 +109,27 @@ class TestLoadConfig:
         assert cfg.nuki.lock_id == 99999
         assert cfg.nuki.opener_id is None
 
+    def test_secrets_path_as_directory_does_not_crash(self, tmp_path):
+        """#129: Docker auto-creates secrets.yaml as a directory when the host
+        file is missing at `up`. load_config must not raise IsADirectoryError —
+        it loads the main config and skips the unusable secrets dir."""
+        data = {"nuki": {"bridge_ip": "10.0.0.1", "lock_id": 42}}
+        f = tmp_path / "config.yaml"
+        f.write_text(yaml.dump(data), encoding="utf-8")
+        # The paired secrets.yaml exists but is a DIRECTORY.
+        (tmp_path / "secrets.yaml").mkdir()
+
+        cfg = load_config(f)  # must not raise
+        assert cfg.nuki.bridge_ip == "10.0.0.1"
+        assert cfg.nuki.lock_id == 42
+
+    def test_config_path_as_directory_returns_defaults(self, tmp_path):
+        """#129: a directory at the config path is treated as missing → defaults."""
+        d = tmp_path / "config.yaml"
+        d.mkdir()
+        cfg = load_config(d)  # must not raise
+        assert cfg == AppConfig()
+
 
 class TestSaveConfig:
     """Persisting config to YAML."""

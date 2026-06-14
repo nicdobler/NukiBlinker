@@ -35,7 +35,17 @@ else
 fi
 
 # 3. Config files (non-secrets + secrets). Both are bind-mounted by
-#    docker-compose, so the host files must exist before `up`.
+#    docker-compose, so the host files must exist before `up`. If a previous
+#    `up` ran before they existed, Docker created empty *directories* in their
+#    place (#129) — repair those so the mounts are recreated as files.
+for f in config.yaml secrets.yaml; do
+    if [ -d "$INSTALL_DIR/$f" ]; then
+        echo ">> $f is a directory (Docker bind-mount artifact, #129) — repairing."
+        (cd "$INSTALL_DIR" && docker compose down 2>/dev/null || true)
+        rmdir "$INSTALL_DIR/$f" 2>/dev/null || rm -rf "$INSTALL_DIR/$f"
+    fi
+done
+
 if [ ! -f "$INSTALL_DIR/config.yaml" ]; then
     cp "$INSTALL_DIR/config.example.yaml" "$INSTALL_DIR/config.yaml"
     echo ""
