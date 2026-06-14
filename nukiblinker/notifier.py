@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 logger = get_logger("notifier")
 
+# Blink mode → Hue built-in alert kind. ``none`` is filtered out before dispatch.
+# To add a future hardcoded blink pattern, add a new mode here and handle it in
+# ``_trigger_hue`` / ``_trigger_hue_with_result`` (e.g. a dedicated HueClient call).
+_BLINK_ALERT = {"short": "select", "long": "lselect"}
+
 
 def _build_audio_url(config: AppConfig, filename: str) -> str:
     """Build an HTTP URL for an audio file served by this instance."""
@@ -126,11 +131,10 @@ async def notify_with_actions(
 
 
 async def _trigger_hue(hue_client, hue_config, blink_config) -> None:
-    """Trigger Hue lights blink."""
-    if blink_config.mode == "alert":
-        await hue_client.trigger_alert(hue_config.lights, hue_config.groups)
-    elif blink_config.mode == "custom":
-        await hue_client.trigger_custom_blink(hue_config.lights, hue_config.groups, blink_config.custom)
+    """Trigger Hue lights blink using the built-in alert for the mode."""
+    alert = _BLINK_ALERT.get(blink_config.mode)
+    if alert is not None:
+        await hue_client.trigger_alert(hue_config.lights, hue_config.groups, alert)
 
 
 async def _trigger_chromecast(cc_client, speakers_config, audio_url) -> None:
@@ -145,16 +149,12 @@ async def _trigger_homekit(hk_service) -> None:
 
 async def _trigger_hue_with_result(hue_client, hue_config, blink_config, actions: list[str]) -> None:
     """Trigger Hue lights blink and add action result."""
+    alert = _BLINK_ALERT.get(blink_config.mode)
+    if alert is None:
+        return
     try:
-        if blink_config.mode == "alert":
-            await hue_client.trigger_alert(hue_config.lights, hue_config.groups)
-            actions.append("Hue lights blinked (alert)")
-        elif blink_config.mode == "custom":
-            await hue_client.trigger_custom_blink(hue_config.lights, hue_config.groups, blink_config.custom)
-            actions.append(
-                f"Hue lights blinked (custom: H={blink_config.custom.hue}, "
-                f"S={blink_config.custom.saturation}, B={blink_config.custom.brightness})"
-            )
+        await hue_client.trigger_alert(hue_config.lights, hue_config.groups, alert)
+        actions.append(f"Hue lights blinked ({blink_config.mode})")
     except Exception as e:
         actions.append(f"Hue lights failed: {str(e)}")
         raise

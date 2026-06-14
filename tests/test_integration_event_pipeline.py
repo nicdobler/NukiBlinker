@@ -180,8 +180,8 @@ class TestEventPipelineIntegration:
             "timestamp": event_time.timestamp()
         }
 
-        # Night mode only adjusts brightness for custom blink mode
-        mock_config.events.ring_to_open.blink.mode = "custom"
+        # Built-in blink still fires during night mode; only audio is disabled.
+        mock_config.events.ring_to_open.blink.mode = "long"
 
         # Mock nighttime (night mode active)
         with pytest.MonkeyPatch().context() as m:
@@ -201,13 +201,8 @@ class TestEventPipelineIntegration:
         assert logged_event.event_type == "ring_to_open"
         assert logged_event.validation_result.valid is True
 
-        # Verify notifications were affected by night mode
-        # Hue should be called but with reduced brightness
-        mock_clients.hue.trigger_custom_blink.assert_called_once()
-
-        # Check that the blink parameters were modified by night mode
-        call_args = mock_clients.hue.trigger_custom_blink.call_args
-        assert call_args is not None
+        # Verify the built-in Hue alert still fired during night mode
+        mock_clients.hue.trigger_alert.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_event_log_persistence_and_cleanup(self, mock_config, mock_clients):
@@ -301,19 +296,10 @@ class TestEventPipelineIntegration:
     @pytest.mark.asyncio
     async def test_notifier_with_actions_integration(self, mock_config, mock_clients):
         """Test notifier integration with action tracking."""
-        from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig, CustomBlinkConfig
+        from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig
 
         rule = EventRuleConfig(
-            blink=BlinkConfig(
-                mode="custom",
-                custom=CustomBlinkConfig(
-                    hue=25500,
-                    saturation=254,
-                    brightness=254,
-                    flashes=3,
-                    interval_ms=500
-                )
-            ),
+            blink=BlinkConfig(mode="long"),
             audio=AudioConfig(enabled=True, mode="tts"),
             homekit=True
         )
@@ -322,7 +308,7 @@ class TestEventPipelineIntegration:
         mock_config.homekit.enabled = True
 
         # Mock successful responses
-        mock_clients.hue.trigger_custom_blink.return_value = None
+        mock_clients.hue.trigger_alert.return_value = None
         mock_clients.homekit.trigger_ring.return_value = None
 
         actions = await notifier.notify_with_actions(rule, mock_config, mock_clients, {"name": "Test"})
@@ -333,7 +319,7 @@ class TestEventPipelineIntegration:
         assert any("HomeKit" in action for action in actions)
 
         # Verify clients were called
-        mock_clients.hue.trigger_custom_blink.assert_called_once()
+        mock_clients.hue.trigger_alert.assert_called_once()
         mock_clients.homekit.trigger_ring.assert_called_once()
 
     @pytest.mark.asyncio

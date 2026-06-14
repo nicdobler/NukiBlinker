@@ -134,8 +134,9 @@ classDiagram
     }
     class HueClient {
         +check_connection()
-        +trigger_alert(lights, groups)
-        +trigger_custom_blink(lights, groups, cfg)
+        +trigger_alert(lights, groups, alert)
+        +get_light_state(light_id)
+        +set_light_state(light_id, state)
         +list_lights()
         +list_groups()
         +pair()
@@ -346,16 +347,9 @@ class HueConfig(BaseModel):
     lights: list[int] = []
     groups: list[int] = []
 
-class CustomBlinkConfig(BaseModel):
-    hue: int = 0                  # 0-65535
-    saturation: int = 254         # 0-254
-    brightness: int = 254         # 1-254
-    flashes: int = 3
-    interval_ms: int = 500
-
 class BlinkConfig(BaseModel):
-    mode: str = "alert"           # "alert", "custom", or "none"
-    custom: CustomBlinkConfig = CustomBlinkConfig()
+    mode: str = "long"            # "none", "short" (select), or "long" (lselect)
+    # Legacy values are migrated by a field validator: alert->long, custom->long.
 
 class SpeakersConfig(BaseModel):
     chromecast: list[str] = []    # Google Nest / Chromecast speaker names
@@ -375,12 +369,12 @@ class EventRuleConfig(BaseModel):
 
 class EventRulesConfig(BaseModel):
     ring: EventRuleConfig = EventRuleConfig(
-        blink=BlinkConfig(mode="alert"),
+        blink=BlinkConfig(mode="long"),
         audio=AudioConfig(enabled=False),
         homekit=True,
     )
     ring_to_open: EventRuleConfig = EventRuleConfig(
-        blink=BlinkConfig(mode="custom"),
+        blink=BlinkConfig(mode="short"),
         audio=AudioConfig(enabled=True, mode="tts", message="Nico ha llegado a casa"),
         homekit=True,
     )
@@ -472,10 +466,8 @@ Manages the Nuki Bridge HTTP API:
 Manages the Philips Hue Bridge v1 REST API:
 
 - **`check_connection()`** — Validates API key by reading bridge config (`GET /api/{key}/config`). Returns `{connected, name, error}`.
-- **`trigger_alert(light_ids, group_ids)`** — Sends `{"alert": "lselect"}`.
-- **`get_light_state(light_id)`** — Reads current state.
-- **`set_light_state(light_id, state)`** — Sets light to a specific state.
-- **`trigger_custom_blink(light_ids, config)`** — Save → flash loop → restore.
+- **`trigger_alert(light_ids, group_ids, alert="lselect")`** — Sends `{"alert": alert}` to each light/group. `alert` is `"select"` (single cycle, blink mode `short`) or `"lselect"` (~15 s, blink mode `long`). The Hue bridge restores each light's previous state automatically.
+- **`get_light_state(light_id)`** / **`set_light_state(light_id, state)`** — Low-level state primitives, retained for a possible future hardcoded blink pattern (currently unused by the dispatch path).
 - **`list_lights()`** — Returns all lights (for web UI picker).
 - **`list_groups()`** — Returns all groups (for web UI picker).
 - **`pair()`** — Creates API key via `POST /api {"devicetype":"nukiblinker"}`.
@@ -940,12 +932,8 @@ class NightMode:
         night_rule = rule.copy(deep=True)
         night_rule.audio.enabled = False  # Disable audio
         
-        # Reduce light brightness for custom blink
-        if night_rule.blink.mode == "custom":
-            night_rule.blink.custom.brightness = int(
-                night_rule.blink.custom.brightness * self.brightness_factor
-            )
-        
+        # Built-in select/lselect blink brightness is controlled by the Hue
+        # bridge and cannot be dimmed, so night mode only disables audio.
         return night_rule
 ```
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import httpx
@@ -69,9 +68,16 @@ class HueClient:
     # Alert mode
     # ------------------------------------------------------------------
 
-    async def trigger_alert(self, light_ids: list[int], group_ids: list[int]) -> None:
-        """Send Hue built-in lselect alert to lights and groups."""
-        body = {"alert": "lselect"}
+    async def trigger_alert(
+        self, light_ids: list[int], group_ids: list[int], alert: str = "lselect",
+    ) -> None:
+        """Send a Hue built-in alert to lights and groups.
+
+        ``alert`` is ``"select"`` (single breathe cycle, blink mode ``short``)
+        or ``"lselect"`` (~15-second breathe cycle, blink mode ``long``). The
+        Hue bridge restores each light's previous state when the effect ends.
+        """
+        body = {"alert": alert}
         async with httpx.AsyncClient(timeout=10) as c:
             for lid in light_ids:
                 r = await c.put(self._url(f"/lights/{lid}/state"), json=body)
@@ -83,7 +89,11 @@ class HueClient:
                 logger.debug("Alert sent to group %s", gid)
 
     # ------------------------------------------------------------------
-    # Custom blink
+    # Low-level state primitives
+    #
+    # Retained for a possible future hardcoded blink pattern (no config). They
+    # are not used by the current dispatch path, which relies on the built-in
+    # ``select``/``lselect`` alerts whose state restore is handled by the bridge.
     # ------------------------------------------------------------------
 
     async def get_light_state(self, light_id: int) -> dict[str, Any]:
@@ -98,82 +108,6 @@ class HueClient:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.put(self._url(f"/lights/{light_id}/state"), json=state)
             r.raise_for_status()
-
-    async def trigger_custom_blink(
-        self, light_ids: list[int], group_ids: list[int], blink_config,
-    ) -> None:
-        """Custom blink: save state → flash loop → restore."""
-        saved_states: dict[int, dict] = {}
-
-        # Save current states (lights only; groups don't have individual state to save)
-        for lid in light_ids:
-            try:
-                saved_states[lid] = await self.get_light_state(lid)
-            except Exception:
-                logger.warning("Could not save state for light %s", lid, exc_info=True)
-
-        flash_state = {
-            "on": True,
-            "hue": blink_config.hue,
-            "sat": blink_config.saturation,
-            "bri": blink_config.brightness,
-            "transitiontime": 0,
-        }
-        off_state = {"on": False, "transitiontime": 0}
-        interval_s = blink_config.interval_ms / 1000.0
-
-        # Flash loop — lights
-        for _ in range(blink_config.flashes):
-            for lid in light_ids:
-                try:
-                    await self.set_light_state(lid, flash_state)
-                except Exception:
-                    logger.warning("Flash on failed for light %s", lid, exc_info=True)
-            await asyncio.sleep(interval_s)
-            for lid in light_ids:
-                try:
-                    await self.set_light_state(lid, off_state)
-                except Exception:
-                    logger.warning("Flash off failed for light %s", lid, exc_info=True)
-            await asyncio.sleep(interval_s)
-
-        # Flash loop — groups (using group action endpoint)
-        for _ in range(blink_config.flashes):
-            for gid in group_ids:
-                try:
-                    await self._set_group_action(gid, flash_state)
-                except Exception:
-                    logger.warning("Flash on failed for group %s", gid, exc_info=True)
-            await asyncio.sleep(interval_s)
-            for gid in group_ids:
-                try:
-                    await self._set_group_action(gid, off_state)
-                except Exception:
-                    logger.warning("Flash off failed for group %s", gid, exc_info=True)
-            await asyncio.sleep(interval_s)
-
-        # Restore (lights only). Honor the light's original color mode so a
-        # light that was in colour-temperature (ct) or xy mode is not forced
-        # into hue/sat mode on restore.
-        for lid, orig in saved_states.items():
-            restore = {
-                "on": orig.get("on", False),
-                "bri": orig.get("bri", 254),
-                "transitiontime": 4,
-            }
-            colormode = orig.get("colormode")
-            if colormode == "ct" and "ct" in orig:
-                restore["ct"] = orig["ct"]
-            elif colormode == "xy" and "xy" in orig:
-                restore["xy"] = orig["xy"]
-            else:
-                restore["hue"] = orig.get("hue", 0)
-                restore["sat"] = orig.get("sat", 0)
-            try:
-                await self.set_light_state(lid, restore)
-                logger.debug("Restored light %s", lid)
-            except Exception:
-                logger.warning("Could not restore light %s", lid, exc_info=True)
 
     async def _set_group_action(self, group_id: int, action: dict) -> None:
         """Set a group action (same state format as lights, but different endpoint)."""

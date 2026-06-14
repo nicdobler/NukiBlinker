@@ -20,7 +20,7 @@ class TestNotify:
     @pytest.mark.asyncio
     async def test_fires_hue_alert(self):
         rule = EventRuleConfig(
-            blink=BlinkConfig(mode="alert"),
+            blink=BlinkConfig(mode="long"),
             audio=AudioConfig(enabled=False),
             homekit=False,
         )
@@ -83,7 +83,7 @@ class TestNotify:
     async def test_failure_isolation(self):
         """One channel failing should not block others."""
         rule = EventRuleConfig(
-            blink=BlinkConfig(mode="alert"),
+            blink=BlinkConfig(mode="long"),
             audio=AudioConfig(enabled=False),
             homekit=True,
         )

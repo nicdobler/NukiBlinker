@@ -4,7 +4,7 @@ import pytest
 from datetime import time
 
 from nukiblinker.night_mode import NightMode
-from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig, CustomBlinkConfig
+from nukiblinker.config import EventRuleConfig, BlinkConfig, AudioConfig
 
 
 def _fake_datetime(year=None, month=None, day=None, hour=0, minute=0):
@@ -143,7 +143,7 @@ class TestNightMode:
         night_mode = NightMode(start_time="invalid", end_time="07:00")
 
         rule = EventRuleConfig(
-            blink=BlinkConfig(mode="custom"),
+            blink=BlinkConfig(mode="long"),
             audio=AudioConfig(enabled=True),
             homekit=True
         )
@@ -163,7 +163,7 @@ class TestNightMode:
             m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=10, minute=0))
 
             rule = EventRuleConfig(
-                blink=BlinkConfig(mode="custom"),
+                blink=BlinkConfig(mode="long"),
                 audio=AudioConfig(enabled=True),
                 homekit=True
             )
@@ -175,7 +175,7 @@ class TestNightMode:
             assert result.audio.enabled is True
 
     def test_apply_night_mode_during_night_time(self):
-        """Test apply_night_mode during night time."""
+        """Test apply_night_mode during night time disables audio but keeps blink."""
         night_mode = NightMode(start_time="22:00", end_time="07:00", brightness_factor=0.5, grace_minutes=0)
 
         # Mock current time as 23:00 (inside night range)
@@ -183,16 +183,7 @@ class TestNightMode:
             m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=0))
 
             original_rule = EventRuleConfig(
-                blink=BlinkConfig(
-                    mode="custom",
-                    custom=CustomBlinkConfig(
-                        hue=25500,
-                        saturation=254,
-                        brightness=254,  # Full brightness
-                        flashes=3,
-                        interval_ms=500
-                    )
-                ),
+                blink=BlinkConfig(mode="long"),
                 audio=AudioConfig(enabled=True, mode="tts"),
                 homekit=True
             )
@@ -205,19 +196,14 @@ class TestNightMode:
             # Audio should be disabled
             assert result.audio.enabled is False
 
-            # Brightness should be reduced
-            assert result.blink.custom.brightness == int(254 * 0.5)  # 127
+            # Built-in blink mode is unchanged (bridge controls brightness)
+            assert result.blink.mode == "long"
 
             # HomeKit should remain enabled
             assert result.homekit is True
 
-            # Other properties should be unchanged
-            assert result.blink.custom.hue == 25500
-            assert result.blink.custom.saturation == 254
-            assert result.blink.custom.flashes == 3
-
-    def test_apply_night_mode_alert_mode(self):
-        """Test apply_night_mode with alert blink mode."""
+    def test_apply_night_mode_long_mode(self):
+        """Test apply_night_mode with long blink mode leaves blink untouched."""
         night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=0)
 
         # Mock current time as 23:00 (inside night range)
@@ -225,7 +211,7 @@ class TestNightMode:
             m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(hour=23, minute=0))
 
             rule = EventRuleConfig(
-                blink=BlinkConfig(mode="alert"),  # Alert mode
+                blink=BlinkConfig(mode="long"),
                 audio=AudioConfig(enabled=True),
                 homekit=True
             )
@@ -235,8 +221,8 @@ class TestNightMode:
             # Audio should be disabled
             assert result.audio.enabled is False
 
-            # Alert mode should remain unchanged (no brightness to modify)
-            assert result.blink.mode == "alert"
+            # Blink mode should remain unchanged (no brightness to modify)
+            assert result.blink.mode == "long"
 
             # HomeKit should remain enabled
             assert result.homekit is True

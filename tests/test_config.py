@@ -3,7 +3,13 @@
 import pytest
 import yaml
 
-from nukiblinker.config import AppConfig, load_config, save_config, summarize_config
+from nukiblinker.config import (
+    AppConfig,
+    BlinkConfig,
+    load_config,
+    save_config,
+    summarize_config,
+)
 
 
 class TestDefaults:
@@ -18,11 +24,11 @@ class TestDefaults:
 
     def test_event_rules_defaults(self):
         cfg = AppConfig()
-        assert cfg.events.ring.blink.mode == "alert"
+        assert cfg.events.ring.blink.mode == "long"
         assert cfg.events.ring.audio.enabled is False
         assert cfg.events.ring.homekit is True
 
-        assert cfg.events.ring_to_open.blink.mode == "custom"
+        assert cfg.events.ring_to_open.blink.mode == "short"
         assert cfg.events.ring_to_open.audio.enabled is True
         assert cfg.events.ring_to_open.audio.mode == "tts"
 
@@ -151,6 +157,43 @@ class TestSummarizeConfig:
         # No api_token — still not configured
         summary = summarize_config(cfg)
         assert "nuki=<not configured>" in summary
+
+
+class TestBlinkModeMigration:
+    """Legacy blink modes are normalised by the field validator."""
+
+    @pytest.mark.parametrize(
+        "raw, expected",
+        [
+            ("none", "none"),
+            ("short", "short"),
+            ("long", "long"),
+            ("alert", "long"),   # legacy built-in alert was lselect
+            ("custom", "long"),  # removed custom pattern → visible blink
+            ("bogus", "long"),   # unknown → safe default
+        ],
+    )
+    def test_mode_migration(self, raw, expected):
+        assert BlinkConfig(mode=raw).mode == expected
+
+    def test_legacy_custom_yaml_loads(self, tmp_path):
+        """A pre-existing config.yaml with custom blink + fields still loads."""
+        data = {
+            "events": {
+                "ring_to_open": {
+                    "blink": {
+                        "mode": "custom",
+                        "custom": {"hue": 25500, "flashes": 3},
+                    }
+                }
+            }
+        }
+        f = tmp_path / "config.yaml"
+        f.write_text(yaml.dump(data), encoding="utf-8")
+        cfg = load_config(f)
+        # Legacy mode migrated; removed custom fields are ignored.
+        assert cfg.events.ring_to_open.blink.mode == "long"
+        assert not hasattr(cfg.events.ring_to_open.blink, "custom")
 
 
 class TestValidation:
