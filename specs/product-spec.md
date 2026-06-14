@@ -207,9 +207,10 @@ A simple, single-page web interface for configuring NukiBlinker.
 5. **Event Rules**
    - One card per event type (Ring, Ring to open, Door opened).
    - Each card configures:
-     - Hue: enable + blink pattern (alert/custom with color, flashes, interval).
-     - Audio: mode (none / chime / TTS) + message text (for TTS mode).
+     - Hue: enable + blink mode (`none` / `short` / `long`).
+     - Audio: **Ring** (unknown visitor) and **Door opened** are **chime-only**; **Ring to open** supports TTS (`{name}` message) or chime (#125).
      - HomeKit: enable/disable.
+   - Also on this tab: **Event Validation** (drop stale callbacks) and **Deduplication** (collapse repeated callbacks from one interaction) as two clearly-separated cards (#125).
    - "Test" button per event rule (fires all enabled channels for that rule).
 
 6. **Status**
@@ -217,6 +218,15 @@ A simple, single-page web interface for configuring NukiBlinker.
    - Last event timestamp and type.
    - Service uptime.
    - Pause / Resume button.
+
+7. **General** (#124)
+   - Application logging: log file path, rotation, number of backups kept.
+   - GitHub integration: repository, Personal Access Token (masked secret), default support-bundle window.
+
+8. **Event Log**
+   - Event logging settings (enable, max entries, retention, persist to file) — relocated here from the Events tab (#125).
+   - Paginated event-log viewer with device filter and CSV export.
+   - **Send support bundle to GitHub** (#117): pick a reference time + window (± minutes); NukiBlinker zips the app-log slice + event-log entries in the window and opens a GitHub issue with the ZIP attached (link committed via the Contents API). Requires a GitHub token (General tab); the config summary in the issue is redacted.
 
 **Auto-discovery**:
 - Nuki Bridge: discovered via Nuki Cloud discovery endpoint (`https://api.nuki.io/discover/bridges`) or local UDP broadcast.
