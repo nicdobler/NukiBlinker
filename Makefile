@@ -28,7 +28,7 @@ clean:
 run-tests: lint test
 
 validate:
-	bash scripts/validate.sh
+	bash script/validate.sh
 
 cleanup:
 	git checkout main
