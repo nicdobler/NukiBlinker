@@ -121,7 +121,7 @@ class TestResolvePerson:
         nuki.get_last_log.return_value = {"name": "Nico", "action": 3}
         payload = {"nukiId": 100}
         result = await resolve_person(payload, nuki)
-        assert result == {"name": "Nico"}
+        assert result == {"name": "Nico", "name_source": "bridge_log"}
         nuki.get_last_log.assert_called_once_with(100)
 
     @pytest.mark.asyncio
@@ -129,7 +129,7 @@ class TestResolvePerson:
         nuki = AsyncMock()
         nuki.get_last_log.return_value = {"name": "", "action": 3}
         result = await resolve_person({"nukiId": 100}, nuki)
-        assert result == {"name": "Alguien"}
+        assert result == {"name": "Alguien", "name_source": "fallback"}
 
     @pytest.mark.asyncio
     async def test_retries_until_log_has_name(self):
@@ -137,7 +137,7 @@ class TestResolvePerson:
         nuki = AsyncMock()
         nuki.get_last_log.side_effect = [None, {"name": "Elena", "action": 6}]
         result = await resolve_person({"nukiId": 100}, nuki)
-        assert result == {"name": "Elena"}
+        assert result == {"name": "Elena", "name_source": "bridge_log"}
         assert nuki.get_last_log.call_count == 2
 
     @pytest.mark.asyncio
@@ -145,25 +145,25 @@ class TestResolvePerson:
         nuki = AsyncMock()
         nuki.get_last_log.side_effect = Exception("network error")
         result = await resolve_person({"nukiId": 100}, nuki)
-        assert result == {"name": "Alguien"}
+        assert result == {"name": "Alguien", "name_source": "fallback"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_none_client(self):
         result = await resolve_person({"nukiId": 100}, None)
-        assert result == {"name": "Alguien"}
+        assert result == {"name": "Alguien", "name_source": "fallback"}
 
     @pytest.mark.asyncio
     async def test_fallback_on_missing_nuki_id(self):
         nuki = AsyncMock()
         result = await resolve_person({}, nuki)
-        assert result == {"name": "Alguien"}
+        assert result == {"name": "Alguien", "name_source": "fallback"}
 
     @pytest.mark.asyncio
     async def test_custom_fallback_name(self):
         nuki = AsyncMock()
         nuki.get_last_log.side_effect = Exception("fail")
         result = await resolve_person({"nukiId": 100}, nuki, fallback_name="Desconocido")
-        assert result == {"name": "Desconocido"}
+        assert result == {"name": "Desconocido", "name_source": "fallback"}
 
     @pytest.mark.asyncio
     async def test_web_api_preferred_returns_name_and_trigger(self):
@@ -174,7 +174,7 @@ class TestResolvePerson:
             {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Nico", "trigger": 2}
+        assert result == {"name": "Nico", "trigger": 2, "name_source": "web_api"}
         web.get_recent_log.assert_awaited_once_with(smartlock_id=100, limit=20)
         nuki.get_last_log.assert_not_called()
 
@@ -191,7 +191,7 @@ class TestResolvePerson:
             {"smartlockId": 100, "name": "Nico", "trigger": None, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Nico"}
+        assert result == {"name": "Nico", "name_source": "web_api"}
         assert "trigger" not in result
         nuki.get_last_log.assert_not_called()
 
@@ -202,7 +202,7 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.return_value = []
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Elena"}
+        assert result == {"name": "Elena", "name_source": "bridge_log"}
         nuki.get_last_log.assert_called_once_with(100)
 
     @pytest.mark.asyncio
@@ -212,7 +212,7 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.side_effect = Exception("cloud down")
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Elena"}
+        assert result == {"name": "Elena", "name_source": "bridge_log"}
 
     @pytest.mark.asyncio
     async def test_web_api_unnamed_entry_surfaces_trigger_with_bridge_name(self):
@@ -222,7 +222,7 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.return_value = [{"smartlockId": 100, "trigger": 2, "source": 1}]
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Elena", "trigger": 2}
+        assert result == {"name": "Elena", "trigger": 2, "name_source": "bridge_log"}
 
     @pytest.mark.asyncio
     async def test_web_api_unnamed_entry_surfaces_trigger_with_fallback(self):
@@ -232,7 +232,26 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.return_value = [{"smartlockId": 100, "trigger": 2}]
         result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
-        assert result == {"name": "Alguien", "trigger": 2}
+        assert result == {"name": "Alguien", "trigger": 2, "name_source": "fallback"}
+
+    @pytest.mark.asyncio
+    async def test_web_api_does_not_use_stale_name_from_older_entry(self):
+        """#155: only the MOST RECENT entry is trusted.
+
+        A fresh anonymous Ring-to-Open (most recent entry has no name) must NOT
+        inherit a stale name from an older named entry. It falls through to the
+        bridge log / fallback, while still surfacing the most-recent trigger.
+        """
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": ""}  # bridge has no name either
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "trigger": 6, "source": 1},          # most recent: anonymous RTO
+            {"smartlockId": 100, "name": "Nico", "trigger": 2},       # older: stale named open
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Alguien", "trigger": 6, "name_source": "fallback"}
+        assert "Nico" not in result.values()
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +278,41 @@ class TestDispatchTriggerObservability:
         )
         assert actions[0] == "Trigger: button (2)"
         assert "Hue lights blinked" in actions
+
+    @pytest.mark.asyncio
+    async def test_anonymous_name_surfaced_in_actions(self, monkeypatch):
+        """#155: a fallback (anonymous) resolution is flagged in the Event Log."""
+        monkeypatch.setattr(
+            "nukiblinker.event_router.resolve_person",
+            AsyncMock(return_value={"name": "Alguien", "name_source": "fallback"}),
+        )
+        monkeypatch.setattr(
+            "nukiblinker.notifier.notify_with_actions",
+            AsyncMock(return_value=["Hue lights blinked"]),
+        )
+        cfg = AppConfig()
+        actions = await dispatch_with_actions(
+            "ring_to_open", {"nukiId": 100}, cfg, object(), cfg.events.ring_to_open,
+        )
+        assert "Name: anonymous (no identity resolved)" in actions
+        assert "Hue lights blinked" in actions
+
+    @pytest.mark.asyncio
+    async def test_resolved_name_not_flagged_anonymous(self, monkeypatch):
+        """#155: a real resolved name must NOT be flagged as anonymous."""
+        monkeypatch.setattr(
+            "nukiblinker.event_router.resolve_person",
+            AsyncMock(return_value={"name": "Nico", "name_source": "web_api"}),
+        )
+        monkeypatch.setattr(
+            "nukiblinker.notifier.notify_with_actions",
+            AsyncMock(return_value=["Hue lights blinked"]),
+        )
+        cfg = AppConfig()
+        actions = await dispatch_with_actions(
+            "ring_to_open", {"nukiId": 100}, cfg, object(), cfg.events.ring_to_open,
+        )
+        assert not any("anonymous" in a for a in actions)
 
     @pytest.mark.asyncio
     async def test_no_trigger_means_no_trigger_action(self, monkeypatch):

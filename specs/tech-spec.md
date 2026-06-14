@@ -1084,8 +1084,10 @@ class NukiWebClient:
 ```
 
 - Uses `httpx` (no new dependency).
-- `resolve_person()` returns `{"name": ..., "trigger": ...}`; the bridge `/log` remains the fallback when the Web API is not configured or returns nothing.
+- `resolve_person()` returns `{"name": ..., "name_source": ..., "trigger": ...}`; the bridge `/log` remains the fallback when the Web API is not configured or returns nothing.
 - The bridge cannot identify an anonymous visitor; the Web API is the only source for `name`/`trigger`/`source`.
+- **Most-recent-only correlation (#155)**: only the **most recent** Web API entry (`entries[0]`) is considered for the event's name/trigger. Older named entries are *not* scanned — doing so could attribute a stale identity (e.g. yesterday's manual open) to a fresh anonymous Ring-to-Open. If the most recent entry has no `name`, its `trigger` is still surfaced and resolution falls through to the bridge `/log`, then to the configured `fallback_name`.
+- **`name_source` provenance**: every resolution result carries `name_source` ∈ {`web_api`, `bridge_log`, `fallback`}. A Ring-to-Open is anonymous by design (no associated identity), so `name_source == "fallback"` is the expected outcome — not a failure. `dispatch_with_actions()` surfaces this in the Event Log as the action `"Name: anonymous (no identity resolved)"` so an anonymous open is not mistaken for a bug.
 
 ### Event Log CSV export (#96)
 
