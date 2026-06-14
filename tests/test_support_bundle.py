@@ -1,10 +1,12 @@
 """Tests for nukiblinker.support_bundle and the /api/support/github-issue endpoint (#117)."""
 
 import io
+import json
 import zipfile
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -104,10 +106,16 @@ class _FakeGitHub:
     def __init__(self, *args, **kwargs):
         self.committed = None
         self.issue = None
+        self.ensured_branch = None
+        self.commit_branch = None
 
-    async def commit_file(self, path, content, message):
+    async def ensure_branch(self, branch):
+        self.ensured_branch = branch
+
+    async def commit_file(self, path, content, message, branch=None):
         self.committed = (path, content, message)
-        return {"content": {"html_url": f"https://github.com/x/y/blob/main/{path}"}}
+        self.commit_branch = branch
+        return {"content": {"html_url": f"https://github.com/x/y/blob/{branch or 'main'}/{path}"}}
 
     async def create_issue(self, title, body):
         self.issue = (title, body)
@@ -146,7 +154,9 @@ async def test_build_and_send(tmp_path):
     assert result["events"] == 1  # only the in-window event
     assert result["issue_url"].endswith("/issues/1")
 
-    # A ZIP was committed under support-bundles/.
+    # A ZIP was committed under support-bundles/ on the dedicated branch (#149).
+    assert fake.ensured_branch == "support-bundles"
+    assert fake.commit_branch == "support-bundles"
     path, content, _ = fake.committed
     assert path.startswith("support-bundles/") and path.endswith(".zip")
     zf = zipfile.ZipFile(io.BytesIO(content))
@@ -163,6 +173,9 @@ async def test_build_and_send_github_auth_error(tmp_path):
 
     class _AuthFail:
         def __init__(self, *a, **k):
+            pass
+
+        async def ensure_branch(self, *a, **k):
             pass
 
         async def commit_file(self, *a, **k):
@@ -226,6 +239,9 @@ async def test_build_and_send_github_404_includes_detail(tmp_path):
         def __init__(self, *a, **k):
             pass
 
+        async def ensure_branch(self, *a, **k):
+            pass
+
         async def commit_file(self, *a, **k):
             req = httpx.Request("PUT", "https://api.github.com/repos/x/y/contents/z")
             resp = httpx.Response(404, json={"message": "Not Found"}, request=req)
@@ -256,6 +272,9 @@ async def test_build_and_send_github_generic_error_includes_detail(tmp_path):
         def __init__(self, *a, **k):
             pass
 
+        async def ensure_branch(self, *a, **k):
+            pass
+
         async def commit_file(self, *a, **k):
             req = httpx.Request("PUT", "https://api.github.com/repos/x/y/contents/z")
             resp = httpx.Response(422, json={"message": "Validation Failed"}, request=req)
@@ -274,6 +293,97 @@ async def test_build_and_send_github_generic_error_includes_detail(tmp_path):
             github_client=_ServerError(),
         )
     assert "Validation Failed" in str(exc.value)
+
+
+class TestGitHubClientBranch:
+    """The bundle is committed to a dedicated branch to dodge default-branch rulesets (#149)."""
+
+    @pytest.mark.asyncio
+    async def test_ensure_branch_creates_when_missing(self):
+        calls = []
+        created_body = {}
+
+        def handler(request):
+            calls.append((request.method, request.url.path))
+            p = request.url.path
+            if request.method == "GET" and p == "/repos/x/y/branches/support-bundles":
+                return httpx.Response(404, json={"message": "Branch not found"})
+            if request.method == "GET" and p == "/repos/x/y":
+                return httpx.Response(200, json={"default_branch": "main"})
+            if request.method == "GET" and p == "/repos/x/y/git/ref/heads/main":
+                return httpx.Response(200, json={"object": {"sha": "abc123"}})
+            if request.method == "POST" and p == "/repos/x/y/git/refs":
+                created_body.update(json.loads(request.content))
+                return httpx.Response(201, json={"ref": "refs/heads/support-bundles"})
+            return httpx.Response(500)  # pragma: no cover
+
+        client = sb.GitHubClient("tok", "x/y", transport=httpx.MockTransport(handler))
+        await client.ensure_branch("support-bundles")
+
+        assert ("POST", "/repos/x/y/git/refs") in calls
+        assert created_body == {"ref": "refs/heads/support-bundles", "sha": "abc123"}
+
+    @pytest.mark.asyncio
+    async def test_ensure_branch_noop_when_exists(self):
+        calls = []
+
+        def handler(request):
+            calls.append((request.method, request.url.path))
+            if request.url.path == "/repos/x/y/branches/support-bundles":
+                return httpx.Response(200, json={"name": "support-bundles"})
+            return httpx.Response(500)  # pragma: no cover — must not be reached
+
+        client = sb.GitHubClient("tok", "x/y", transport=httpx.MockTransport(handler))
+        await client.ensure_branch("support-bundles")
+
+        assert calls == [("GET", "/repos/x/y/branches/support-bundles")]
+
+    @pytest.mark.asyncio
+    async def test_commit_file_targets_branch(self):
+        captured = {}
+
+        def handler(request):
+            captured["path"] = request.url.path
+            captured["body"] = json.loads(request.content)
+            return httpx.Response(201, json={"content": {"html_url": "u"}})
+
+        client = sb.GitHubClient("tok", "x/y", transport=httpx.MockTransport(handler))
+        await client.commit_file("support-bundles/z.zip", b"data", "msg", branch="support-bundles")
+
+        assert captured["body"]["branch"] == "support-bundles"
+        assert "content" in captured["body"]
+
+
+@pytest.mark.asyncio
+async def test_build_and_send_ruleset_409(tmp_path):
+    """A 409 from a branch ruleset yields an actionable error mentioning the ruleset (#149)."""
+    class _Conflict:
+        def __init__(self, *a, **k):
+            pass
+
+        async def ensure_branch(self, *a, **k):
+            pass
+
+        async def commit_file(self, *a, **k):
+            req = httpx.Request("PUT", "https://api.github.com/repos/x/y/contents/z")
+            resp = httpx.Response(
+                409, json={"message": "Repository rule violations found"}, request=req
+            )
+            raise httpx.HTTPStatusError("conflict", request=req, response=resp)
+
+        async def create_issue(self, *a, **k):  # pragma: no cover - not reached
+            return {}
+
+    cfg = AppConfig()
+    clients = MagicMock()
+    clients.event_log = EventLog(persist_to_file=False)
+    with pytest.raises(sb.SupportBundleError, match="ruleset") as exc:
+        await sb.build_and_send(
+            cfg, clients, token="tok", repo="x/y",
+            reference="2026-06-14T12:00:00+00:00", window_minutes=5,
+            github_client=_Conflict(),
+        )
+    assert "support-bundles" in str(exc.value)
 
 
 class TestSupportEndpoint:

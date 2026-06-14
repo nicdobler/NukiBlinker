@@ -38,6 +38,9 @@ logger = get_logger("support_bundle")
 _GITHUB_API = "https://api.github.com"
 _LOG_TS_LEN = len("YYYY-MM-DD HH:MM:SS")
 _LOG_TS_FORMAT = "%Y-%m-%d %H:%M:%S"
+# Bundles are committed to a dedicated branch so the feature works on repos
+# whose default branch is protected by a ruleset requiring pull requests (#149).
+_BUNDLE_BRANCH = "support-bundles"
 
 
 class SupportBundleError(Exception):
@@ -206,30 +209,81 @@ def build_zip(*, app_log: str, events_json: str, events_csv: str, metadata: str)
 class GitHubClient:
     """Minimal GitHub REST client for committing a file and opening an issue."""
 
-    def __init__(self, token: str, repo: str) -> None:
+    def __init__(
+        self, token: str, repo: str, *, transport: httpx.AsyncBaseTransport | None = None
+    ) -> None:
         self._token = token
         self._repo = repo
+        self._transport = transport
         self._headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-    async def commit_file(self, path: str, content: bytes, message: str) -> dict:
-        """Create a file at ``path`` via the Contents API (base64)."""
+    def _client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            timeout=30, headers=self._headers, transport=self._transport
+        )
+
+    async def get_default_branch(self) -> str:
+        """Return the repository's default branch (``main`` if unknown)."""
+        async with self._client() as c:
+            r = await c.get(f"{_GITHUB_API}/repos/{self._repo}")
+            r.raise_for_status()
+            return r.json().get("default_branch") or "main"
+
+    async def ensure_branch(self, branch: str) -> None:
+        """Make sure ``branch`` exists, creating it from the default branch HEAD.
+
+        Committing the bundle to a dedicated branch avoids default-branch
+        rulesets that require changes to go through a pull request (#149).
+        """
+        async with self._client() as c:
+            r = await c.get(f"{_GITHUB_API}/repos/{self._repo}/branches/{branch}")
+            if r.status_code == 200:
+                return
+            if r.status_code != 404:
+                r.raise_for_status()
+
+            default = await self.get_default_branch()
+            ref = await c.get(
+                f"{_GITHUB_API}/repos/{self._repo}/git/ref/heads/{default}"
+            )
+            ref.raise_for_status()
+            sha = ref.json()["object"]["sha"]
+            created = await c.post(
+                f"{_GITHUB_API}/repos/{self._repo}/git/refs",
+                json={"ref": f"refs/heads/{branch}", "sha": sha},
+            )
+            created.raise_for_status()
+
+    async def commit_file(
+        self, path: str, content: bytes, message: str, branch: str | None = None
+    ) -> dict:
+        """Create a file at ``path`` via the Contents API (base64).
+
+        When ``branch`` is given, the commit targets that branch instead of the
+        repository default branch.
+        """
         import base64
 
         url = f"{_GITHUB_API}/repos/{self._repo}/contents/{path}"
-        body = {"message": message, "content": base64.b64encode(content).decode("ascii")}
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.put(url, headers=self._headers, json=body)
+        body: dict[str, Any] = {
+            "message": message,
+            "content": base64.b64encode(content).decode("ascii"),
+        }
+        if branch:
+            body["branch"] = branch
+        async with self._client() as c:
+            r = await c.put(url, json=body)
             r.raise_for_status()
             return r.json()
 
     async def create_issue(self, title: str, body: str) -> dict:
         url = f"{_GITHUB_API}/repos/{self._repo}/issues"
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.post(url, headers=self._headers, json={"title": title, "body": body})
+        async with self._client() as c:
+            r = await c.post(url, json={"title": title, "body": body})
             r.raise_for_status()
             return r.json()
 
@@ -325,7 +379,12 @@ async def build_and_send(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = f"support-bundles/{stamp}.zip"
     try:
-        commit = await client.commit_file(path, zip_bytes, f"Add support bundle {stamp}")
+        # Commit to a dedicated branch so a protected default branch (ruleset
+        # requiring PRs) does not reject the direct commit with HTTP 409 (#149).
+        await client.ensure_branch(_BUNDLE_BRANCH)
+        commit = await client.commit_file(
+            path, zip_bytes, f"Add support bundle {stamp}", branch=_BUNDLE_BRANCH
+        )
         content = commit.get("content", {}) if isinstance(commit, dict) else {}
         bundle_url = content.get("html_url") or content.get("download_url")
         issue = await client.create_issue(
@@ -348,6 +407,12 @@ async def build_and_send(
             raise SupportBundleError(
                 f"GitHub repo '{repo}' not found or token lacks access "
                 f"(HTTP 404: {detail})"
+            ) from exc
+        if status == 409:
+            raise SupportBundleError(
+                f"GitHub rejected the commit to the '{_BUNDLE_BRANCH}' branch — a "
+                f"repository ruleset is blocking it (HTTP 409: {detail}). Exclude "
+                f"'{_BUNDLE_BRANCH}' from the ruleset, or relax the rule."
             ) from exc
         raise SupportBundleError(f"GitHub API error (HTTP {status}: {detail})") from exc
     except httpx.HTTPError as exc:
