@@ -104,6 +104,12 @@ class NightMode:
     def get_next_change_time(self) -> Optional[datetime]:
         """Get the next time when night mode will change state.
 
+        The boundary is grace-adjusted so the reported next change stays
+        consistent with :meth:`is_night_time` (which expands the window by
+        ``grace_minutes``): night ends at ``end_time + grace`` and starts at
+        ``start_time - grace``. The same-day vs overnight cases produce
+        identical arithmetic, so a single block handles both.
+
         Returns:
             Next change time as datetime, or None if night mode is disabled
         """
@@ -113,29 +119,18 @@ class NightMode:
         now = datetime.now()
 
         if self.is_night_time():
-            # Currently in night mode, find end time
-            if self.start_time <= self.end_time:
-                # Same-day range
-                next_change = datetime.combine(now.date(), self.end_time)
-                if next_change <= now:
-                    next_change += timedelta(days=1)
-            else:
-                # Overnight range
-                next_change = datetime.combine(now.date(), self.end_time)
-                if next_change <= now:
-                    next_change += timedelta(days=1)
+            # Currently in night mode: next change is when night ends.
+            boundary, grace_offset = self.end_time, self.grace_minutes
         else:
-            # Currently in day mode, find start time
-            if self.start_time <= self.end_time:
-                # Same-day range
-                next_change = datetime.combine(now.date(), self.start_time)
-                if next_change <= now:
-                    next_change += timedelta(days=1)
-            else:
-                # Overnight range
-                next_change = datetime.combine(now.date(), self.start_time)
-                if next_change <= now:
-                    next_change += timedelta(days=1)
+            # Currently in day mode: next change is when night begins.
+            boundary, grace_offset = self.start_time, -self.grace_minutes
+
+        next_change = (
+            datetime.combine(now.date(), boundary)
+            + timedelta(minutes=grace_offset)
+        )
+        while next_change <= now:
+            next_change += timedelta(days=1)
 
         return next_change
 
