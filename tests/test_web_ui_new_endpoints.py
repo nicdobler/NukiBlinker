@@ -12,6 +12,7 @@ from nukiblinker.config import AppConfig, EventValidationConfig, NightModeConfig
 from nukiblinker.event_validator import EventValidator
 from nukiblinker.event_log import EventLog
 from nukiblinker.night_mode import NightMode
+from nukiblinker.deduplication import Deduplicator
 
 
 class TestWebUINewEndpoints:
@@ -57,6 +58,7 @@ class TestWebUINewEndpoints:
             brightness_factor=0.3,
             grace_minutes=5
         )
+        clients.deduplicator = Deduplicator(window_seconds=120, enabled=True)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             clients.event_log = EventLog(
@@ -113,6 +115,35 @@ class TestWebUINewEndpoints:
 
         assert response.status_code == 400
         assert "max_delay_seconds must be an integer between 1 and 3600" in response.json()["error"]
+
+    def test_get_deduplication_config(self, test_client):
+        """#125: deduplication is exposed as its own endpoint."""
+        response = test_client.get("/api/config/deduplication")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["enabled"] is True
+        assert data["window_seconds"] == 120
+
+    def test_update_deduplication_config(self, test_client):
+        """#125: updating the window persists and updates the live deduplicator."""
+        response = test_client.put(
+            "/api/config/deduplication", json={"enabled": False, "window_seconds": 90}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["enabled"] is False
+        assert data["window_seconds"] == 90
+        # Live deduplicator was updated immediately.
+        assert test_client.app.state.clients.deduplicator.window_seconds == 90
+        assert test_client.app.state.clients.deduplicator.enabled is False
+
+    def test_update_deduplication_config_invalid(self, test_client):
+        """#125: window out of range is rejected."""
+        response = test_client.put(
+            "/api/config/deduplication", json={"window_seconds": 5000}
+        )
+        assert response.status_code == 400
+        assert "window_seconds must be an integer between 1 and 3600" in response.json()["error"]
 
     def test_get_night_mode_config(self, test_client):
         """Test getting night mode configuration."""

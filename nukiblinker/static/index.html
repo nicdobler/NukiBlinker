@@ -253,12 +253,10 @@
                 <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
             </div>
             <div class="event-section"><h4>Audio</h4>
-                <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable audio</label></div>
+                <p class="help">An unknown ring has no visitor name, so only a chime is played (no TTS).</p>
+                <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable chime</label></div>
                 <div id="ringAudioFields" style="display:none">
-                    <label>Mode</label>
-                    <select id="ringAudioMode" onchange="toggleAudioMode('ring')"><option value="tts">TTS</option><option value="chime">Chime</option></select>
-                    <div id="ringTtsFields"><label>TTS Message</label><input id="ringTtsMsg" placeholder="Someone is at the door"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
-                    <div id="ringChimeFields" style="display:none"><label>Chime file</label><input id="ringChime" value="chime.mp3"></div>
+                    <label>Chime file</label><input id="ringChime" value="chime.wav">
                 </div>
             </div>
             <div class="event-section"><h4>HomeKit</h4>
@@ -297,12 +295,10 @@
                 <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
             </div>
             <div class="event-section"><h4>Audio</h4>
-                <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable audio</label></div>
+                <p class="help">Door-opened only plays a chime (no TTS).</p>
+                <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable chime</label></div>
                 <div id="doorAudioFields">
-                    <label>Mode</label>
-                    <select id="doorAudioMode" onchange="toggleAudioMode('door')"><option value="chime">Chime</option><option value="tts">TTS</option></select>
-                    <div id="doorTtsFields" style="display:none"><label>TTS Message</label><input id="doorTtsMsg" placeholder="The door was opened"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
-                    <div id="doorChimeFields"><label>Chime file</label><input id="doorChime" value="chime.mp3"></div>
+                    <label>Chime file</label><input id="doorChime" value="chime.wav">
                 </div>
             </div>
             <div class="event-section"><h4>HomeKit</h4>
@@ -310,19 +306,35 @@
             </div>
         </div>
 
-        <!-- NEW FEATURE CONFIGURATIONS -->
+        <!-- VALIDATION & DEDUPLICATION (#125: two distinct settings, made explicit) -->
         <div class="card">
             <h2>Event Validation</h2>
-            <p class="help" style="margin-bottom:0.75rem">Reject events that are older than a configurable threshold to prevent stale notifications.</p>
+            <p class="help" style="margin-bottom:0.75rem"><strong>Validation</strong> rejects a callback whose event time is older than the threshold below, so stale/queued callbacks never fire a late notification. This is <em>separate</em> from deduplication.</p>
             <div class="toggle">
                 <input type="checkbox" id="eventValidationEnabled" checked>
                 <label for="eventValidationEnabled">Enable event timestamp validation</label>
             </div>
             <div class="grid" style="margin-top:0.75rem;">
                 <div>
-                    <label>Maximum Event Delay (seconds)</label>
+                    <label>Reject events older than (seconds)</label>
                     <input id="eventValidationMaxDelay" type="number" min="1" max="3600" value="60">
-                    <p class="help">Reject events older than this many seconds</p>
+                    <p class="help">e.g. 60 = ignore a callback whose event time is over a minute ago.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Deduplication</h2>
+            <p class="help" style="margin-bottom:0.75rem"><strong>Deduplication</strong> collapses the burst of callbacks one real interaction emits (e.g. a ring + ring-to-open) so you get a single notification. Different from validation: validation drops <em>old</em> events, deduplication drops <em>repeated</em> ones within the window.</p>
+            <div class="toggle">
+                <input type="checkbox" id="deduplicationEnabled" checked>
+                <label for="deduplicationEnabled">Enable deduplication</label>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Deduplication window (seconds)</label>
+                    <input id="deduplicationWindow" type="number" min="1" max="3600" value="120">
+                    <p class="help">e.g. 120 = collapse repeated callbacks for the same interaction seen within two minutes.</p>
                 </div>
             </div>
         </div>
@@ -361,31 +373,6 @@
             <div id="nightModeStatus" class="discover-results"></div>
         </div>
 
-        <div class="card">
-            <h2>Event Logging</h2>
-            <p class="help" style="margin-bottom:0.75rem">Maintain event history for troubleshooting and monitoring.</p>
-            <div class="toggle">
-                <input type="checkbox" id="eventLogEnabled" checked>
-                <label for="eventLogEnabled">Enable event logging</label>
-            </div>
-            <div class="grid" style="margin-top:0.75rem;">
-                <div>
-                    <label>Maximum Entries</label>
-                    <input id="eventLogMaxEntries" type="number" min="10" max="10000" value="1000">
-                    <p class="help">Maximum events to keep in memory</p>
-                </div>
-                <div>
-                    <label>Retention Days</label>
-                    <input id="eventLogRetention" type="number" min="1" max="365" value="7">
-                    <p class="help">How long to keep events</p>
-                </div>
-            </div>
-            <div class="toggle" style="margin-top:0.75rem;">
-                <input type="checkbox" id="eventLogPersist" checked>
-                <label for="eventLogPersist">Persist log to file</label>
-            </div>
-            <div id="eventLogStats" class="discover-results"></div>
-        </div>
     </div>
 
     <!-- GENERAL / SETTINGS -->
@@ -437,6 +424,32 @@
 
     <!-- EVENT LOG -->
     <div id="panel-event-log" class="panel">
+        <div class="card">
+            <h2>Event Logging</h2>
+            <p class="help" style="margin-bottom:0.75rem">Maintain event history for troubleshooting and monitoring. (#125: moved here from the Events tab.)</p>
+            <div class="toggle">
+                <input type="checkbox" id="eventLogEnabled" checked>
+                <label for="eventLogEnabled">Enable event logging</label>
+            </div>
+            <div class="grid" style="margin-top:0.75rem;">
+                <div>
+                    <label>Maximum Entries</label>
+                    <input id="eventLogMaxEntries" type="number" min="10" max="10000" value="1000">
+                    <p class="help">Maximum events to keep in memory</p>
+                </div>
+                <div>
+                    <label>Retention Days</label>
+                    <input id="eventLogRetention" type="number" min="1" max="365" value="7">
+                    <p class="help">How long to keep events</p>
+                </div>
+            </div>
+            <div class="toggle" style="margin-top:0.75rem;">
+                <input type="checkbox" id="eventLogPersist" checked>
+                <label for="eventLogPersist">Persist log to file</label>
+            </div>
+            <div id="eventLogStats" class="discover-results"></div>
+        </div>
+
         <div class="card">
             <h2>Event Log Viewer</h2>
             <p class="help" style="margin-bottom:0.75rem">View detailed history of all Nuki events and processing results.</p>
@@ -560,16 +573,24 @@ function populateEventRule(prefix, rule) {
     const b = rule.blink || {}, a = rule.audio || {};
     setSelect(prefix + 'BlinkMode', b.mode || 'none');
     setChk(prefix + 'AudioEnabled', a.enabled); toggleAudioFields(prefix);
-    setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
-    setVal(prefix + 'TtsMsg', a.message); setVal(prefix + 'Chime', a.chime);
+    // ring/door_opened are chime-only (#125): the TTS mode/message inputs are absent.
+    if (document.getElementById(prefix + 'AudioMode')) {
+        setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
+        setVal(prefix + 'TtsMsg', a.message);
+    }
+    if (document.getElementById(prefix + 'Chime')) setVal(prefix + 'Chime', a.chime);
     setChk(prefix + 'Hk', rule.homekit);
 }
 
 function collectEventRule(prefix) {
+    // ring/door_opened are chime-only (#125): no TTS mode/message is sent.
+    const audio = document.getElementById(prefix + 'AudioMode')
+        ? { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
+            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime') }
+        : { enabled: chk(prefix + 'AudioEnabled'), mode: 'chime', chime: val(prefix + 'Chime') };
     return {
         blink: { mode: val(prefix + 'BlinkMode') },
-        audio: { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
-            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime') },
+        audio,
         homekit: chk(prefix + 'Hk'),
     };
 }
@@ -808,6 +829,39 @@ async function saveEventValidationConfig() {
         return true;
     } catch (e) {
         console.error('Failed to save event validation config:', e);
+        return false;
+    }
+}
+
+// Deduplication (#125 — distinct from validation)
+async function loadDeduplicationConfig() {
+    try {
+        const config = await (await fetch(`${API}/config/deduplication`)).json();
+        document.getElementById('deduplicationEnabled').checked = config.enabled;
+        document.getElementById('deduplicationWindow').value = config.window_seconds;
+    } catch (e) {
+        console.error('Failed to load deduplication config:', e);
+    }
+}
+
+async function saveDeduplicationConfig() {
+    try {
+        const config = {
+            enabled: document.getElementById('deduplicationEnabled').checked,
+            window_seconds: parseInt(document.getElementById('deduplicationWindow').value)
+        };
+        const response = await fetch(`${API}/config/deduplication`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save config');
+        }
+        return true;
+    } catch (e) {
+        console.error('Failed to save deduplication config:', e);
         return false;
     }
 }
@@ -1085,6 +1139,7 @@ async function saveConfig() {
     // Save new feature configs
     const results = await Promise.all([
         saveEventValidationConfig(),
+        saveDeduplicationConfig(),
         saveNightModeConfig(),
         saveEventLogConfig()
     ]);
@@ -1108,6 +1163,7 @@ async function loadConfig() {
     // Load new feature configs
     await Promise.all([
         loadEventValidationConfig(),
+        loadDeduplicationConfig(),
         loadNightModeConfig(),
         loadEventLogConfig()
     ]);

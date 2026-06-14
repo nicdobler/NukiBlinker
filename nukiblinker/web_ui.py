@@ -575,6 +575,59 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             logger.error("Failed to update event validation config: %s", e, exc_info=True)
             return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
 
+    @router.get("/config/deduplication")
+    async def get_deduplication_config(request: Request) -> JSONResponse:
+        """Get current deduplication configuration (#125)."""
+        config = request.app.state.config.deduplication
+        return JSONResponse({
+            "enabled": config.enabled,
+            "window_seconds": config.window_seconds,
+        })
+
+    @router.put("/config/deduplication")
+    async def update_deduplication_config(request: Request) -> JSONResponse:
+        """Update deduplication configuration and the live deduplicator (#125).
+
+        Deduplication (collapsing the burst of callbacks one interaction emits)
+        is distinct from event validation (rejecting stale callbacks). Exposed
+        as its own endpoint so the window is editable and takes effect live.
+        """
+        try:
+            try:
+                data = await request.json()
+            except Exception:
+                return JSONResponse({"error": "Invalid JSON payload"}, status_code=400)
+
+            if "window_seconds" in data:
+                window = data["window_seconds"]
+                if not isinstance(window, int) or window < 1 or window > 3600:
+                    return JSONResponse({
+                        "error": "window_seconds must be an integer between 1 and 3600"
+                    }, status_code=400)
+
+            config = request.app.state.config
+            if "enabled" in data:
+                config.deduplication.enabled = bool(data["enabled"])
+            if "window_seconds" in data:
+                config.deduplication.window_seconds = data["window_seconds"]
+
+            # Update the live deduplicator so the change takes effect immediately.
+            deduplicator = getattr(request.app.state.clients, "deduplicator", None)
+            if deduplicator is not None:
+                deduplicator.enabled = config.deduplication.enabled
+                deduplicator.window_seconds = config.deduplication.window_seconds
+
+            save_config(config, request.app.state.config_path)
+
+            logger.info("Deduplication config updated: %s", data)
+            return JSONResponse({
+                "enabled": config.deduplication.enabled,
+                "window_seconds": config.deduplication.window_seconds,
+            })
+        except Exception as e:
+            logger.error("Failed to update deduplication config: %s", e, exc_info=True)
+            return JSONResponse({"error": "Failed to update configuration"}, status_code=500)
+
     @router.get("/config/night-mode")
     async def get_night_mode_config(request: Request) -> JSONResponse:
         """Get current night mode configuration and status."""
