@@ -1133,6 +1133,32 @@ sections ride the existing base-config save path (no new endpoints).
 
 ## New Features (Unreleased)
 
+### Support bundle → GitHub issue (#117)
+
+`nukiblinker/support_bundle.py` builds a diagnostic ZIP for a time window and
+delivers it as a GitHub issue:
+
+- **Window**: `resolve_window(reference|start|end, window_minutes)` returns
+  timezone-aware bounds (reference ± N minutes, default `github.default_window_minutes`).
+- **Event log** (UTC): `EventLog.get_events_in_range(start, end)` →
+  `events.json` (full fidelity) + `events.csv`.
+- **App log** (local naive timestamps): `slice_app_log()` parses the leading
+  `%Y-%m-%d %H:%M:%S`, keeps lines in-window and their continuation lines
+  (tracebacks) → `app-log.txt`.
+- **Metadata**: app version + window + a **redacted** config dump
+  (`SECRET_FIELDS` masked with `MASK_SENTINEL`) → `metadata.txt`.
+- **ZIP** assembled with stdlib `zipfile` (no new dependency).
+- **Delivery**: GitHub's REST API can't attach a binary to an issue, so
+  `GitHubClient.commit_file()` PUTs the base64 ZIP to
+  `support-bundles/<UTC-timestamp>.zip` via the Contents API, then
+  `create_issue()` opens an issue linking it. Auth: `github.token` or
+  `GITHUB_TOKEN` env (`contents:write` + `issues:write`); repo from `github.repo`.
+- **Endpoint**: `POST /api/support/github-issue` accepts
+  `{reference, window_minutes}` or `{start, end}`; returns
+  `{status, issue_url, bundle_url, events, window}`. Token-missing → 400;
+  `SupportBundleError` (bad input / GitHub auth) → 400; other failures → 500
+  (no internal detail leaked).
+
 ### SQLite-backed Event Log (Unreleased)
 
 **Problem**: The event log was persisted as a single `logs/event_log.json` file

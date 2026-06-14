@@ -460,6 +460,25 @@
         </div>
 
         <div class="card">
+            <h2>Send support bundle to GitHub</h2>
+            <p class="help" style="margin-bottom:0.75rem">Collect the application log + event-log entries around a point in time into a ZIP and open a GitHub issue with it attached, to make troubleshooting easy. Requires a GitHub token (General tab).</p>
+            <div class="grid">
+                <div>
+                    <label>Reference time <span class="opt">(blank = now)</span></label>
+                    <input id="supportReference" type="datetime-local">
+                    <p class="help">The bundle covers a window centred on this point.</p>
+                </div>
+                <div>
+                    <label>Window (± minutes)</label>
+                    <input id="supportWindow" type="number" min="1" max="1440" value="15">
+                    <p class="help">e.g. 15 = from 15 min before to 15 min after.</p>
+                </div>
+            </div>
+            <div class="btn-row" style="margin-top:0.5rem"><button class="btn-primary btn-sm" onclick="sendSupportBundle()">Send to GitHub issue</button></div>
+            <div id="supportResult" class="discover-results"></div>
+        </div>
+
+        <div class="card">
             <h2>Event Log Viewer</h2>
             <p class="help" style="margin-bottom:0.75rem">View detailed history of all Nuki events and processing results.</p>
             <div class="btn-row">
@@ -1204,6 +1223,27 @@ async function loadConfig() {
         loadNightModeConfig(),
         loadEventLogConfig()
     ]);
+}
+
+// Support bundle → GitHub issue (#117)
+async function sendSupportBundle() {
+    const el = document.getElementById('supportResult');
+    const reference = val('supportReference');  // datetime-local; '' = now
+    const windowMinutes = parseInt(val('supportWindow')) || 15;
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Building bundle and creating issue…</p>';
+    try {
+        const body = { window_minutes: windowMinutes };
+        if (reference) body.reference = reference;
+        const r = await fetch(`${API}/support/github-issue`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const d = await r.json();
+        if (!r.ok) { el.innerHTML = `<span class="badge badge-err">Failed</span> ${d.error || 'unknown error'}`; return; }
+        const link = d.issue_url ? `<a href="${d.issue_url}" target="_blank" rel="noopener">${d.issue_url}</a>` : 'issue created';
+        el.innerHTML = `<span class="badge badge-ok">Sent</span> ${d.events} event(s) in window · ${link}`;
+    } catch (e) {
+        el.innerHTML = `<span class="badge badge-err">Failed</span> ${e.message}`;
+    }
 }
 
 async function loadHkQr() {

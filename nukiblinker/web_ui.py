@@ -522,6 +522,52 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             logger.error("Failed to clear event log: %s", e, exc_info=True)
             return JSONResponse({"error": "Failed to clear event log"}, status_code=500)
 
+    @router.post("/support/github-issue")
+    async def support_github_issue(request: Request) -> JSONResponse:
+        """Build a diagnostic support bundle and open a GitHub issue (#117).
+
+        Body (all optional): ``{reference, window_minutes}`` or explicit
+        ``{start, end}`` ISO datetimes. The PAT comes from ``github.token`` or
+        the ``GITHUB_TOKEN`` environment variable; the repo from ``github.repo``.
+        """
+        from nukiblinker import support_bundle
+
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        config = request.app.state.config
+        token = config.github.token or os.environ.get("GITHUB_TOKEN", "")
+        if not token:
+            return JSONResponse(
+                {"error": "GitHub token not configured — set github.token in the "
+                          "General tab or the GITHUB_TOKEN environment variable"},
+                status_code=400,
+            )
+        repo = config.github.repo or "nicdobler/NukiBlinker"
+
+        try:
+            result = await support_bundle.build_and_send(
+                config,
+                request.app.state.clients,
+                token=token,
+                repo=repo,
+                reference=body.get("reference"),
+                window_minutes=body.get("window_minutes"),
+                start=body.get("start"),
+                end=body.get("end"),
+            )
+            logger.info("Support bundle delivered: %s", result.get("issue_url"))
+            return JSONResponse(result)
+        except support_bundle.SupportBundleError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        except Exception as e:
+            logger.error("Support bundle failed: %s", e, exc_info=True)
+            return JSONResponse(
+                {"error": "Failed to build or deliver the support bundle"}, status_code=500
+            )
+
     # ------------------------------------------------------------------
     # Configuration endpoints for new features
     # ------------------------------------------------------------------

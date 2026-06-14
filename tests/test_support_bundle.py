@@ -1,0 +1,230 @@
+"""Tests for nukiblinker.support_bundle and the /api/support/github-issue endpoint (#117)."""
+
+import io
+import zipfile
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi.testclient import TestClient
+
+from nukiblinker import support_bundle as sb
+from nukiblinker.config import AppConfig
+from nukiblinker.event_log import EventLog, EventLogEntry
+from nukiblinker.event_validator import ValidationResult
+from nukiblinker.server import create_app
+from nukiblinker.web_ui import mount_web_ui
+
+
+def _entry(ts, nuki=1, event_type="ring"):
+    return EventLogEntry(
+        timestamp=ts,
+        event_type=event_type,
+        payload={"nukiId": nuki},
+        actions=["Hue lights blinked"],
+        validation_result=ValidationResult(valid=True, delay_seconds=1.0, reason="ok"),
+    )
+
+
+class TestResolveWindow:
+    def test_reference_plus_window(self):
+        s, e = sb.resolve_window(reference="2026-06-14T12:00:00+00:00", window_minutes=15)
+        assert (e - s) == timedelta(minutes=30)
+
+    def test_explicit_start_end(self):
+        s, e = sb.resolve_window(
+            start="2026-06-14T12:00:00+00:00", end="2026-06-14T12:30:00+00:00"
+        )
+        assert (e - s) == timedelta(minutes=30)
+
+    def test_end_before_start_raises(self):
+        with pytest.raises(sb.SupportBundleError):
+            sb.resolve_window(
+                start="2026-06-14T12:30:00+00:00", end="2026-06-14T12:00:00+00:00"
+            )
+
+    def test_default_now_window(self):
+        s, e = sb.resolve_window(window_minutes=10)
+        assert (e - s) == timedelta(minutes=20)
+
+
+class TestSliceAppLog:
+    def test_filters_by_window_and_keeps_continuations(self):
+        text = "\n".join([
+            "2026-06-14 11:50:00 [INFO] x: before",
+            "2026-06-14 12:00:00 [INFO] x: inside",
+            "    Traceback continuation of inside",
+            "2026-06-14 12:40:00 [INFO] x: after",
+        ])
+        start = datetime(2026, 6, 14, 11, 55, 0)
+        end = datetime(2026, 6, 14, 12, 5, 0)
+        out = sb.slice_app_log(text, start, end)
+        assert "inside" in out
+        assert "Traceback continuation" in out  # continuation inherits inclusion
+        assert "before" not in out
+        assert "after" not in out
+
+
+class TestRedaction:
+    def test_secrets_masked(self):
+        cfg = AppConfig()
+        cfg.nuki.api_token = "NUKI_SECRET_TOKEN"
+        cfg.hue.api_key = "HUE_SECRET_KEY"
+        cfg.github.token = "GH_SECRET_TOKEN"
+        out = sb.redacted_config_yaml(cfg)
+        assert "NUKI_SECRET_TOKEN" not in out
+        assert "HUE_SECRET_KEY" not in out
+        assert "GH_SECRET_TOKEN" not in out
+        assert "***" in out
+
+
+class TestBuildZip:
+    def test_contains_expected_files(self):
+        data = sb.build_zip(
+            app_log="logline", events_json="[]", events_csv="h\n", metadata="meta"
+        )
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        assert set(zf.namelist()) == {"metadata.txt", "app-log.txt", "events.json", "events.csv"}
+        assert zf.read("app-log.txt").decode() == "logline"
+
+
+class TestEventsSerialisation:
+    def test_csv_and_json(self):
+        ts = datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
+        entries = [_entry(ts, nuki=42)]
+        csv_out = sb.events_to_csv(entries)
+        assert "nuki_id" in csv_out and "42" in csv_out
+        json_out = sb.events_to_json(entries)
+        assert '"nukiId": 42' in json_out
+
+
+class _FakeGitHub:
+    """Captures the commit + issue calls without touching the network."""
+
+    def __init__(self, *args, **kwargs):
+        self.committed = None
+        self.issue = None
+
+    async def commit_file(self, path, content, message):
+        self.committed = (path, content, message)
+        return {"content": {"html_url": f"https://github.com/x/y/blob/main/{path}"}}
+
+    async def create_issue(self, title, body):
+        self.issue = (title, body)
+        return {"html_url": "https://github.com/x/y/issues/1"}
+
+
+@pytest.mark.asyncio
+async def test_build_and_send(tmp_path):
+    log = EventLog(persist_to_file=False)
+    in_window = datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
+    out_window = datetime(2026, 6, 14, 9, 0, 0, tzinfo=timezone.utc)
+    log.store_entry(_entry(in_window))
+    log.store_entry(_entry(out_window))
+
+    clients = MagicMock()
+    clients.event_log = log
+
+    log_file = tmp_path / "nukiblinker.log"
+    log_file.write_text(
+        "2026-06-14 12:00:00 [INFO] x: hello\n2026-06-14 09:00:00 [INFO] x: old\n",
+        encoding="utf-8",
+    )
+    cfg = AppConfig()
+    cfg.logging.file_path = str(log_file)
+    cfg.github.token = "tok"
+    cfg.nuki.api_token = "SUPER_SECRET_TOKEN"
+
+    fake = _FakeGitHub()
+    result = await sb.build_and_send(
+        cfg, clients, token="tok", repo="x/y",
+        reference="2026-06-14T12:00:00+00:00", window_minutes=15,
+        github_client=fake,
+    )
+
+    assert result["status"] == "created"
+    assert result["events"] == 1  # only the in-window event
+    assert result["issue_url"].endswith("/issues/1")
+
+    # A ZIP was committed under support-bundles/.
+    path, content, _ = fake.committed
+    assert path.startswith("support-bundles/") and path.endswith(".zip")
+    zf = zipfile.ZipFile(io.BytesIO(content))
+    assert set(zf.namelist()) == {"metadata.txt", "app-log.txt", "events.json", "events.csv"}
+
+    # The issue body redacts secrets.
+    _, body = fake.issue
+    assert "SUPER_SECRET_TOKEN" not in body
+
+
+@pytest.mark.asyncio
+async def test_build_and_send_github_auth_error(tmp_path):
+    import httpx
+
+    class _AuthFail:
+        def __init__(self, *a, **k):
+            pass
+
+        async def commit_file(self, *a, **k):
+            req = httpx.Request("PUT", "https://api.github.com/x")
+            resp = httpx.Response(401, request=req)
+            raise httpx.HTTPStatusError("unauthorized", request=req, response=resp)
+
+        async def create_issue(self, *a, **k):  # pragma: no cover - not reached
+            return {}
+
+    cfg = AppConfig()
+    clients = MagicMock()
+    clients.event_log = EventLog(persist_to_file=False)
+    with pytest.raises(sb.SupportBundleError, match="scopes"):
+        await sb.build_and_send(
+            cfg, clients, token="bad", repo="x/y",
+            reference="2026-06-14T12:00:00+00:00", window_minutes=5,
+            github_client=_AuthFail(),
+        )
+
+
+class TestSupportEndpoint:
+    @pytest.fixture
+    def client(self, tmp_path):
+        cfg = AppConfig()
+        clients = MagicMock()
+        clients.event_log = EventLog(persist_to_file=False)
+        app = create_app(cfg, clients)
+        mount_web_ui(app, str(tmp_path / "config.yaml"))
+        app.state.allowed_hosts = {"127.0.0.1", "::1", "localhost", "testclient"}
+        return TestClient(app)
+
+    def test_no_token_returns_400(self, client):
+        r = client.post("/api/support/github-issue", json={})
+        assert r.status_code == 400
+        assert "token" in r.json()["error"].lower()
+
+    def test_success(self, client, monkeypatch):
+        client.app.state.config.github.token = "tok"
+
+        async def fake_send(*args, **kwargs):
+            return {
+                "status": "created",
+                "issue_url": "https://github.com/x/y/issues/2",
+                "bundle_url": "https://github.com/x/y/blob/main/support-bundles/z.zip",
+                "events": 3,
+                "window": {},
+            }
+
+        monkeypatch.setattr("nukiblinker.support_bundle.build_and_send", fake_send)
+        r = client.post("/api/support/github-issue", json={"window_minutes": 10})
+        assert r.status_code == 200
+        assert r.json()["issue_url"].endswith("/issues/2")
+        assert r.json()["events"] == 3
+
+    def test_bundle_error_returns_400(self, client, monkeypatch):
+        client.app.state.config.github.token = "tok"
+
+        async def fake_send(*args, **kwargs):
+            raise sb.SupportBundleError("window end is before start")
+
+        monkeypatch.setattr("nukiblinker.support_bundle.build_and_send", fake_send)
+        r = client.post("/api/support/github-issue", json={"start": "b", "end": "a"})
+        assert r.status_code == 400
+        assert "window" in r.json()["error"].lower()

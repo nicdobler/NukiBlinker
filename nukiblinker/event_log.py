@@ -302,6 +302,28 @@ class EventLog:
                 ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
+    def get_events_in_range(self, start: datetime, end: datetime) -> List[EventLogEntry]:
+        """Return events whose timestamp falls within ``[start, end]`` (#117).
+
+        Bounds may be naive or aware; naive values are treated as UTC. Stored
+        timestamps are UTC ISO strings, so both bounds are normalised to UTC
+        for the comparison. Results are ordered oldest-first (chronological),
+        which reads naturally in a support bundle.
+        """
+        def _utc_iso(dt: datetime) -> str:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).isoformat()
+
+        start_iso, end_iso = _utc_iso(start), _utc_iso(end)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM events WHERE timestamp BETWEEN ? AND ? "
+                "ORDER BY timestamp ASC",
+                (start_iso, end_iso),
+            ).fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
     def get_event_count(self, device_id: Optional[int] = None) -> int:
         """Get total number of events in log (optionally filtered by device)."""
         with self._lock:
