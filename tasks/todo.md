@@ -2,6 +2,21 @@
 
 ---
 
+## #149 Support-bundle GitHub-issue 400 — diagnosability ✅ DONE
+
+**Branch**: `fix/149-support-bundle-400-diagnostics` | **PR**: #151 (squash-merged) | Issue closed.
+
+Bug: `POST /api/support/github-issue` returned a bare 400 with no server-side
+reason. Root cause = non-diagnosable 400s: both 400 paths (missing token,
+`SupportBundleError`) logged nothing, and `build_and_send` discarded GitHub's
+response body (terse `"GitHub API error (HTTP 404)"`). Fix: log WARNING on both
+paths; new `_github_error_detail()` surfaces GitHub `message`/`errors`/body in
+the error; dedicated 404 message names the target repo (common cause: wrong
+`github.repo` default or token lacking access). Regression tests added.
+Workflow: `/orchestrate #149` → single issue, sequential worktree, Auto wrap-up.
+
+---
+
 ## Code-review follow-ups (#143, #144, #145) — parallel orchestration ✅ DONE
 
 **PRs**: #146 (#143), #147 (#144), #148 (#145) — all squash-merged to `main`, issues closed.
