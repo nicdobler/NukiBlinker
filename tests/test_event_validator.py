@@ -232,3 +232,52 @@ class TestEventValidator:
         extracted = validator._extract_timestamp(payload)
 
         assert extracted is None
+
+    def test_active_ring_prefers_ringaction_timestamp(self):
+        """#115: a genuine ring is valid even when the lock-state ``timestamp`` is stale.
+
+        Real Opener ring callbacks carry a stale top-level ``timestamp`` (the
+        "retrieval of this lock state") plus the actual ring time in
+        ``ringactionTimestamp``. Before the fix the validator used the stale
+        ``timestamp`` and rejected every real ring as "too old"; it must now
+        validate against ``ringactionTimestamp`` while a ring action is active.
+        """
+        validator = EventValidator(max_delay_seconds=60)
+        now = datetime.now(timezone.utc)
+        payload = {
+            "deviceType": 2,
+            "nukiId": 12345,
+            "ringactionState": True,
+            "ringactionTimestamp": (now - timedelta(seconds=5)).isoformat(),
+            # Stale lock-state timestamp (10 minutes old) — would fail validation.
+            "timestamp": (now - timedelta(minutes=10)).isoformat(),
+        }
+
+        result = validator.validate_event(payload)
+
+        assert result.valid is True
+        assert result.delay_seconds == pytest.approx(5.0, abs=2.0)
+        assert result.reason is None
+
+    def test_inactive_ring_action_uses_lock_state_timestamp(self):
+        """Without an active ring action, fall back to the lock-state ``timestamp``.
+
+        A non-ring callback (e.g. door opened) may still carry an old
+        ``ringactionTimestamp`` from a previous ring; it must be ignored when
+        ``ringactionState`` is false so we validate against the event's own
+        ``timestamp``.
+        """
+        validator = EventValidator(max_delay_seconds=60)
+        now = datetime.now(timezone.utc)
+        payload = {
+            "deviceType": 0,
+            "nukiId": 67890,
+            "ringactionState": False,
+            "ringactionTimestamp": (now - timedelta(hours=2)).isoformat(),
+            "timestamp": (now - timedelta(seconds=10)).isoformat(),
+        }
+
+        extracted = validator._extract_timestamp(payload)
+
+        assert extracted is not None
+        assert abs((extracted - (now - timedelta(seconds=10))).total_seconds()) < 1

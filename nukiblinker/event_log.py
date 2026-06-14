@@ -335,7 +335,8 @@ class EventLog:
         ]
 
     def export_to_csv(self, device_id: Optional[int] = None,
-                      tz: str = "Europe/Madrid") -> str:
+                      tz: str = "Europe/Madrid",
+                      device_names: Optional[Dict[int, str]] = None) -> str:
         """Export event log to CSV format.
 
         The output is Excel-friendly: it starts with a UTF-8 BOM and an Excel
@@ -357,6 +358,7 @@ class EventLog:
             logger.warning("Unknown timezone %r for CSV export — using UTC", tz)
             zone = timezone.utc
 
+        names = device_names or {}
         output = io.StringIO()
         writer = csv.writer(output)
 
@@ -364,7 +366,7 @@ class EventLog:
         writer.writerow([
             "Date", "Time", "Event Type", "Device Type", "Device ID",
             "Device Name", "State", "Validation Valid", "Validation Delay (s)",
-            "Validation Reason", "Actions", "Processing Time (ms)"
+            "Validation Reason", "Actions", "Processing Time (ms)", "Payload (JSON)"
         ])
 
         with self._lock:
@@ -381,20 +383,25 @@ class EventLog:
         for row in rows:
             entry = self._row_to_entry(row)
             local_ts = entry.timestamp.astimezone(zone)
+            nuki_id = entry.payload.get("nukiId")
+            # Prefer the name carried in the payload; otherwise resolve it from
+            # the configured device names (real callbacks have no `name`) (#115).
+            device_name = entry.payload.get("name") or names.get(nuki_id, "")
 
             writer.writerow([
                 local_ts.strftime("%Y-%m-%d"),
                 local_ts.strftime("%H:%M:%S"),
                 entry.event_type or "Unknown",
                 entry.payload.get("deviceType"),
-                entry.payload.get("nukiId"),
-                entry.payload.get("name") or "",
+                nuki_id,
+                device_name,
                 entry.payload.get("state"),
                 entry.validation_result.valid,
                 f"{entry.validation_result.delay_seconds:.2f}",
                 entry.validation_result.reason or "",
                 "; ".join(entry.actions),
-                f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms is not None else ""
+                f"{entry.processing_time_ms:.2f}" if entry.processing_time_ms is not None else "",
+                json.dumps(entry.payload, ensure_ascii=False),
             ])
 
         # BOM + Excel separator hint so Excel (incl. ES locale) parses columns.

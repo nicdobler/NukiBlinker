@@ -26,6 +26,21 @@ logger = get_logger("web_ui")
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
+def _device_name_map(config: AppConfig) -> dict[int, str]:
+    """Map configured nukiId -> friendly name (#115).
+
+    Real Nuki callbacks carry no ``name`` field, so the Event Log labels events
+    by ID. The Nuki Device Filter remembers the names of the selected Opener and
+    Smart Lock; this map lets the viewer/filter/CSV show those names instead.
+    """
+    names: dict[int, str] = {}
+    if config.nuki.opener_id is not None and config.nuki.opener_name:
+        names[config.nuki.opener_id] = config.nuki.opener_name
+    if config.nuki.lock_id is not None and config.nuki.lock_name:
+        names[config.nuki.lock_id] = config.nuki.lock_name
+    return names
+
+
 def _bridge_error(exc: Exception, bridge_label: str = "Bridge") -> tuple[dict, int]:
     """Convert bridge communication exceptions to (body, status_code)."""
     if isinstance(exc, (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout)):
@@ -406,8 +421,20 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             events = event_log.get_recent_events(limit, offset, device_id=device_id)
             total_count = event_log.get_event_count(device_id=device_id)
 
+            # Resolve a friendly device name for each event (#115): real
+            # callbacks carry no `name`, so fall back to the configured names.
+            names = _device_name_map(request.app.state.config)
+
+            def _with_name(event) -> dict:
+                d = event.to_dict()
+                nuki_id = d.get("payload", {}).get("nukiId")
+                d["device_name"] = (
+                    d.get("payload", {}).get("name") or names.get(nuki_id) or ""
+                )
+                return d
+
             return JSONResponse({
-                "events": [event.to_dict() for event in events],
+                "events": [_with_name(event) for event in events],
                 "total_count": total_count,
                 "limit": limit,
                 "offset": offset,
@@ -424,6 +451,11 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse({"error": "Event logging is disabled"}, status_code=400)
         try:
             devices = request.app.state.clients.event_log.get_devices()
+            # Fill in friendly names for devices whose callbacks had no `name` (#115).
+            names = _device_name_map(request.app.state.config)
+            for d in devices:
+                if not d.get("name"):
+                    d["name"] = names.get(d.get("nukiId")) or ""
             return JSONResponse({"devices": devices})
         except Exception as e:
             logger.error("Failed to get event log devices: %s", e, exc_info=True)
@@ -439,8 +471,9 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             device_param = request.query_params.get("device_id")
             device_id = int(device_param) if device_param else None
             tz = request.app.state.config.event_log.timezone
+            names = _device_name_map(request.app.state.config)
             csv_content = request.app.state.clients.event_log.export_to_csv(
-                device_id=device_id, tz=tz
+                device_id=device_id, tz=tz, device_names=names
             )
 
             # Create temporary file (utf-8 so the BOM is preserved for Excel)

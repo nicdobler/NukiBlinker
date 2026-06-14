@@ -852,7 +852,13 @@ make build       # verify Docker image builds
 
 ### Event Validation Service (`event_validator.py`)
 
-Validates event timestamps before processing:
+Validates event timestamps before processing. The timestamp is extracted with a
+precedence that matches the Bridge payload semantics (#115): **`ringactionTimestamp`**
+(the actual ring time) is preferred, then `timestamp` / `time` / `created_at` /
+`eventTime`. The lock-state `timestamp` field is documented by the Bridge as the
+*retrieval time of the lock state* and is frequently stale, so using it for ring
+validation rejected genuine rings as "too old". When no timestamp is present
+(e.g. test events with an empty payload) the event is treated as valid.
 
 ```python
 class EventValidator:
@@ -967,12 +973,30 @@ class EventLogConfig(BaseModel):
     persist_to_file: bool = True
     file_path: str = "logs/event_log.db"   # SQLite DB (a legacy .json path is auto-migrated, see Unreleased)
 
+# #115: app log to a rotating file (weekly housekeeping)
+class LoggingConfig(BaseModel):
+    file_path: str = "logs/nukiblinker.log"  # empty disables file logging
+    rotation_when: str = "W0"                # TimedRotatingFileHandler `when` (weekly, Monday)
+    backup_count: int = 4                    # old files kept
+
+# #115: NukiConfig also persists the selected device names so the Event Log can
+# label events by name (real callbacks carry no `name`):
+#   opener_name: str = ""
+#   lock_name: str = ""
+
 class AppConfig(BaseModel):
     # ... existing fields ...
     event_validation: EventValidationConfig = EventValidationConfig()
     night_mode: NightModeConfig = NightModeConfig()
     event_log: EventLogConfig = EventLogConfig()
+    logging: LoggingConfig = LoggingConfig()
 ```
+
+`setup_logging()` adds a `logging.handlers.TimedRotatingFileHandler` (in addition
+to the existing console `StreamHandler`) when `logging.file_path` is set, creating
+the parent directory under the `logs/` volume. `export_to_csv` gains a
+`Payload (JSON)` column, and `get_recent_events`/`get_devices` results are labelled
+with device names resolved from `nuki.opener_name`/`nuki.lock_name`.
 
 ### Updated Web UI API Routes
 

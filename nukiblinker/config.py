@@ -24,6 +24,10 @@ class NukiConfig(BaseModel):
     api_token: str = ""
     opener_id: int | None = None
     lock_id: int | None = None
+    # Friendly names for the configured devices (#115). Real callbacks carry no
+    # `name`, so these let the Event Log label events by name instead of nukiId.
+    opener_name: str = ""
+    lock_name: str = ""
     web_api_token: str = ""  # optional Nuki Web API token for name/trigger resolution
 
 
@@ -129,6 +133,17 @@ class DeduplicationConfig(BaseModel):
     window_seconds: int = 120  # suppress duplicate events within this window
 
 
+class LoggingConfig(BaseModel):
+    """Application log file settings (#115).
+
+    The app log is written to a rotating file under the mounted ``logs/`` volume
+    in addition to the console, with basic weekly housekeeping.
+    """
+    file_path: str = "logs/nukiblinker.log"  # empty disables file logging
+    rotation_when: str = "W0"                # TimedRotatingFileHandler `when` (weekly, Monday)
+    backup_count: int = 4                    # number of rotated files kept
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -147,6 +162,7 @@ class AppConfig(BaseModel):
     night_mode: NightModeConfig = Field(default_factory=NightModeConfig)
     event_log: EventLogConfig = Field(default_factory=EventLogConfig)
     deduplication: DeduplicationConfig = Field(default_factory=DeduplicationConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 def get_public_host(config: AppConfig) -> str:
