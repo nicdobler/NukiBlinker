@@ -30,6 +30,22 @@ git pull --ff-only
 #    - logs/ : event-log volume (logs/event_log.db lives here)
 #    - secrets.yaml : secrets file split out of config.yaml (#123)
 mkdir -p logs
+
+# Repair a Docker bind-mount artifact (#129): if a previous `up` ran before
+# secrets.yaml existed as a file, Docker created an empty *directory* in its
+# place, which crash-loops the container (IsADirectoryError). Stop the stack
+# and replace the directory with a file so the mount is recreated correctly.
+if [ -d secrets.yaml ]; then
+  echo "  secrets.yaml is a directory (Docker bind-mount artifact, #129) — repairing."
+  docker compose down 2>/dev/null || true
+  rmdir secrets.yaml 2>/dev/null || rm -rf secrets.yaml
+fi
+if [ -d config.yaml ]; then
+  echo "  config.yaml is a directory (Docker bind-mount artifact, #129) — repairing."
+  docker compose down 2>/dev/null || true
+  rmdir config.yaml 2>/dev/null || rm -rf config.yaml
+fi
+
 if [ ! -f secrets.yaml ]; then
   # Create an EMPTY secrets file (not a copy of secrets.example.yaml). On an
   # existing install the real secrets may still be inline in config.yaml; an

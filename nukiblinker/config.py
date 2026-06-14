@@ -253,8 +253,25 @@ def default_secrets_path(config_path: str | Path) -> Path:
 
 
 def _read_yaml_dict(path: Path) -> dict:
-    """Read a YAML file into a dict. Returns ``{}`` if missing/empty/invalid."""
-    if not path.exists():
+    """Read a YAML file into a dict. Returns ``{}`` if missing/empty/invalid.
+
+    Resilient to ``path`` being a *directory* (#129): Docker auto-creates a
+    bind-mount target as an empty directory when the host file does not exist
+    at ``docker compose up`` time, which previously crashed startup with
+    ``IsADirectoryError``. A directory is treated as "no usable file" and a
+    clear, actionable error is logged instead of raising.
+    """
+    if not path.is_file():
+        if path.is_dir():
+            logger.error(
+                "%s is a directory, not a file — this is a Docker bind-mount "
+                "artifact created when the host file was missing at "
+                "'docker compose up'. Stop the stack, remove the directory, "
+                "recreate it as a file, and restart: "
+                "`docker compose down && rmdir %s && touch %s && docker compose up -d` "
+                "(or re-run ./update.sh). Continuing without it.",
+                path, path, path,
+            )
         return {}
     text = path.read_text(encoding="utf-8").strip()
     if not text:
@@ -333,8 +350,15 @@ def load_config(path: str | Path, secrets_path: str | Path | None = None) -> App
     path = Path(path)
     secrets_path = Path(secrets_path) if secrets_path else default_secrets_path(path)
 
-    if not path.exists():
-        logger.warning("Config file %s not found — using defaults", path)
+    if not path.is_file():
+        if path.is_dir():
+            logger.error(
+                "Config file %s is a directory, not a file — likely a Docker "
+                "bind-mount artifact (#129). Using defaults. Replace it with a "
+                "file and restart (re-run ./update.sh).", path,
+            )
+        else:
+            logger.warning("Config file %s not found — using defaults", path)
         data: dict = {}
     else:
         text = path.read_text(encoding="utf-8").strip()
