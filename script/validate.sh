@@ -6,7 +6,7 @@
 #
 # Usage:
 #   make validate                    # interactive branch picker
-#   ./scripts/validate.sh feat/x     # validate a specific branch directly
+#   ./script/validate.sh feat/x      # validate a specific branch directly
 
 set -euo pipefail
 

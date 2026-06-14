@@ -1,6 +1,6 @@
 #!/bin/bash
 # Delete local branches whose remote tracking branch is gone.
-# Usage: ./scripts/cleanup-branches.sh [--dry-run]
+# Usage: ./script/cleanup-branches.sh [--dry-run]
 
 set -e
 
