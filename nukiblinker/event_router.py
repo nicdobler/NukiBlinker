@@ -103,13 +103,14 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
             for entry in entries:
                 name = entry.get("name")
                 if name:
-                    trigger = entry.get("trigger")
+                    resolved_trigger = entry.get("trigger")
                     logger.info(
                         "Resolved person via Web API: name=%s trigger=%s(%s) source=%s",
-                        name, trigger, TRIGGER_NAMES.get(trigger, "unknown"),
+                        name, resolved_trigger,
+                        TRIGGER_NAMES.get(resolved_trigger, "unknown"),
                         entry.get("source"),
                     )
-                    return {"name": name, "trigger": trigger}
+                    return _result(name)
             # No named entry. Surface the most recent trigger for observability
             # (#97) but still fall back to the bridge log for a name.
             if entries:

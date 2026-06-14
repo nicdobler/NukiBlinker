@@ -179,6 +179,23 @@ class TestResolvePerson:
         nuki.get_last_log.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_web_api_named_entry_without_trigger_omits_trigger_key(self):
+        """#145: a named Web API entry with no trigger omits the trigger key.
+
+        Both resolution paths must produce a consistent context dict: the
+        ``trigger`` key is present only when known, never as an explicit None.
+        """
+        nuki = AsyncMock()
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Nico", "trigger": None, "source": 1},
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result == {"name": "Nico"}
+        assert "trigger" not in result
+        nuki.get_last_log.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_web_api_empty_falls_back_to_bridge_log(self):
         nuki = AsyncMock()
         nuki.get_last_log.return_value = {"name": "Elena"}
