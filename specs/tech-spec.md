@@ -268,15 +268,14 @@ Dev: `black`, `flake8`, `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for `
 | Environment | Role |
 |---|---|
 | Work laptop (Windows) | Code only. No testing, no Poetry, no Docker. |
-| Personal Mac | `make test` + `make lint` (unit tests, mocked). `make runLocal` for real-device testing. |
-| GitHub Actions | CI: lint → test. |
+| GitHub Actions | **Sole test gate**: lint → test on push/PR. |
 | Mini PC (Windows + WSL2) | Production: `git pull && docker compose build && up -d`. |
 
-### Testing on Mac
+### Testing in CI
 
-- **`make test`** — Unit/integration tests with mocked HTTP. No real devices needed.
-- **`make runLocal`** — Real-device testing. Direct LAN access, mDNS works, HomeKit advertising works. Best for end-to-end validation.
-- **`make build`** — Verify Docker image builds. Use `make runLocal` for real-device testing.
+- Verification happens **exclusively** in GitHub Actions CI — there is no local test environment.
+- CI runs `make lint` + `make test` (unit/integration tests with mocked HTTP) on every push/PR.
+- The agent works autonomously: push branch → poll CI → read failing logs → fix root cause → re-push, until CI is green.
 
 ## Event Flow
 

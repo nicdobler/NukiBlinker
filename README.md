@@ -464,30 +464,21 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 
 | Command | Description | Where |
 |---|---|---|
-| `make test` | Run pytest with coverage | Mac / CI |
-| `make lint` | Run flake8 | Mac / CI |
-| `make format` | Show Black diff | Mac |
-| `make install` | Install/update deps | Mac |
-| `make runLocal` | Run locally (real devices) | Mac |
-| `make build` | Build Docker image | Mac |
-| `make run-tests` | Lint + tests on the current branch | Mac |
-| `make validate` | Pick a branch (menu or arg) → checkout → install → run-tests | Mac |
-| `make cleanup` | Return to main, pull, prune merged local branches | Mac |
+| `make lint` | Run flake8 | CI |
+| `make test` | Run pytest with coverage | CI |
+| `make build` | Build Docker image | Mini PC (prod) |
 
-> **Note**: No testing or building on the work laptop. Code only.
+> **Note**: All testing and linting run in **GitHub Actions CI** only. No testing, linting, Poetry, or Docker on the work laptop — code only.
 
-### Branch workflow (Mac)
+### Branch workflow (CI as the test gate)
 
-```sh
-make run-tests                         # validate the branch you're already on
-make validate                          # fetch + pick a branch + checkout + validate
-./scripts/validate.sh feat/my-branch   # (or validate a specific branch directly)
-make cleanup                           # after the PR is merged: back to main + prune
+```
+push feat/my-branch  →  GitHub Actions runs lint + test
+     →  CI green  →  open PR  →  merge to main
 ```
 
-`make validate` fetches with prune, lets you pick a branch, checks it out,
-installs deps, and runs `make run-tests` (lint + tests). Once the PR is merged on
-GitHub, `make cleanup` switches to `main`, pulls, and deletes merged local branches.
+Verification happens exclusively in CI. Push the branch, let GitHub Actions run
+`make lint` + `make test`, read failing job logs, fix, and re-push until CI is green.
 
 ### Tech Stack
 
