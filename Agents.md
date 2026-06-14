@@ -72,7 +72,19 @@ Summarize your understanding before proposing changes.
   no local tests. CI is still the sole validation gate (Rule 5).
 - One branch = one worktree = one agent. Assign distinct module/file areas to
   minimize merge conflicts. Merge one branch at a time, then rebase the rest.
-- Use the `/worktree` workflow to drive this end to end.
+- Use the `/worktree` workflow to drive worktree lifecycle by hand.
+
+### Multi-issue orchestration (one command)
+
+- To process several issues at once, run `/orchestrate <issue numbers>` from the
+  **orchestrator window** (the main checkout on `main`). The orchestrator reads
+  each issue, decides **parallel-safe vs sequential** (disjoint file sets →
+  parallel; overlap/dependency → chained), isolates each in its own worktree+
+  branch, implements, pushes, runs the autonomous CI loop, and merges in order
+  with rebases — then cleans up and documents.
+- A single Cascade conversation executes issues **sequentially** but **isolated**
+  per branch. True wall-clock concurrency still requires one Windsurf window per
+  worktree running `/new-feature` or `/fix-bug`.
 
 ## 5. Verification Before Done (CI is the gate)
 
@@ -156,6 +168,7 @@ Available workflows:
 - `/fix-bug` — Diagnose -> root cause -> fix -> regression test -> document.
 - `/add-tests` — Analyze coverage gaps -> generate tests -> verify.
 - `/worktree` — Launch independent agents in parallel via git worktrees (one folder + branch per agent, push-only).
+- `/orchestrate` — One-command multi-issue driver: auto-decide parallel vs sequential, isolate each issue in a worktree, implement, push, watch CI, merge in order.
 
 ## Guardrails
 

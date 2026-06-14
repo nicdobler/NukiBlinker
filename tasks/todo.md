@@ -426,5 +426,24 @@ later session can just request "launch N subagents".
 - [x] `README.md` Development: "Parallel agents (git worktrees)" section
 - [x] `CHANGELOG.md` `[Unreleased]` → Added
 - [x] Initial mount: created `../NukiBlinker-wt/` root + validated script
+- [x] **CI**: green (PR #131)
+- [x] Merge PR #131 (squash) + cleanup
+
+---
+
+## `/orchestrate` — one-command multi-issue driver
+
+**Branch**: `chore/orchestrate-workflow` | **PR**: _pending_
+
+Context: User wants a fully automatic flow — "trabaja las issues X Y Z" — where
+the orchestrator (this Cascade window on `main`) decides parallel vs sequential,
+isolates each issue in a worktree, implements, pushes, watches CI, and merges in
+order. Honest limit stated: one Cascade runs issues sequentially but isolated per
+branch; wall-clock concurrency needs one window per worktree.
+
+- [x] `.windsurf/workflows/orchestrate.md` (gather → batch → worktree → implement → push → CI loop → merge → cleanup)
+- [x] `Agents.md`: Subagent Strategy → multi-issue orchestration + workflow list
+- [x] `README.md` Development: orchestrate note
+- [x] `CHANGELOG.md` `[Unreleased]` → Added
 - [ ] **CI**: lint + test (sole validation env)
-- [ ] Merge PR (Approval mode — awaiting go-ahead)
+- [ ] Merge PR

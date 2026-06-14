@@ -509,6 +509,11 @@ Each agent only edits and pushes its branch — CI remains the sole test gate.
 Conflicts surface only at merge time, never between folders. See the `/worktree`
 workflow in `.windsurf/workflows/`.
 
+For multi-issue work, the `/orchestrate` workflow takes a list of issue numbers,
+auto-decides which are parallel-safe vs sequential, isolates each in a worktree,
+implements them, pushes, watches CI, and merges in order — driven from one
+command in the orchestrator window.
+
 ### Tech Stack
 
 - **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
