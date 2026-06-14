@@ -2,18 +2,24 @@
 
 ---
 
-## #149 Support-bundle GitHub-issue 400 — diagnosability ✅ DONE
+## #149 Support-bundle GitHub-issue 400 — TWO PRs ✅ DONE
 
-**Branch**: `fix/149-support-bundle-400-diagnostics` | **PR**: #151 (squash-merged) | Issue closed.
+**PRs**: #151 (diagnosability), #153 (real root-cause fix) | both squash-merged | Issue closed.
 
-Bug: `POST /api/support/github-issue` returned a bare 400 with no server-side
-reason. Root cause = non-diagnosable 400s: both 400 paths (missing token,
-`SupportBundleError`) logged nothing, and `build_and_send` discarded GitHub's
-response body (terse `"GitHub API error (HTTP 404)"`). Fix: log WARNING on both
-paths; new `_github_error_detail()` surfaces GitHub `message`/`errors`/body in
-the error; dedicated 404 message names the target repo (common cause: wrong
-`github.repo` default or token lacking access). Regression tests added.
-Workflow: `/orchestrate #149` → single issue, sequential worktree, Auto wrap-up.
+Round 1 (#151): bare 400 with no server-side reason. Fixed diagnosability — log
+WARNING on both 400 paths; new `_github_error_detail()` surfaces GitHub
+`message`/`errors`/body; dedicated 404 message. This made the real cause visible.
+
+Round 2 (#153): user reopened with the log the fix surfaced —
+`HTTP 409 Repository rule violations found · Changes must be made through a pull
+request`. **Real root cause**: the bundle ZIP was committed **directly to the
+default branch** (Contents API), which the repo's branch ruleset blocks. Fix:
+commit to a dedicated **`support-bundles`** branch via new
+`GitHubClient.ensure_branch()` (auto-created from default HEAD); `commit_file`
+takes a `branch` param; dedicated 409 message; injectable httpx transport for
+tests (`httpx.MockTransport`). Workflow: `/orchestrate #149`, sequential
+worktree, Auto wrap-up. Lesson: surfacing the real error first (round 1) was
+what made the genuine fix (round 2) possible.
 
 ---
 
