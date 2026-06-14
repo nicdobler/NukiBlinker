@@ -280,6 +280,61 @@ class TestNightMode:
             assert next_change.minute == 0
             assert next_change.date().day == 16  # Next day
 
+    def test_get_next_change_time_same_day_range(self):
+        """Next change is correct for a range that does not cross midnight."""
+        night_mode = NightMode(start_time="01:00", end_time="05:00", grace_minutes=0)
+
+        # Before the window (00:30) -> next change is today's start (01:00).
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 0, 30))
+            nc = night_mode.get_next_change_time()
+            assert (nc.day, nc.hour, nc.minute) == (15, 1, 0)
+
+        # Inside the window (02:30) -> next change is today's end (05:00).
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 2, 30))
+            nc = night_mode.get_next_change_time()
+            assert (nc.day, nc.hour, nc.minute) == (15, 5, 0)
+
+        # After the window (10:00) -> next change is tomorrow's start (01:00).
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 10, 0))
+            nc = night_mode.get_next_change_time()
+            assert (nc.day, nc.hour, nc.minute) == (16, 1, 0)
+
+    def test_get_next_change_time_grace_boundary_consistency(self):
+        """Inside the grace window, active state and next_change must agree.
+
+        With start 22:00 + 5 min grace, 21:57 is already night. The next
+        change must therefore be when night *ends*, grace-adjusted to
+        07:05 (not the raw 07:00).
+        """
+        night_mode = NightMode(start_time="22:00", end_time="07:00", grace_minutes=5)
+
+        # 21:57: within the pre-start grace -> already night.
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 21, 57))
+            assert night_mode.is_night_time() is True
+            nc = night_mode.get_next_change_time()
+            # Night ends next day at end_time + grace = 07:05.
+            assert (nc.day, nc.hour, nc.minute) == (16, 7, 5)
+
+        # 21:50: before the grace window -> still day, next change is the
+        # grace-adjusted start (21:55) today.
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 21, 50))
+            assert night_mode.is_night_time() is False
+            nc = night_mode.get_next_change_time()
+            assert (nc.day, nc.hour, nc.minute) == (15, 21, 55)
+
+        # 07:03: within the post-end grace -> still night, next change is the
+        # grace-adjusted end (07:05) today.
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(2023, 6, 15, 7, 3))
+            assert night_mode.is_night_time() is True
+            nc = night_mode.get_next_change_time()
+            assert (nc.day, nc.hour, nc.minute) == (15, 7, 5)
+
     def test_get_next_change_time_disabled(self):
         """Test getting next change time when night mode is disabled."""
         night_mode = NightMode(start_time="invalid", end_time="07:00")
