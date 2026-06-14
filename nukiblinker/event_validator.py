@@ -154,7 +154,12 @@ class EventValidator:
         elif isinstance(timestamp, str):
             # Try ISO format first
             try:
-                return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                # Normalize naive datetimes (no tz info) to UTC so they can be
+                # compared against the timezone-aware ``now`` in validate_event;
+                # otherwise the subtraction raises TypeError and is swallowed by
+                # the fail-safe, silently accepting stale events (#143).
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
             except ValueError:
                 # Try Unix timestamp as string
                 timestamp_float = float(timestamp)

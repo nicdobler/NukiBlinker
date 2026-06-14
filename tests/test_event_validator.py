@@ -281,3 +281,31 @@ class TestEventValidator:
 
         assert extracted is not None
         assert abs((extracted - (now - timedelta(seconds=10))).total_seconds()) < 1
+
+    def test_naive_iso_string_is_normalized_to_utc(self):
+        """#143: a naive ISO string (no tz) is parsed as UTC, not left naive."""
+        validator = EventValidator()
+        payload = {"timestamp": "2026-06-14T10:00:00"}
+
+        extracted = validator._extract_timestamp(payload)
+
+        assert extracted is not None
+        assert extracted.tzinfo == timezone.utc
+
+    def test_naive_iso_string_old_event_is_rejected(self):
+        """#143: an old naive ISO timestamp must be rejected, not fail-safe-accepted.
+
+        Previously the naive datetime caused a TypeError in ``now - event_time``
+        that the broad ``except`` swallowed, returning valid=True and silently
+        disabling stale-event protection.
+        """
+        validator = EventValidator(max_delay_seconds=60)
+        # 2 minutes ago, expressed as a naive ISO string (no timezone info).
+        naive_old = (datetime.now(timezone.utc) - timedelta(seconds=120)).replace(tzinfo=None)
+        payload = {"timestamp": naive_old.isoformat()}
+
+        result = validator.validate_event(payload)
+
+        assert result.valid is False
+        assert result.delay_seconds == pytest.approx(120.0, rel=1e-1)
+        assert "Event too old" in result.reason
