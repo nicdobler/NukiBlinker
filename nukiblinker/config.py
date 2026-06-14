@@ -146,6 +146,19 @@ class DeduplicationConfig(BaseModel):
     window_seconds: int = 120  # suppress duplicate events within this window
 
 
+class GithubConfig(BaseModel):
+    """GitHub integration settings (#124).
+
+    Used by the support-bundle feature (#117) to open an issue with a diagnostic
+    bundle. ``token`` is a PAT (scopes ``contents:write`` + ``issues:write``)
+    and is persisted as a secret in ``secrets.yaml`` — never inline in
+    ``config.yaml``.
+    """
+    token: str = ""                       # PAT; secret (see SECRET_FIELDS)
+    repo: str = "nicdobler/NukiBlinker"   # owner/repo target for issues
+    default_window_minutes: int = 15      # default +/- window for the bundle
+
+
 class LoggingConfig(BaseModel):
     """Application log file settings (#115).
 
@@ -176,6 +189,7 @@ class AppConfig(BaseModel):
     event_log: EventLogConfig = Field(default_factory=EventLogConfig)
     deduplication: DeduplicationConfig = Field(default_factory=DeduplicationConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    github: GithubConfig = Field(default_factory=GithubConfig)
 
 
 def get_public_host(config: AppConfig) -> str:
@@ -218,6 +232,7 @@ SECRET_FIELDS: tuple[tuple[str, str], ...] = (
     ("nuki", "api_token"),
     ("nuki", "web_api_token"),
     ("hue", "api_key"),
+    ("github", "token"),
 )
 
 # Value used by the web UI to mask a secret on GET; it must never be persisted

@@ -88,3 +88,9 @@ logging:
   file_path: "logs/nukiblinker.log"  # on the ./logs volume; empty disables file logging
   rotation_when: "W0"                # weekly (Monday); see TimedRotatingFileHandler `when`
   backup_count: 4                    # number of rotated files kept
+
+# GitHub integration - used by the "Send support bundle" feature (#117).
+# The token is a secret and lives in secrets.yaml (see secrets.example.yaml).
+github:
+  repo: "nicdobler/NukiBlinker"      # owner/repo target for support-bundle issues
+  default_window_minutes: 15         # default +/- window around the reference point

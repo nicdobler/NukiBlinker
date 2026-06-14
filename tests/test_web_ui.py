@@ -25,6 +25,7 @@ def app(tmp_path):
     config = AppConfig()
     config.nuki.api_token = "secret-token"
     config.hue.api_key = "secret-key"
+    config.github.token = "ghp-secret"
     clients = _make_clients()
     application = create_app(config, clients)
     config_path = str(tmp_path / "config.yaml")
@@ -46,6 +47,13 @@ class TestGetConfig:
         data = r.json()
         assert data["nuki"]["api_token"] == "***"
         assert data["hue"]["api_key"] == "***"
+        assert data["github"]["token"] == "***"
+
+    def test_includes_github_defaults(self, client):
+        """#124: General/Settings tab exposes the github section."""
+        data = client.get("/api/config").json()
+        assert data["github"]["repo"] == "nicdobler/NukiBlinker"
+        assert data["github"]["default_window_minutes"] == 15
 
     def test_includes_event_rules(self, client):
         r = client.get("/api/config")
@@ -75,6 +83,28 @@ class TestPutConfig:
         assert r.status_code == 200
         assert app.state.config.nuki.api_token == "secret-token"
         assert app.state.config.hue.api_key == "secret-key"
+
+    def test_omitted_github_section_preserves_token(self, app, client):
+        """#124: a PUT without the github section keeps the stored PAT."""
+        r = client.put("/api/config", json={"server": {"port": 8080}})
+        assert r.status_code == 200
+        assert app.state.config.github.token == "ghp-secret"
+
+    def test_masked_github_token_does_not_overwrite(self, app, client):
+        """#124: sending github.token='***' keeps the stored PAT but updates repo."""
+        r = client.put("/api/config", json={
+            "github": {"token": "***", "repo": "acme/widgets", "default_window_minutes": 30},
+        })
+        assert r.status_code == 200
+        assert app.state.config.github.token == "ghp-secret"
+        assert app.state.config.github.repo == "acme/widgets"
+        assert app.state.config.github.default_window_minutes == 30
+
+    def test_new_github_token_updates_stored(self, app, client):
+        """#124: a real new PAT replaces the stored one."""
+        r = client.put("/api/config", json={"github": {"token": "ghp-new"}})
+        assert r.status_code == 200
+        assert app.state.config.github.token == "ghp-new"
 
 
 class TestStatus:

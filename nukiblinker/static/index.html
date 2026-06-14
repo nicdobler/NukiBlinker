@@ -76,6 +76,7 @@
         <button class="tab" onclick="switchTab(this,'speakers')">Speakers</button>
         <button class="tab" onclick="switchTab(this,'homekit')">HomeKit</button>
         <button class="tab" onclick="switchTab(this,'events')">Events</button>
+        <button class="tab" onclick="switchTab(this,'general')">General</button>
         <button class="tab" onclick="switchTab(this,'event-log')">Event Log</button>
     </nav>
 
@@ -387,6 +388,53 @@
         </div>
     </div>
 
+    <!-- GENERAL / SETTINGS -->
+    <div id="panel-general" class="panel">
+        <div class="card">
+            <h2>Application Logging</h2>
+            <p class="help" style="margin-bottom:0.75rem">Where the application log is written on disk (under the mounted <code>logs/</code> volume) and how it rotates.</p>
+            <div class="grid">
+                <div>
+                    <label>Log file path</label>
+                    <input id="loggingFilePath" type="text" placeholder="logs/nukiblinker.log">
+                    <p class="help">Leave empty to disable file logging (console only).</p>
+                </div>
+                <div>
+                    <label>Rotation</label>
+                    <input id="loggingRotationWhen" type="text" placeholder="W0">
+                    <p class="help">Python <code>TimedRotatingFileHandler</code> "when" (e.g. <code>W0</code> = weekly on Monday, <code>midnight</code> = daily).</p>
+                </div>
+                <div>
+                    <label>Backups kept</label>
+                    <input id="loggingBackupCount" type="number" min="0" max="52" value="4">
+                    <p class="help">Number of rotated log files to retain.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>GitHub Integration</h2>
+            <p class="help" style="margin-bottom:0.75rem">Used by the "Send support bundle" feature to open an issue with diagnostics. The token needs <code>contents:write</code> + <code>issues:write</code> scopes and is stored as a secret.</p>
+            <div class="grid">
+                <div>
+                    <label>Repository</label>
+                    <input id="githubRepo" type="text" placeholder="nicdobler/NukiBlinker">
+                    <p class="help">Target repository in <code>owner/repo</code> format.</p>
+                </div>
+                <div>
+                    <label>Personal Access Token <span class="opt">(secret)</span></label>
+                    <input id="githubToken" type="password" autocomplete="off" placeholder="ghp_…">
+                    <p class="help">Leave as <code>***</code> to keep the stored token unchanged.</p>
+                </div>
+                <div>
+                    <label>Default window (minutes)</label>
+                    <input id="githubWindowMinutes" type="number" min="1" max="1440" value="15">
+                    <p class="help">Default ± time window around the reference point for a bundle.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- EVENT LOG -->
     <div id="panel-event-log" class="panel">
         <div class="card">
@@ -544,6 +592,12 @@ async function loadBaseConfig() {
         populateEventRule('ring', d.events?.ring);
         populateEventRule('rto', d.events?.ring_to_open);
         populateEventRule('door', d.events?.door_opened);
+        setVal('loggingFilePath', d.logging?.file_path);
+        setVal('loggingRotationWhen', d.logging?.rotation_when || 'W0');
+        setVal('loggingBackupCount', d.logging?.backup_count ?? 4);
+        setVal('githubRepo', d.github?.repo || 'nicdobler/NukiBlinker');
+        setVal('githubToken', d.github?.token);
+        setVal('githubWindowMinutes', d.github?.default_window_minutes ?? 15);
         showMsg('Configuration loaded', true);
     } catch (e) { console.error(e); showMsg('Failed to load config', false); }
 }
@@ -561,6 +615,10 @@ async function saveBaseConfig() {
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
         server: { host: '0.0.0.0', port: 8080, public_host: val('publicHost') },
         events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door') },
+        logging: { file_path: val('loggingFilePath'), rotation_when: val('loggingRotationWhen') || 'W0',
+            backup_count: parseInt(val('loggingBackupCount')) || 0 },
+        github: { repo: val('githubRepo') || 'nicdobler/NukiBlinker', token: val('githubToken'),
+            default_window_minutes: parseInt(val('githubWindowMinutes')) || 15 },
     };
     try {
         const d = await (await fetch(`${API}/config`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) })).json();

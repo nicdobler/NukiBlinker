@@ -1104,10 +1104,24 @@ class EventLogConfig(BaseModel):
     # ... existing ...
     timezone: str = "Europe/Madrid"  # IANA tz for CSV Date/Time columns
 
+class GithubConfig(BaseModel):       # #124 — General/Settings tab; backs #117
+    token: str = ""                  # PAT (contents:write + issues:write); SECRET
+    repo: str = "nicdobler/NukiBlinker"
+    default_window_minutes: int = 15
+
 class AppConfig(BaseModel):
     # ... existing ...
     deduplication: DeduplicationConfig = DeduplicationConfig()
+    github: GithubConfig = GithubConfig()
 ```
+
+**General/Settings tab (#124)**: the web UI groups application-wide settings
+(`logging.*` and the new `github.*`) under a **General** tab. `github.token`
+is added to `SECRET_FIELDS`, so `save_config` writes it to `secrets.yaml` and
+`GET /api/config` masks it as `***`. `PUT /api/config` preserves the `github`
+section when omitted and never overwrites the stored PAT with a masked/empty
+value — identical to the Nuki/Hue secret handling. The `logging` + `github`
+sections ride the existing base-config save path (no new endpoints).
 
 ## New Features (Unreleased)
 
