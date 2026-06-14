@@ -23,6 +23,13 @@ class TestDefaults:
         assert cfg.hue.lights == []
         assert cfg.speakers.volume == 0.5
 
+    def test_github_defaults(self):
+        """#124: General/Settings adds a github section with sensible defaults."""
+        cfg = AppConfig()
+        assert cfg.github.token == ""
+        assert cfg.github.repo == "nicdobler/NukiBlinker"
+        assert cfg.github.default_window_minutes == 15
+
     def test_event_rules_defaults(self):
         cfg = AppConfig()
         assert cfg.events.ring.blink.mode == "long"
@@ -236,6 +243,24 @@ class TestSecretSeparation:
         reloaded = load_config(config_path)
         assert reloaded.nuki.api_token == "tok"
         assert reloaded.hue.api_key == "key"
+
+    def test_github_token_persisted_as_secret(self, tmp_path):
+        """#124: github.token lands in secrets.yaml, never inline in config.yaml."""
+        cfg = AppConfig()
+        cfg.github.token = "ghp-secret"
+        cfg.github.repo = "acme/widgets"
+        config_path = tmp_path / "config.yaml"
+        save_config(cfg, config_path)
+
+        config_data = self._read(config_path)
+        secrets_data = self._read(default_secrets_path(config_path))
+        # Non-secret github settings stay in config.yaml
+        assert config_data["github"]["repo"] == "acme/widgets"
+        assert "token" not in config_data.get("github", {})
+        # The token lives in secrets.yaml
+        assert secrets_data["github"]["token"] == "ghp-secret"
+        # Round-trip overlays it back
+        assert load_config(config_path).github.token == "ghp-secret"
 
     def test_empty_secret_does_not_overwrite_stored(self, tmp_path):
         config_path = tmp_path / "config.yaml"

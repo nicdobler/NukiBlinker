@@ -116,6 +116,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             data["nuki"]["web_api_token"] = "***"
         if data.get("hue", {}).get("api_key"):
             data["hue"]["api_key"] = "***"
+        if data.get("github", {}).get("token"):
+            data["github"]["token"] = "***"
         return JSONResponse(data)
 
     @router.put("/config")
@@ -141,6 +143,13 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             # Preserve server config if not provided by the UI
             if "server" not in body:
                 body["server"] = current.server.model_dump()
+            # GitHub section (#124): preserve when omitted and never overwrite
+            # the stored PAT with a masked/empty value.
+            if "github" not in body:
+                body["github"] = current.github.model_dump()
+            github = body["github"]
+            if github.get("token") in ("***", ""):
+                github["token"] = current.github.token
             new_config = AppConfig.model_validate(body)
             request.app.state.config = new_config
             save_config(new_config, request.app.state.config_path)
