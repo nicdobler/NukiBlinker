@@ -2,6 +2,20 @@
 
 ---
 
+## #171 Ignored Nuki callbacks not visible in Docker logs — DONE
+
+**Branch**: fix/171-log-all-callback-events | **PR**: #172 | CI green
+
+**Bug**: `server.py` logged "Event ignored (no matching rule)" at DEBUG level, making status-update callbacks (e.g. Opener `state=1 ringactionState=False` reset after a ring) invisible in Docker logs even though they were correctly stored in the event log DB.
+
+**Root Cause**: `logger.debug(...)` on `server.py:67` — should be `logger.info`.
+
+**Fix**: One-line change: `logger.debug` → `logger.info`. All received callbacks are now visible in Docker logs at INFO level.
+
+**Regression Test**: `test_ignored_event_logged_at_info_level` in `test_server.py`.
+
+---
+
 ## Workflow update: docs in same PR ✅ DONE
 
 **Branch**: docs/update-doc-workflow-process | **PR**: #167 | CI green
