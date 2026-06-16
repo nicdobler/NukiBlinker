@@ -2,6 +2,21 @@
 
 ---
 
+## #157 Event mapping corrections ✅ DONE
+
+**Branch**: fix/157-event-mapping | **PR**: #158 | squash-merged to main.
+
+Four bugs fixed in one commit:
+
+1. **Sensor skip in resolve_person (Web API)** — door-sensor entries (`source=2`) were masking the real opener's name. Now skips leading sensor entries to find the first non-sensor entry; stops there (preserving #155 anti-stale protection).
+2. **RTO fallback dedup** — when `ringactionTimestamp` is absent from the `ring_to_open` bridge callback, a new `_rto_fallback_key (nukiId, "rto_seen")` suppresses the paired `ring`. Only registered on `ring_to_open`, never on `ring`, so standalone rings (visitor buzzing) pass through.
+3. **Opener diagnostic logging** — ignored Opener callbacks now log at INFO with full payload (state, ringactionState, ringactionTimestamp) instead of DEBUG. Enables diagnosis of app-open events (Irlene scenario).
+4. **Tests** — 6 new/updated tests in `test_deduplication.py` and `test_event_router.py`.
+
+Open: Paso 5 (NukiWeb webhook for reliable app-open detection from Opener) remains out of scope — requires spec update before implementation.
+
+---
+
 ## #149 Support-bundle GitHub-issue 400 — TWO PRs ✅ DONE
 
 **PRs**: #151 (diagnosability), #153 (real root-cause fix) | both squash-merged | Issue closed.
