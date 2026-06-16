@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/orchestrate` workflow (multi-issue driver)**: a one-command Windsurf workflow that takes a list of GitHub issue numbers, reads each issue, decides which are parallel-safe (disjoint file sets) vs sequential (overlap/dependency), isolates each in its own git worktree+branch, implements them (via `/new-feature` or `/fix-bug`), pushes, runs the autonomous CI loop, and merges in order with rebases — then cleans up and documents. Documented in `Agents.md` (Subagent Strategy + workflow list) and `README.md`.
 - **Parallel-agent tooling (git worktrees)**: new `script/worktree.ps1` (and `script/worktree.sh` for Linux/WSL2) with `new`/`list`/`remove` subcommands to manage git worktrees in a sibling `../NukiBlinker-wt/<branch-slug>` folder, so multiple agents can work in parallel on isolated working trees, each on its own branch from `origin/main`. Added the `/worktree` Windsurf workflow and documented the strategy in `Agents.md` (Subagent Strategy) and `README.md` (Development). Agents only edit and push; CI remains the sole test gate.
 
+### Fixed
+- **#157 — Correct event mapping: sensor skip, RTO fallback dedup, opener diagnostics** (PR #158):
+  - `resolve_person` (Web API path) now skips leading door-sensor log entries (`source=2`, no user identity) to find the real opener's name. Previously `entries[0]` could be a nameless sensor entry that pushed Nico/Ele/Irlene's identity out of sight.
+  - Preserves the #155 anti-stale fix: stops at the first *non-sensor* entry — if that entry is also nameless the open is genuinely anonymous and no older entry is used.
+  - Deduplicator: added `_rto_fallback_key` for RTO pairs when `ringactionTimestamp` is absent from the bridge callback. A `ring` following an accepted `ring_to_open` from the same device is now suppressed within the window even without a shared timestamp. Standalone rings (no prior `ring_to_open`) are never suppressed by this key.
+  - Ignored Opener callbacks now log at INFO level with full payload, enabling diagnosis of app-open events (Irlene scenario) in production logs.
+
 ### Removed
 - **#106**: Removed the Apple HomePod / AirPlay 2 audio integration (`airplay_client.py`, `pyatv` dependency, `speakers.airplay` config field, AirPlay discovery, and the AirPlay card in the web UI). HomePod RTSP `SETUP` timed out unreliably and produced no audio; the masked `'set' object can't be awaited` warning behind it was the already-fixed #101 bug. HomePod owners are still notified via the HomeKit doorbell. Chromecast / Google Nest is now the only speaker audio channel. Existing `speakers.airplay` keys in `config.yaml` are ignored.
 
