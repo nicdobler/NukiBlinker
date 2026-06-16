@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Parallel-agent tooling (git worktrees)**: new `script/worktree.ps1` (and `script/worktree.sh` for Linux/WSL2) with `new`/`list`/`remove` subcommands to manage git worktrees in a sibling `../NukiBlinker-wt/<branch-slug>` folder, so multiple agents can work in parallel on isolated working trees, each on its own branch from `origin/main`. Added the `/worktree` Windsurf workflow and documented the strategy in `Agents.md` (Subagent Strategy) and `README.md` (Development). Agents only edit and push; CI remains the sole test gate.
 
 ### Fixed
+- **#160 — Smart Lock state 7 (unlatching) now triggers door_opened**: previously only state 5 (unlatched) was recognized, causing "door opened" events to be missed when the lock was actively unlatching (state 7). Both states now correctly trigger the notification.
 - **#157 — Correct event mapping: sensor skip, RTO fallback dedup, opener diagnostics** (PR #158):
   - `resolve_person` (Web API path) now skips leading door-sensor log entries (`source=2`, no user identity) to find the real opener's name. Previously `entries[0]` could be a nameless sensor entry that pushed Nico/Ele/Irlene's identity out of sight.
   - Preserves the #155 anti-stale fix: stops at the first *non-sensor* entry — if that entry is also nameless the open is genuinely anonymous and no older entry is used.

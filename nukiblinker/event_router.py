@@ -23,6 +23,7 @@ _OPENER_STATE_RING_TO_OPEN = 7  # opening (door being opened)
 # Note: state 3 (unlocked) is deliberately NOT treated as door_opened —
 # unlocking without opening must not trigger notifications (#60).
 _LOCK_STATE_UNLATCHED = 5
+_LOCK_STATE_UNLATCHING = 7  # actively unlatching = door being opened (#160)
 
 # Person resolution retry — the bridge log lags behind the callback
 _RESOLVE_PERSON_ATTEMPTS = 3
@@ -63,7 +64,7 @@ def classify(payload: dict, config: AppConfig) -> str | None:
         if config.nuki.lock_id is not None and nuki_id != config.nuki.lock_id:
             logger.debug("Ignoring Smart Lock %s (filter: %s)", nuki_id, config.nuki.lock_id)
             return None
-        if state == _LOCK_STATE_UNLATCHED:
+        if state in (_LOCK_STATE_UNLATCHED, _LOCK_STATE_UNLATCHING):
             logger.info("Event classified: door_opened (Lock %s, state=%s)", nuki_id, state)
             return "door_opened"
         logger.debug("Ignoring Smart Lock state %s (nukiId=%s)", state, nuki_id)
