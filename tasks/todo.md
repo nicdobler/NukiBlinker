@@ -4,7 +4,7 @@
 
 ## #162 Fix container timezone — logs show local time ✅ IN PROGRESS
 
-**Branch**: fix/162-timezone | **PR**: TBD
+**Branch**: fix/162-timezone | **PR**: #168
 
 El contenedor Docker ejecutaba en UTC, mostrando logs con 2h de diferencia.
 Fix: Añadido `TZ=Europe/Madrid` y mount de `/etc/localtime` en `docker-compose.yml`.
