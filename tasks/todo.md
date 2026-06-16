@@ -48,18 +48,23 @@ restarted their CI → seen as PENDING). Finished manually: merged #147, rebased
 Source: `/review` of event pipeline (event_router, deduplication, event_validator,
 night_mode, notifier). Wrap-up mode: **Auto**. Execution: **real parallel** via
 `script/orchestrate-parallel.ps1 -Issues 143,144,145 -Wait -Merge` (one Windsurf
-window per issue; paste `/orchestrate-run` in each).
 
-- **#143** (bug, `fix/`): `event_validator` naive ISO timestamps → naive datetime
-  vs aware `now` raises `TypeError`, swallowed by fail-safe → validation silently
-  skipped. Fix: normalize naive → UTC. Add regression test.
-- **#144** (refactor, `feat/`): `night_mode.get_next_change_time` redundant
-  identical if/else branches + grace-period inconsistency with `is_night_time`.
-- **#145** (refactor, `feat/`): `resolve_person` Web-API path emits explicit
-  `trigger: None`; route through `_result()` so the key is omitted when unknown.
+---
 
-Batching: disjoint file sets (event_validator.py / night_mode.py / event_router.py)
-→ parallel-safe, merge in any order.
+## #160, #161, #162 — Orchestration ✅ DONE
+
+**PRs**: #163 (#160), #164 (#161), #165 (#162) — all squash-merged to `main`, issues closed.
+
+Batching decision:
+- **Sequential chain**: 160 → 161 (both touch `event_router.py`)
+- **Parallel batch**: 162 (independent — timezone in logs)
+
+Execution:
+1. `fix/160-door-opened` | **PR #163** | CI green | merged — Smart Lock state 7 (unlatching) now triggers door_opened
+2. `fix/161-nuki-web-logging` | **PR #164** | CI green | merged — Enhanced Nuki Web API logging for name resolution debugging
+3. `fix/162-timezone-log` | **PR #165** | CI green | merged — Log timestamps now include timezone offset
+
+Wrap-up mode: **Auto** — all PRs auto-merged after CI green.
 
 ---
 
