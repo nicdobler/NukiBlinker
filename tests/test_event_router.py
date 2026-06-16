@@ -70,6 +70,18 @@ class TestClassifySmartLock:
         payload = {"deviceType": 0, "nukiId": 200, "state": 3}
         assert classify(payload, AppConfig()) is None
 
+    def test_unlocked_with_door_sensor_opened(self):
+        """Regression #169: doorsensorState=3 triggers door_opened even when state=3."""
+        payload = {
+            "deviceType": 0,
+            "nukiId": 200,
+            "state": 3,
+            "stateName": "unlocked",
+            "doorsensorState": 3,
+            "doorsensorStateName": "door opened",
+        }
+        assert classify(payload, AppConfig()) == "door_opened"
+
     def test_unlatched(self):
         payload = {"deviceType": 0, "nukiId": 200, "state": 5}
         assert classify(payload, AppConfig()) == "door_opened"

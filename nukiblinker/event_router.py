@@ -25,6 +25,9 @@ _OPENER_STATE_RING_TO_OPEN = 7  # opening (door being opened)
 _LOCK_STATE_UNLATCHED = 5
 _LOCK_STATE_UNLATCHING = 7  # actively unlatching = door being opened (#160)
 
+# Door sensor states (doorsensorState field)
+_DOORSENSOR_DOOR_OPENED = 3  # door physically opened (#169)
+
 # Person resolution retry — the bridge log lags behind the callback
 _RESOLVE_PERSON_ATTEMPTS = 3
 _RESOLVE_PERSON_RETRY_SECONDS = 1.0
@@ -64,8 +67,14 @@ def classify(payload: dict, config: AppConfig) -> str | None:
         if config.nuki.lock_id is not None and nuki_id != config.nuki.lock_id:
             logger.debug("Ignoring Smart Lock %s (filter: %s)", nuki_id, config.nuki.lock_id)
             return None
-        if state in (_LOCK_STATE_UNLATCHED, _LOCK_STATE_UNLATCHING):
-            logger.info("Event classified: door_opened (Lock %s, state=%s)", nuki_id, state)
+        door_sensor = payload.get("doorsensorState")
+        is_door_opened = state in (_LOCK_STATE_UNLATCHED, _LOCK_STATE_UNLATCHING)
+        is_door_opened |= door_sensor == _DOORSENSOR_DOOR_OPENED  # #169
+        if is_door_opened:
+            logger.info(
+                "Event classified: door_opened (Lock %s, state=%s, doorsensorState=%s)",
+                nuki_id, state, door_sensor,
+            )
             return "door_opened"
         logger.debug("Ignoring Smart Lock state %s (nukiId=%s)", state, nuki_id)
         return None
