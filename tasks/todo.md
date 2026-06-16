@@ -2,6 +2,23 @@
 
 ---
 
+## #169 Smart Lock doorsensorState=3 should trigger door_opened — DONE
+
+**Branch**: fix/169-doorsensor-door-opened | **PR**: #170 | CI green
+
+**Bug**: Smart Lock events with `doorsensorState: 3` (door opened) were not triggering `door_opened` notifications when the lock `state` was 3 (unlocked) instead of 5/7 (unlatched).
+
+**Root Cause**: The `classify()` function only checked for lock states 5 (unlatched) and 7 (unlatching) but ignored the `doorsensorState` field.
+
+**Fix**:
+- Added `_DOORSENSOR_DOOR_OPENED = 3` constant
+- Updated Smart Lock classification to also check `doorsensorState == 3`
+- Enhanced logging to include doorsensorState in the classification message
+
+**Regression Test**: `test_unlocked_with_door_sensor_opened` verifies that a payload with `state: 3` and `doorsensorState: 3` correctly triggers `door_opened`.
+
+---
+
 ## #162 Fix container timezone — logs show local time ✅ DONE
 
 **Branch**: fix/162-timezone | **PR**: #168 | CI green
