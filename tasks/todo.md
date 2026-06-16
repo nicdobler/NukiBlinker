@@ -2,6 +2,14 @@
 
 ---
 
+## Workflow update: docs in same PR ✅ IN PROGRESS
+
+**Branch**: docs/update-doc-workflow-process | **PR**: #167
+
+Cambio de proceso: documentación (todo.md, CHANGELOG.md, README.md, specs) ahora va en la misma PR que el código, no en PRs separadas. Actualizado Agents.md secciones "Session Handoff" y "Task Management".
+
+---
+
 ## #157 Event mapping corrections ✅ DONE
 
 **Branch**: fix/157-event-mapping | **PR**: #158 | squash-merged to main.
