@@ -121,7 +121,7 @@ class TestWebUINewEndpoints:
         response = test_client.get("/api/config/deduplication")
         assert response.status_code == 200
         data = response.json()
-        assert data["enabled"] is True
+        assert data["enabled"] is False  # disabled by default (#171)
         assert data["window_seconds"] == 120
 
     def test_update_deduplication_config(self, test_client):
