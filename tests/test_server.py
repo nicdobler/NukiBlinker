@@ -113,6 +113,22 @@ class TestNukiCallback:
         second = client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:40+00:00"))
         assert second.json()["event"] == "ring"
 
+    def test_ignored_event_logged_at_info_level(self, client, caplog):
+        """Regression #171: ignored callbacks must be visible in the Docker log at INFO."""
+        import logging
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 1,
+            "ringactionState": False, "ringactionTimestamp": "2026-06-16T15:17:17+00:00",
+        }
+        with caplog.at_level(logging.INFO, logger="nukiblinker.server"):
+            r = client.post("/nuki/callback", json=payload)
+        assert r.json()["status"] == "ignored"
+        assert any(
+            "Event ignored" in rec.message and rec.levelno == logging.INFO
+            for rec in caplog.records
+            if rec.name == "nukiblinker.server"
+        )
+
     def test_callback_with_validation_disabled(self, app, client):
         """Regression: with validation disabled the callback must still process
         (validation_result is computed once as a default, never left undefined)."""

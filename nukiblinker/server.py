@@ -64,7 +64,7 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
         # Classify event
         event_type = event_router.classify(payload, app.state.config)
         if event_type is None:
-            logger.debug("Event ignored (no matching rule)")
+            logger.info("Event ignored (no matching rule)")
             # Log the ignored event
             if app.state.config.event_log.enabled:
                 app.state.clients.event_log.log_event(

@@ -142,7 +142,7 @@ class EventLogConfig(BaseModel):
 
 
 class DeduplicationConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = False
     window_seconds: int = 120  # suppress duplicate events within this window
 
 
