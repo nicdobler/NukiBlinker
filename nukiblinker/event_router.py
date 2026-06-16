@@ -146,14 +146,16 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
                 # Anonymous open: surface the trigger for observability (#97)
                 # but fall back to the bridge log for a name.
                 logger.info(
-                    "Web API: most recent non-sensor entry for nukiId=%s is anonymous; "
-                    "trigger=%s(%s) source=%s",
-                    nuki_id, resolved_trigger,
+                    "Web API: no name found for nukiId=%s (checked %d entries, "
+                    "first_non_sensor=%s); trigger=%s(%s) — falling back to bridge log",
+                    nuki_id,
+                    len(entries),
+                    first_non_sensor is not None,
+                    resolved_trigger,
                     TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                    candidate.get("source"),
                 )
             else:
-                logger.debug("Nuki Web API log had no entry for nukiId=%s", nuki_id)
+                logger.info("Nuki Web API log empty for nukiId=%s — falling back to bridge log", nuki_id)
         except Exception:
             logger.warning("Nuki Web API resolution failed — falling back to bridge log", exc_info=True)
 

@@ -68,10 +68,24 @@ class NukiWebClient:
             url = f"{self._base}/smartlock/log"
         try:
             async with httpx.AsyncClient(timeout=10) as c:
+                logger.debug("Nuki Web API request: GET %s?limit=%s", url, limit)
                 r = await c.get(url, headers=self._headers(), params={"limit": limit})
+                logger.debug("Nuki Web API response: status=%s", r.status_code)
                 r.raise_for_status()
                 data = r.json()
-                return data if isinstance(data, list) else []
+                entries = data if isinstance(data, list) else []
+                logger.debug("Nuki Web API returned %d entries", len(entries))
+                # Log each entry for name resolution debugging (#161)
+                for i, entry in enumerate(entries[:5]):  # Log first 5 entries
+                    logger.debug(
+                        "Web API entry[%d]: smartlockId=%s name=%r trigger=%s source=%s",
+                        i,
+                        entry.get("smartlockId"),
+                        entry.get("name"),
+                        entry.get("trigger"),
+                        entry.get("source"),
+                    )
+                return entries
         except Exception:
             logger.warning("Nuki Web API log request failed", exc_info=True)
             return []
