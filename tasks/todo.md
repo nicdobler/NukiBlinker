@@ -2,6 +2,14 @@
 
 ---
 
+## Workflow update: docs in same PR ✅ DONE
+
+**Branch**: docs/update-doc-workflow-process | **PR**: #167 | CI green
+
+Cambio de proceso: documentación (todo.md, CHANGELOG.md, README.md, specs) ahora va en la misma PR que el código, no en PRs separadas. Actualizado Agents.md secciones "Session Handoff" y "Task Management".
+
+---
+
 ## #169 Smart Lock doorsensorState=3 should trigger door_opened — DONE
 
 **Branch**: fix/169-doorsensor-door-opened | **PR**: #170 | CI green

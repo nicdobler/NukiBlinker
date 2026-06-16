@@ -158,7 +158,7 @@ Never merge to `main` in Approval mode without explicit go-ahead.
 2. **Verify Plan** — Check in before starting implementation.
 3. **Track Progress** — Mark items complete as you go.
 4. **Explain Changes** — High-level summary at each step.
-5. **Document Results** — Include branch name and PR number in the task header.
+5. **Document Results** — Include branch name and PR number in the task header. All docs (todo.md, CHANGELOG.md, README.md, specs) are committed to the same feature branch as the code.
 6. **Capture Lessons** — Update `tasks/lessons.md` after corrections.
 
 `tasks/todo.md` is an **append-only log**. Each task gets a `---` separator, a heading with issue/feature title, and a `**Branch**: ... | **PR**: ...` line. Completed tasks stay as historical record.
@@ -207,11 +207,13 @@ Available workflows:
 
 ## Session Handoff
 
-At the end of every session (or when context gets long), update `tasks/todo.md` with:
+At the end of every session (or when context gets long), update `tasks/todo.md` **in the same feature branch** with:
 - What was completed.
 - Decisions made and why.
 - Open questions or blockers.
 - Exact next steps.
+
+**All documentation updates** (todo.md, CHANGELOG.md, README.md, specs) are part of the same PR as the code changes. Do not create separate branches or PRs for documentation.
 
 This ensures the next session can pick up without context loss.
 
