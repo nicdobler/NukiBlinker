@@ -51,9 +51,11 @@ def classify(payload: dict, config: AppConfig) -> str | None:
                 nuki_id, payload.get("ringactionTimestamp"),
             )
             return "ring"
-        logger.debug(
-            "Ignoring Opener state %s (nukiId=%s, ringactionState=%s)",
+        logger.info(
+            "Opener callback ignored: state=%s nukiId=%s ringactionState=%s "
+            "ringactionTimestamp=%s — full payload: %s",
             state, nuki_id, payload.get("ringactionState"),
+            payload.get("ringactionTimestamp"), payload,
         )
         return None
 
@@ -99,33 +101,55 @@ async def resolve_person(payload: dict, nuki_client, fallback_name: str = "Algui
     # 1. Nuki Web API — preferred when available (real names + trigger source).
     if nuki_web is not None:
         try:
-            from nukiblinker.nuki_web_client import TRIGGER_NAMES
+            from nukiblinker.nuki_web_client import TRIGGER_NAMES, SOURCE_DOOR_SENSOR
 
             entries = await nuki_web.get_recent_log(smartlock_id=nuki_id, limit=20)
             if entries:
-                # Only the MOST RECENT entry corresponds to this event. Scanning
-                # older entries for a name risks attributing a stale identity
-                # (e.g. yesterday's manual open) to a fresh anonymous
-                # Ring-to-Open (#155).
-                recent = entries[0]
-                resolved_trigger = recent.get("trigger")
-                name = recent.get("name")
+                # The most recent entry is the best candidate, but door-sensor
+                # entries (source=SOURCE_DOOR_SENSOR) carry no name and arrive
+                # immediately after an open, pushing the real named entry down
+                # the list (#157). Capture the trigger from the most recent
+                # entry, then find the first named entry within a short window
+                # (skipping anonymous sensor entries).
+                most_recent = entries[0]
+                resolved_trigger = most_recent.get("trigger")
+
+                # Skip leading door-sensor entries (source=SOURCE_DOOR_SENSOR):
+                # these carry no name and arrive immediately after the opener's
+                # own event, pushing the real named entry down the list (#157).
+                # Stop skipping at the first non-sensor entry — if that entry
+                # has no name, the open is genuinely anonymous (e.g. an RTO
+                # with no user identity) and we must not look further (#155).
+                first_non_sensor = next(
+                    (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
+                    None,
+                )
+                candidate = first_non_sensor if first_non_sensor is not None else most_recent
+                name = candidate.get("name")
+                trigger_for_log = candidate.get("trigger")
+                if trigger_for_log is None:
+                    trigger_for_log = resolved_trigger
+                else:
+                    resolved_trigger = trigger_for_log
+
                 if name:
                     logger.info(
-                        "Resolved person via Web API: name=%s trigger=%s(%s) source=%s",
+                        "Resolved person via Web API: name=%s trigger=%s(%s) source=%s "
+                        "(sensor_entries_skipped=%d)",
                         name, resolved_trigger,
                         TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                        recent.get("source"),
+                        candidate.get("source"),
+                        entries.index(candidate),
                     )
                     return _result(name, "web_api")
                 # Anonymous open: surface the trigger for observability (#97)
                 # but fall back to the bridge log for a name.
                 logger.info(
-                    "Web API: most recent entry for nukiId=%s is anonymous; "
+                    "Web API: most recent non-sensor entry for nukiId=%s is anonymous; "
                     "trigger=%s(%s) source=%s",
                     nuki_id, resolved_trigger,
                     TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                    recent.get("source"),
+                    candidate.get("source"),
                 )
             else:
                 logger.debug("Nuki Web API log had no entry for nukiId=%s", nuki_id)

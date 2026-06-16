@@ -17,6 +17,10 @@ from nukiblinker.logging_config import get_logger
 
 logger = get_logger("nuki_web_client")
 
+# Nuki Web API activity-log source codes.
+# source=2 means the action was performed by the door sensor (no user identity).
+SOURCE_DOOR_SENSOR = 2
+
 # Nuki Web API activity-log trigger codes (for human-readable logging).
 TRIGGER_NAMES = {
     0: "system",

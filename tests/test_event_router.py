@@ -235,6 +235,37 @@ class TestResolvePerson:
         assert result == {"name": "Alguien", "trigger": 2, "name_source": "fallback"}
 
     @pytest.mark.asyncio
+    async def test_web_api_skips_door_sensor_entries_to_find_name(self):
+        """#157: door-sensor entries (source=2) are skipped to find the real opener's name."""
+        from nukiblinker.nuki_web_client import SOURCE_DOOR_SENSOR
+        nuki = AsyncMock()
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "trigger": 5, "source": SOURCE_DOOR_SENSOR},  # sensor, no name
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},   # real opener
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result["name"] == "Nico"
+        assert result["name_source"] == "web_api"
+        nuki.get_last_log.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_web_api_anonymous_non_sensor_entry_does_not_look_further(self):
+        """#157/#155: first non-sensor entry with no name → anonymous, don't look further."""
+        from nukiblinker.nuki_web_client import SOURCE_DOOR_SENSOR
+        nuki = AsyncMock()
+        nuki.get_last_log.return_value = {"name": ""}
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "trigger": 5, "source": SOURCE_DOOR_SENSOR},   # sensor, skip
+            {"smartlockId": 100, "trigger": 6, "source": 1},                    # non-sensor, anonymous RTO
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},    # older — must NOT be used
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki, nuki_web=web)
+        assert result["name_source"] == "fallback"
+        assert result.get("name") != "Nico"
+
+    @pytest.mark.asyncio
     async def test_web_api_does_not_use_stale_name_from_older_entry(self):
         """#155: only the MOST RECENT entry is trusted.
 

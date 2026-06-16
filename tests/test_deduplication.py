@@ -150,11 +150,39 @@ class TestRingToOpenCorrelation:
         clock.advance(121)
         assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
 
-    def test_ring_to_open_without_timestamp_not_correlated(self):
-        """No ringactionTimestamp → nothing to correlate, ring still notifies."""
+    def test_ring_to_open_without_timestamp_suppresses_subsequent_ring(self):
+        """#157: No ringactionTimestamp → fbkey fallback suppresses the paired ring."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        bare = {"deviceType": 2, "nukiId": 1, "state": 7}  # no ringactionTimestamp
+        assert dedup.is_duplicate(bare, "ring_to_open") is False
+        clock.advance(10)
+        # ring arrives without a shared timestamp, but fbkey covers it
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is True
+
+    def test_standalone_ring_not_suppressed_by_fbkey(self):
+        """#157: a genuine ring (no prior ring_to_open) is never suppressed by fbkey."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        # No ring_to_open registered — fbkey not in _interactions
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
+
+    def test_fbkey_expires_after_window(self):
+        """#157: the fbkey suppression window expires like any other key."""
         clock = _Clock()
         dedup = Deduplicator(window_seconds=120, time_func=clock)
         bare = {"deviceType": 2, "nukiId": 1, "state": 7}
         assert dedup.is_duplicate(bare, "ring_to_open") is False
-        clock.advance(10)
+        clock.advance(121)
         assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
+
+    def test_ring_does_not_register_fbkey(self):
+        """#157: a standalone ring must NOT register the fbkey (would block next RTO)."""
+        clock = _Clock()
+        dedup = Deduplicator(window_seconds=120, time_func=clock)
+        # First event is a standalone ring
+        assert dedup.is_duplicate(_rto_ring("T1"), "ring") is False
+        clock.advance(5)
+        # A ring_to_open arriving after must NOT be blocked by the ring's fbkey
+        bare = {"deviceType": 2, "nukiId": 1, "state": 7}
+        assert dedup.is_duplicate(bare, "ring_to_open") is False

@@ -96,6 +96,22 @@ class Deduplicator:
             return None
         return (payload.get("nukiId"), rats)
 
+    @staticmethod
+    def _rto_fallback_key(payload: dict, event_type: str) -> Tuple[Any, ...] | None:
+        """Fallback cross-event key for RTO when ringactionTimestamp is absent (#157).
+
+        Some bridge firmware versions omit ``ringactionTimestamp`` from the
+        ``ring_to_open`` (state=7) callback. Without a shared timestamp the
+        primary ``_interaction_key`` returns None and the subsequent ``ring``
+        callback passes through, firing a duplicate notification. This fallback
+        tracks ``(nukiId, "rto_seen")`` as a synthetic key so that a ``ring``
+        arriving after an accepted ``ring_to_open`` from the same device is still
+        suppressed within the window.
+        """
+        if event_type not in ("ring", "ring_to_open"):
+            return None
+        return (payload.get("nukiId"), "rto_seen")
+
     def is_duplicate(self, payload: dict, event_type: str) -> bool:
         """Return True if an equivalent event was accepted within the window.
 
@@ -137,6 +153,26 @@ class Deduplicator:
                     self._interactions[ikey] = now
                     return True
                 self._interactions[ikey] = now
+
+            # Fallback RTO correlation when ringactionTimestamp is absent (#157):
+            # suppress a 'ring' that follows a 'ring_to_open' from the same
+            # device even without a shared timestamp. The key is registered ONLY
+            # when accepting a ring_to_open so that a genuine standalone ring
+            # (e.g. a visitor pressing the buzzer without RTO active) is never
+            # incorrectly suppressed.
+            fbkey = self._rto_fallback_key(payload, event_type)
+            if fbkey is not None:
+                fbseen = self._interactions.get(fbkey)
+                if fbseen is not None and (now - fbseen) <= self.window_seconds:
+                    if event_type == "ring":
+                        logger.info(
+                            "Ring-to-Open fallback dedup: suppressed 'ring' for nukiId=%s "
+                            "(no ringactionTimestamp, within %.0fs of ring_to_open)",
+                            payload.get("nukiId"), now - fbseen,
+                        )
+                        return True
+                if event_type == "ring_to_open":
+                    self._interactions[fbkey] = now
 
             self._recent[key] = now
             return False
