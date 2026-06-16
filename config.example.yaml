@@ -80,7 +80,7 @@ event_log:
 
 # Event deduplication - collapse the burst of callbacks one interaction emits
 deduplication:
-  enabled: true
+  enabled: false                   # disabled until event capture is confirmed correct
   window_seconds: 120              # suppress duplicate events within this window
 
 # Application log file - rotating app log with basic weekly housekeeping

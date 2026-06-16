@@ -23,6 +23,11 @@ class TestDefaults:
         assert cfg.hue.lights == []
         assert cfg.speakers.volume == 0.5
 
+    def test_deduplication_disabled_by_default(self):
+        """Regression #171: dedup defaults to off — missing an event is worse than firing twice."""
+        cfg = AppConfig()
+        assert cfg.deduplication.enabled is False
+
     def test_github_defaults(self):
         """#124: General/Settings adds a github section with sensible defaults."""
         cfg = AppConfig()
