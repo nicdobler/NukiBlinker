@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S%z"  # Include timezone offset (#162)
 
 # Marker so add_file_logging is idempotent (avoid duplicate file handlers).
 _FILE_HANDLER_NAME = "nukiblinker_file"
