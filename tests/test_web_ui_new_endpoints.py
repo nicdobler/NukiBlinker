@@ -387,6 +387,21 @@ class TestWebUINewEndpoints:
         assert data["total_count"] == 1
         assert all(e["payload"]["nukiId"] == 111 for e in data["events"])
 
+    def test_event_log_actions_only_filter(self, test_client, mock_clients):
+        """#181: /events/log?actions_only=1 keeps only events with actions."""
+        vr = mock_clients.event_validator.validate_event({})
+        mock_clients.event_log.log_event(
+            {"deviceType": 2, "nukiId": 111}, "ring", ["Hue blinked"], vr)
+        mock_clients.event_log.log_event(
+            {"deviceType": 2, "nukiId": 111}, "ring", [], vr)
+
+        response = test_client.get("/api/events/log?actions_only=1")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["actions_only"] is True
+        assert data["total_count"] == 1
+        assert all(e["actions"] for e in data["events"])
+
     def test_event_log_resolves_device_name_from_config(self, test_client, mock_clients):
         """#115: real callbacks (no `name`) are labelled from the Device Filter config."""
         cfg = test_client.app.state.config

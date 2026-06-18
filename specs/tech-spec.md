@@ -929,10 +929,10 @@ class EventLog:
         """Build an EventLogEntry and append it as one INSERT, then enforce
         retention/max_entries with bounded DELETEs (no full-file rewrite)."""
 
-    def get_recent_events(self, limit=100, offset=0, device_id=None):
-        """SELECT ... ORDER BY id DESC LIMIT ? OFFSET ? [WHERE nuki_id = ?]."""
+    def get_recent_events(self, limit=100, offset=0, device_id=None, actions_only=False):
+        """SELECT ... [WHERE nuki_id=? AND actions!='[]'] ORDER BY id DESC LIMIT ? OFFSET ?."""
 
-    def get_event_count(self, device_id=None): ...   # SELECT COUNT(*)
+    def get_event_count(self, device_id=None, actions_only=False): ...   # SELECT COUNT(*)
     def get_devices(self): ...                        # GROUP BY nuki_id
     def export_to_csv(self, device_id=None, tz="Europe/Madrid"): ...
     def clear_log(self): ...                          # DELETE FROM events
@@ -1126,7 +1126,7 @@ class NukiWebClient:
 - The UTC `Timestamp` column is replaced by **`Date`** (`YYYY-MM-DD`) and **`Time`** (`HH:MM:SS`) in the configured timezone via `zoneinfo.ZoneInfo`.
 - `device_id` filters rows to a single `nukiId`.
 
-`EventLog.get_recent_events(limit, offset, device_id=None)` and a new `EventLog.get_devices()` (distinct `nukiId`/`deviceType`/name seen) back the Web UI device filter. New endpoints: `GET /api/events/devices`; `GET /api/events/log?device_id=`; `GET /api/events/export?device_id=`.
+`EventLog.get_recent_events(limit, offset, device_id=None, actions_only=False)` and a new `EventLog.get_devices()` (distinct `nukiId`/`deviceType`/name seen) back the Web UI device filter. New endpoints: `GET /api/events/devices`; `GET /api/events/log?device_id=&actions_only=1`; `GET /api/events/export?device_id=`. The Event Log viewer labels the device dropdown by **name + type + nukiId**, shows a per-entry device-type badge, and the `actions_only` flag drives the **only-events-with-actions** checkbox (#181).
 
 ### Updated config models (v0.4.0)
 
@@ -1232,8 +1232,8 @@ Indexes: `idx_events_nuki_id (nuki_id)`, `idx_events_timestamp (timestamp)`.
 
 **Query mapping** (same public behaviour as the old in-memory list):
 
-- `get_recent_events(limit, offset, device_id)` → `SELECT * FROM events [WHERE nuki_id=?] ORDER BY id DESC LIMIT ? OFFSET ?`.
-- `get_event_count(device_id)` → `SELECT COUNT(*) ...`.
+- `get_recent_events(limit, offset, device_id, actions_only)` → `SELECT * FROM events [WHERE nuki_id=? AND actions IS NOT NULL AND actions!='[]'] ORDER BY id DESC LIMIT ? OFFSET ?` (filters built by the shared `_build_filters` helper).
+- `get_event_count(device_id, actions_only)` → `SELECT COUNT(*) ...` (same `_build_filters` clause).
 - `get_devices()` → `SELECT nuki_id, device_type, device_name, MAX(id) FROM events WHERE nuki_id IS NOT NULL GROUP BY nuki_id ORDER BY MAX(id) DESC` (SQLite returns the bare columns from the `MAX(id)` row → latest device metadata; newest-seen first).
 - `export_to_csv(device_id, tz)` → filtered `SELECT ... ORDER BY id DESC`, same 12 columns / BOM / `sep=,` hint as before.
 - `clear_log()` → `DELETE FROM events` (the DB file is kept).

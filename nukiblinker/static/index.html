@@ -493,6 +493,10 @@
                         <option value="">All devices</option>
                     </select>
                 </label>
+                <label style="font-size:0.8rem; color:#64748b; margin-left:0.5rem; display:inline-flex; align-items:center; gap:0.3rem;">
+                    <input type="checkbox" id="eventLogActionsOnly" onchange="refreshEventLog()">
+                    Only events with actions
+                </label>
             </div>
             <div id="eventLogStatus" class="discover-results"></div>
         </div>
@@ -1030,6 +1034,19 @@ function getEventLogDeviceId() {
     return el && el.value ? el.value : '';
 }
 
+function getEventLogActionsOnly() {
+    const el = document.getElementById('eventLogActionsOnly');
+    return !!(el && el.checked);
+}
+
+// Map a Nuki deviceType code to a human label (2 = Opener, 0 = Smart Lock).
+function deviceTypeLabel(deviceType) {
+    if (deviceType === 2) return 'Opener';
+    if (deviceType === 0) return 'Smart Lock';
+    if (deviceType === null || deviceType === undefined) return '';
+    return 'Type ' + deviceType;
+}
+
 async function populateDeviceFilter() {
     const sel = document.getElementById('eventLogDeviceFilter');
     if (!sel) return;
@@ -1038,8 +1055,11 @@ async function populateDeviceFilter() {
         const current = sel.value;
         const devices = data.devices || [];
         sel.innerHTML = '<option value="">All devices</option>' + devices.map(d => {
-            // Identify devices by name (#115); fall back to the ID only when unknown.
-            const label = d.name || `Device ${d.nukiId}`;
+            // Show name + device type + ID so the filter is unambiguous (#181).
+            const name = d.name || `Device ${d.nukiId}`;
+            const type = deviceTypeLabel(d.deviceType);
+            const typePart = type ? ` (${type})` : '';
+            const label = `${name}${typePart} — ID: ${d.nukiId}`;
             return `<option value="${d.nukiId}">${label}</option>`;
         }).join('');
         sel.value = current;
@@ -1066,7 +1086,8 @@ async function loadEventLog() {
         
         const deviceId = getEventLogDeviceId();
         const deviceParam = deviceId ? `&device_id=${deviceId}` : '';
-        const response = await fetch(`${API}/events/log?limit=${EVENT_LOG_LIMIT}&offset=${eventLogOffset}${deviceParam}`);
+        const actionsParam = getEventLogActionsOnly() ? '&actions_only=1' : '';
+        const response = await fetch(`${API}/events/log?limit=${EVENT_LOG_LIMIT}&offset=${eventLogOffset}${deviceParam}${actionsParam}`);
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || 'Failed to load event log');
@@ -1115,6 +1136,11 @@ function renderEventLogEntry(entry) {
     const deviceLabel = deviceName
         ? `<span style="font-size:0.75rem;color:#94a3b8;"> · ${deviceName}</span>`
         : '';
+    const deviceType = entry.payload ? entry.payload.deviceType : undefined;
+    const typeText = deviceTypeLabel(deviceType);
+    const typeBadge = typeText
+        ? `<span class="badge" style="font-size:0.65rem;margin-left:0.4rem;background:#1e293b;color:#94a3b8;">${typeText}</span>`
+        : '';
     const validationClass = entry.validation_result.valid ? 'badge-ok' : 'badge-warn';
     const validationText = entry.validation_result.valid ? 'Valid' : `Invalid: ${entry.validation_result.reason}`;
     
@@ -1130,7 +1156,7 @@ function renderEventLogEntry(entry) {
         <div class="card" style="margin-bottom:0.75rem; padding:1rem;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
                 <div>
-                    <strong>${eventType}</strong>${deviceLabel} ${processingTime}
+                    <strong>${eventType}</strong>${typeBadge}${deviceLabel} ${processingTime}
                     <div style="font-size:0.75rem;color:#64748b;">${timestamp}</div>
                 </div>
                 <span class="badge ${validationClass}" style="font-size:0.7rem;">${validationText}</span>

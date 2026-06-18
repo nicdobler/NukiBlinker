@@ -649,3 +649,17 @@ chose two improvements. Wrap-up mode: **Auto**.
 - [x] Tests: updated 13 resolve_person assertions for `name_source`; added stale-name regression + anonymous-indicator tests.
 - [x] Docs: CHANGELOG `[Unreleased] / Fixed`, tech-spec.
 - [ ] Push branch → CI green → auto wrap-up (squash-merge).
+
+---
+
+## #181 — Event Log device filter (name+type+ID), device-type badge & actions-only view
+
+**Branch**: `feat/181-event-log-device-filter` | **PR**: _pending_
+
+- [x] Context: read issue #181, `event_log.py`, `web_ui.py`, `static/index.html`, tests, specs.
+- [x] Backend `event_log.py`: shared `_build_filters` helper; `actions_only` flag on `get_recent_events` + `get_event_count`.
+- [x] `web_ui.py`: parse `?actions_only=1` on `GET /api/events/log`, echo in response.
+- [x] Frontend `index.html`: dropdown labels name + type + ID; per-entry device-type badge; "Only events with actions" checkbox.
+- [x] Tests: unit (actions_only + combined device filter) in `test_event_log.py`; endpoint test in `test_web_ui_new_endpoints.py`.
+- [x] Docs: CHANGELOG `[Unreleased] / Added`, README, product-spec, tech-spec.
+- [ ] Push branch -> open PR -> CI green (do not merge).

@@ -276,30 +276,46 @@ class EventLog:
             "Migrated %d entries from legacy JSON event log %s", migrated, legacy
         )
 
+    @staticmethod
+    def _build_filters(device_id: Optional[int] = None,
+                       actions_only: bool = False) -> tuple[str, list]:
+        """Build a shared SQL WHERE clause for the event filters.
+
+        Returns a ``(clause, params)`` tuple where ``clause`` is empty or starts
+        with ``" WHERE "``. ``actions_only`` keeps only events that triggered at
+        least one action (the ``actions`` column is a JSON array, empty ``"[]"``
+        when no action ran).
+        """
+        conditions: List[str] = []
+        params: list = []
+        if device_id is not None:
+            conditions.append("nuki_id = ?")
+            params.append(device_id)
+        if actions_only:
+            conditions.append("actions IS NOT NULL AND actions != '[]'")
+        clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+        return clause, params
+
     def get_recent_events(self, limit: int = 100, offset: int = 0,
-                          device_id: Optional[int] = None) -> List[EventLogEntry]:
+                          device_id: Optional[int] = None,
+                          actions_only: bool = False) -> List[EventLogEntry]:
         """Return recent events for web UI.
 
         Args:
             limit: Maximum number of entries to return
             offset: Number of entries to skip (for pagination)
             device_id: Optional nukiId to filter by
+            actions_only: When True, only return events that triggered actions
 
         Returns:
             List of event log entries, newest first.
         """
+        clause, params = self._build_filters(device_id, actions_only)
         with self._lock:
-            if device_id is not None:
-                rows = self._conn.execute(
-                    "SELECT * FROM events WHERE nuki_id = ? "
-                    "ORDER BY id DESC LIMIT ? OFFSET ?",
-                    (device_id, limit, offset),
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    "SELECT * FROM events ORDER BY id DESC LIMIT ? OFFSET ?",
-                    (limit, offset),
-                ).fetchall()
+            rows = self._conn.execute(
+                f"SELECT * FROM events{clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
+            ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
     def get_events_in_range(self, start: datetime, end: datetime) -> List[EventLogEntry]:
@@ -324,15 +340,19 @@ class EventLog:
             ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
-    def get_event_count(self, device_id: Optional[int] = None) -> int:
-        """Get total number of events in log (optionally filtered by device)."""
+    def get_event_count(self, device_id: Optional[int] = None,
+                        actions_only: bool = False) -> int:
+        """Get total number of events in log (optionally filtered).
+
+        Args:
+            device_id: Optional nukiId to filter by.
+            actions_only: When True, only count events that triggered actions.
+        """
+        clause, params = self._build_filters(device_id, actions_only)
         with self._lock:
-            if device_id is None:
-                row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
-            else:
-                row = self._conn.execute(
-                    "SELECT COUNT(*) FROM events WHERE nuki_id = ?", (device_id,)
-                ).fetchone()
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM events{clause}", params
+            ).fetchone()
         return row[0]
 
     def get_devices(self) -> List[Dict[str, Any]]:

@@ -426,9 +426,16 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             device_param = request.query_params.get("device_id")
             device_id = int(device_param) if device_param else None
 
+            actions_param = request.query_params.get("actions_only", "")
+            actions_only = actions_param.lower() in ("1", "true", "yes")
+
             event_log = request.app.state.clients.event_log
-            events = event_log.get_recent_events(limit, offset, device_id=device_id)
-            total_count = event_log.get_event_count(device_id=device_id)
+            events = event_log.get_recent_events(
+                limit, offset, device_id=device_id, actions_only=actions_only
+            )
+            total_count = event_log.get_event_count(
+                device_id=device_id, actions_only=actions_only
+            )
 
             # Resolve a friendly device name for each event (#115): real
             # callbacks carry no `name`, so fall back to the configured names.
@@ -447,7 +454,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 "total_count": total_count,
                 "limit": limit,
                 "offset": offset,
-                "device_id": device_id
+                "device_id": device_id,
+                "actions_only": actions_only
             })
         except Exception as e:
             logger.error("Failed to get event log: %s", e, exc_info=True)

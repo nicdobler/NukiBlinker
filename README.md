@@ -26,7 +26,7 @@ All project documentation lives in this repository (versioned alongside the code
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
 - **Event deduplication**: collapses the burst of callbacks one real interaction emits (a genuine second ring still notifies)
-- **Event logging**: comprehensive event history with detailed action tracking, device filtering by **name**, Previous/Next pagination, and Excel-friendly CSV export (local timezone, separate Date/Time columns, full payload JSON)
+- **Event logging**: comprehensive event history with detailed action tracking, device filtering by **name + type + ID**, an **only-events-with-actions** filter, per-entry device-type badge, Previous/Next pagination, and Excel-friendly CSV export (local timezone, separate Date/Time columns, full payload JSON)
 - **Application log to file**: rotating app log (`logs/nukiblinker.log`) with basic weekly housekeeping, alongside console output
 - **Optional Nuki Web API**: resolve real user names and action triggers from the cloud activity log (read-only)
 - **Night mode**: time-based notification adjustments (disables audio during quiet hours)
@@ -123,7 +123,7 @@ The web UI provides a tabbed interface covering all configuration:
 | **Speakers** | Chromecast names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |
 | **Events** | Per-event blink (none/short/long), audio (TTS/chime), HomeKit toggle |
-| **Event Log** | View event history, export CSV, clear log |
+| **Event Log** | View event history, filter by device (name + type + ID) or only events with actions, export CSV, clear log |
 | **Event Validation** | Configure timestamp validation to reject stale events |
 | **Night Mode** | Set quiet hours with reduced notifications |
 
@@ -142,7 +142,7 @@ Comprehensive event history for monitoring and troubleshooting:
 - Embedded **SQLite** storage (`logs/event_log.db`) with configurable retention — fast to load and **persists across application/container updates** (when `./logs` is mounted as a volume)
 - Detailed action tracking with processing times
 - CSV export for analysis (includes a `Payload (JSON)` column with the full raw payload)
-- Web UI viewer with Previous/Next pagination and device filtering **by name** (the Nuki Device Filter remembers the Opener/Lock names; real callbacks carry no name)
+- Web UI viewer with Previous/Next pagination, device filtering by **name + type (Opener / Smart Lock) + ID**, an **only-events-with-actions** checkbox, and a per-entry device-type badge (the Nuki Device Filter remembers the Opener/Lock names; real callbacks carry no name)
 - A legacy `event_log.json` is migrated into the database automatically on first start
 
 #### Night Mode
@@ -262,7 +262,7 @@ Name resolution for **Opener** events (ring / ring to open) is done **exclusivel
 | `/api/pause` | POST | Pause service |
 | `/api/resume` | POST | Resume service |
 | `/api/test/event/{type}` | POST | Fire test event |
-| `/api/events/log` | GET | Get paginated event log (`?device_id=` to filter) |
+| `/api/events/log` | GET | Get paginated event log (`?device_id=` and/or `?actions_only=1` to filter) |
 | `/api/events/devices` | GET | List distinct devices seen in the event log |
 | `/api/events/export` | GET | Export event log as CSV (`?device_id=` to filter) |
 | `/api/events/clear` | POST | Clear all event log entries |
