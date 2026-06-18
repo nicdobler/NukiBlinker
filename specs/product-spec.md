@@ -76,10 +76,15 @@ A single real interaction makes the Nuki Bridge emit several callbacks (status t
 
 ### Person Identification
 
-For **ring to open** and **door opened** events, NukiBlinker resolves which user triggered the action and exposes it as a `{name}` template variable in the TTS message.
+For **Opener** events (**ring** and **ring to open**) NukiBlinker resolves which user triggered the action and exposes it as a `{name}` template variable in the TTS message. **Door opened** (Smart Lock) events deliberately do **not** resolve a name — their only actions are a chime/blink and the opener identity is irrelevant (#176).
 
-- **Local Bridge log** (`GET /log`, default): best-effort. On hardware bridges the log entry includes a `name` for *authorized* actions (app/keypad/fob). The Bridge API does not guarantee this field, and an RTO triggered by an anonymous visitor ringing has no name — in those cases NukiBlinker falls back to `fallback_name` ("Alguien").
-- **Nuki Web API** (optional, cloud): when a `nuki.web_api_token` is configured, NukiBlinker queries the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also lets NukiBlinker tell *how* the door was opened (e.g. by the physical button on the device vs Ring to Open).
+- **Nuki Web API only** (#175): names are resolved **exclusively** through the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also tells *how* the door was opened (e.g. physical button vs Ring to Open). The local Bridge `/log` endpoint is **no longer** used for name resolution — it never carries the caller's name for the cases we care about (it lags and is empty on the software bridge), so retrying it only added latency and noise.
+- When the Web API is not configured, or returns no named entry (e.g. an anonymous Ring-to-Open), NukiBlinker falls back to `fallback_name` ("Alguien").
+- Every Nuki Web request and response (and the first few log entries) is logged at **INFO** so name resolution can be troubleshooted from the standard logs without raising the global log level (#176/#177).
+
+### Opener open correlation (#180)
+
+Some user opens (e.g. opening the gate from the Nuki app while Ring-to-Open is active) never produce a `ring_to_open` (state 7) callback from the Bridge — only routine Opener status callbacks (`state=1` online / `state=3` rto active with `ringactionState` false) arrive, which would otherwise be ignored. When `opener_correlation` is enabled (default) **and** a Nuki Web token is configured, NukiBlinker polls the Nuki Web activity log for a short window (default 10 s, every 2 s) after such a callback; if a user-attributed open appears within the recency window it dispatches the **ring to open** rule with the resolved name. A per-device cooldown collapses the burst of status callbacks one open emits into a single poll run and prevents re-firing.
 
 Examples:
 - Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
