@@ -19,7 +19,7 @@ All project documentation lives in this repository (versioned alongside the code
 
 - **3 event types**: Ring (unknown visitor), Ring to Open (authorized), Door Opened (Smart Lock)
 - **Per-event rules**: each event gets its own blink pattern, audio, and HomeKit toggle
-- **Personalized announcements**: "{name} llegó a casa" via Nuki activity log
+- **Personalized announcements**: "{name} llegó a casa" — the visitor name is resolved **only** from the Nuki Web API activity log (a Web API token is required; without it announcements use the fallback name)
 - **Hue light blinks**: built-in alert per event — `short` (1 blink) or `long` (~15s); lights restore their previous state automatically
 - **Voice announcements**: TTS via gTTS on Google Nest (Chromecast)
 - **Chime sounds**: bundled audio files for door-opened events
@@ -218,13 +218,24 @@ deduplication:
   window_seconds: 120     # suppress duplicate events within this window
 ```
 
-#### Nuki Web API (optional name/trigger resolution)
+#### Opener open correlation (#180)
+```yaml
+opener_correlation:
+  enabled: true              # correlate ignored opener callbacks with Nuki Web
+  window_seconds: 10         # how long to keep polling Nuki Web
+  poll_interval_seconds: 2.0 # delay between polls
+  recency_seconds: 60        # max age of a Web entry to count as "this open"
+```
+Some user opens (e.g. opening from the Nuki app while Ring-to-Open is active) never produce a `ring_to_open` callback — only routine opener status callbacks arrive. When enabled (and a Nuki Web token is configured), NukiBlinker polls the Nuki Web log after such a callback and fires the **ring to open** rule if a user-attributed open appears in the window.
+
+#### Nuki Web API (name/trigger resolution)
 Stored in `secrets.yaml` (it is a secret), not `config.yaml`:
 ```yaml
 # secrets.yaml
 nuki:
   web_api_token: ""       # cloud token; resolves real names + how the door was opened
 ```
+Name resolution for **Opener** events (ring / ring to open) is done **exclusively** via the Nuki Web API — the local Bridge `/log` is no longer used. Without a token, announcements use the fallback name. **Door opened** (Smart Lock) events never resolve a name (chime/blink only).
 
 ### Getting API Keys
 

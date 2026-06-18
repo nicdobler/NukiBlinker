@@ -15,6 +15,7 @@ def _make_clients():
     clients.chromecast = AsyncMock()
     clients.homekit = AsyncMock()
     clients.nuki = AsyncMock()
+    clients.nuki_web = None  # Web API not configured in these tests
     # Real deduplicator so duplicate detection behaves predictably in tests
     from nukiblinker.deduplication import Deduplicator
     clients.deduplicator = Deduplicator(window_seconds=120)
@@ -65,21 +66,29 @@ class TestNukiCallback:
         assert r.status_code == 200
         assert r.json()["event"] == "door_opened"
 
-    def test_ignored_event(self, client):
+    def test_opener_status_event_state_3(self, client):
+        """#180: Opener state==3 (rto active) is surfaced as opener_status for correlation."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 3}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
-        assert r.json()["status"] == "ignored"
+        assert r.json()["event"] == "opener_status"
 
-    def test_state_1_online_ignored(self, client):
-        """#97: bare Opener state==1 (online) is not a ring."""
+    def test_state_1_online_is_opener_status(self, client):
+        """#97/#180: bare Opener state==1 (online) is not a ring; it becomes opener_status."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        r = client.post("/nuki/callback", json=payload)
+        assert r.status_code == 200
+        assert r.json()["event"] == "opener_status"
+
+    def test_unknown_device_type(self, client):
+        payload = {"deviceType": 99, "nukiId": 100, "state": 1}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
         assert r.json()["status"] == "ignored"
 
-    def test_unknown_device_type(self, client):
-        payload = {"deviceType": 99, "nukiId": 100, "state": 1}
+    def test_lock_locked_ignored(self, client):
+        """A Smart Lock 'locked' (state=1) callback has no rule and is ignored."""
+        payload = {"deviceType": 0, "nukiId": 200, "state": 1}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
         assert r.json()["status"] == "ignored"
@@ -113,13 +122,11 @@ class TestNukiCallback:
         second = client.post("/nuki/callback", json=_ring_payload(ts="2026-06-12T13:51:40+00:00"))
         assert second.json()["event"] == "ring"
 
-    def test_ignored_event_logged_at_info_level(self, client, caplog):
+    def test_truly_ignored_event_logged_at_info_level(self, client, caplog):
         """Regression #171: ignored callbacks must be visible in the Docker log at INFO."""
         import logging
-        payload = {
-            "deviceType": 2, "nukiId": 100, "state": 1,
-            "ringactionState": False, "ringactionTimestamp": "2026-06-16T15:17:17+00:00",
-        }
+        # A Smart Lock 'locked' callback has no rule and is genuinely ignored.
+        payload = {"deviceType": 0, "nukiId": 200, "state": 1}
         with caplog.at_level(logging.INFO, logger="nukiblinker.server"):
             r = client.post("/nuki/callback", json=payload)
         assert r.json()["status"] == "ignored"
@@ -127,6 +134,22 @@ class TestNukiCallback:
             "Event ignored" in rec.message and rec.levelno == logging.INFO
             for rec in caplog.records
             if rec.name == "nukiblinker.server"
+        )
+
+    def test_opener_status_callback_logged_at_info_level(self, client, caplog):
+        """#180: opener status callbacks are surfaced (not silently dropped) at INFO."""
+        import logging
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 1,
+            "ringactionState": False, "ringactionTimestamp": "2026-06-16T15:17:17+00:00",
+        }
+        with caplog.at_level(logging.INFO, logger="nukiblinker.event_router"):
+            r = client.post("/nuki/callback", json=payload)
+        assert r.json()["event"] == "opener_status"
+        assert any(
+            "Opener status callback" in rec.message and rec.levelno == logging.INFO
+            for rec in caplog.records
+            if rec.name == "nukiblinker.event_router"
         )
 
     def test_callback_with_validation_disabled(self, app, client):

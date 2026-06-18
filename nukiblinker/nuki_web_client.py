@@ -68,22 +68,26 @@ class NukiWebClient:
             url = f"{self._base}/smartlock/log"
         try:
             async with httpx.AsyncClient(timeout=10) as c:
-                logger.debug("Nuki Web API request: GET %s?limit=%s", url, limit)
+                # Log request + response at INFO so the Nuki Web round-trip is
+                # always visible for troubleshooting name resolution (#176, #177).
+                logger.info("Nuki Web API request: GET %s?limit=%s", url, limit)
                 r = await c.get(url, headers=self._headers(), params={"limit": limit})
-                logger.debug("Nuki Web API response: status=%s", r.status_code)
+                logger.info("Nuki Web API response: status=%s", r.status_code)
                 r.raise_for_status()
                 data = r.json()
                 entries = data if isinstance(data, list) else []
-                logger.debug("Nuki Web API returned %d entries", len(entries))
-                # Log each entry for name resolution debugging (#161)
+                logger.info("Nuki Web API returned %d entries for smartlock_id=%s", len(entries), smartlock_id)
+                # Log each entry so name/trigger resolution can be debugged from
+                # the standard INFO logs without raising the global level (#161, #176).
                 for i, entry in enumerate(entries[:5]):  # Log first 5 entries
-                    logger.debug(
-                        "Web API entry[%d]: smartlockId=%s name=%r trigger=%s source=%s",
+                    logger.info(
+                        "Web API entry[%d]: smartlockId=%s name=%r trigger=%s source=%s date=%s",
                         i,
                         entry.get("smartlockId"),
                         entry.get("name"),
                         entry.get("trigger"),
                         entry.get("source"),
+                        entry.get("date"),
                     )
                 return entries
         except Exception:

@@ -2,6 +2,25 @@
 
 ---
 
+## #175 #176 #177 #180 — Nuki Web name resolution & opener correlation — DONE
+
+**Branch**: fix/175-177-180-nuki-web-name-resolution | **PR**: (pending) | CI: (pending)
+
+Group A (sequential, same name-resolution code paths). All four delivered in one PR.
+
+- [x] **#175** — `resolve_person()` resolves name **only** via Nuki Web API; dropped Bridge `/log` retry/fallback and the `nuki_client` parameter. `name_source` ∈ {`web_api`,`fallback`}.
+- [x] **#176** — `door_opened` (Lock) no longer resolves a name (chime/blink only). Nuki Web request/response/entries logged at **INFO**.
+- [x] **#177** — Opener `ring` (not just `ring_to_open`) resolves the name via Nuki Web, with visible INFO logging.
+- [x] **#180** — Opener callbacks that are neither ring nor ring_to_open are classified `opener_status`; `server.py` correlates them with the Nuki Web log (poll window, per-device cooldown) and fires `ring_to_open` on a user-driven open. New `OpenerCorrelationConfig`.
+
+**Files**: `event_router.py` (classify/resolve_person/dispatch + `correlate_opener_open`), `nuki_web_client.py` (INFO logging), `server.py` (`_correlate_opener_with_logging`), `config.py` (`OpenerCorrelationConfig`).
+
+**Tests**: rewrote `TestResolvePerson` (Web-only); updated classify + server tests for `opener_status`; added `TestDispatchResolutionSet` and `TestCorrelateOpenerOpen`.
+
+**Docs**: product-spec (Person Identification + Opener correlation), tech-spec (event router/classify/config), README, CHANGELOG, config.example.yaml.
+
+---
+
 ## #171 Ignored Nuki callbacks not visible in Docker logs — DONE
 
 **Branch**: fix/171-log-all-callback-events | **PR**: #172 | CI green

@@ -413,6 +413,15 @@ class AppConfig(BaseModel):
     server: ServerConfig = ServerConfig()
 ```
 
+```python
+class OpenerCorrelationConfig(BaseModel):
+    enabled: bool = True               # correlate ignored opener callbacks with Nuki Web (#180)
+    window_seconds: int = 10           # how long to keep polling Nuki Web
+    poll_interval_seconds: float = 2.0 # delay between polls
+    recency_seconds: int = 60          # max age of a Web entry to count as "this open"
+# AppConfig adds: opener_correlation: OpenerCorrelationConfig
+```
+
 All fields have defaults → the service can start with an empty/missing `config.yaml` and be configured entirely via the web UI.
 
 ### Server (`server.py`)
@@ -543,37 +552,52 @@ Each returns a list of `{"name": ..., "ip": ..., "port": ..., "type": "chromecas
 Classifies Nuki callback payloads into event types and dispatches to the matching rule:
 
 ```python
-def classify(payload: dict) -> str | None:
-    """Returns 'ring', 'ring_to_open', or 'door_opened'. None if ignored."""
+def classify(payload: dict, config) -> str | None:
+    """Returns 'ring', 'ring_to_open', 'door_opened', 'opener_status'. None if ignored."""
     device_type = payload.get("deviceType")
     state = payload.get("state")
 
     if device_type == 2:     # Opener
-        # state=7 → ring_to_open; ring without opening → ring
+        # state=7 → ring_to_open; ringactionState true → ring;
+        # any other callback for our Opener → 'opener_status' (#180), so the
+        # dispatcher can correlate it with Nuki Web to catch a user-driven open
+        # the bridge never reported as state=7. A non-matching opener_id → None.
         ...
     elif device_type == 0:   # Smart Lock
-        # state=5 (unlatched) → door_opened (state=3 unlocked is ignored — #60)
+        # state=5/7 (unlatch) or doorsensorState=3 → door_opened (state=3 ignored)
         ...
     return None              # unknown device type
 
-async def resolve_person(payload: dict, nuki_client) -> dict:
-    """Query Nuki Bridge /log to get the user name for the event.
-    Returns context dict: {"name": "Nico"} or {"name": fallback}."""
-    nuki_id = payload.get("nukiId")
-    try:
-        log = await nuki_client.get_last_log(nuki_id)
-        return {"name": log.get("name", config.fallback_name)}
-    except Exception:
-        return {"name": config.fallback_name}
+async def resolve_person(payload: dict, fallback_name="Alguien", *, nuki_web=None) -> dict:
+    """Resolve the user name (and trigger) via the Nuki Web API ONLY (#175).
+    The local Bridge /log is no longer consulted. Returns
+    {"name", "name_source": "web_api"|"fallback", "trigger"?}."""
+    if nuki_web is None:
+        return {"name": fallback_name, "name_source": "fallback"}
+    entries = await nuki_web.get_recent_log(smartlock_id=payload.get("nukiId"), limit=20)
+    # most-recent non-sensor entry wins (skip source=2 door-sensor); if it has no
+    # name the open is anonymous → fallback (only the most recent open counts).
+    ...
 
-async def dispatch(event_type: str, payload: dict, config: AppConfig, clients: Clients):
+async def dispatch(event_type, payload, config, clients):
     """Looks up config.events[event_type], resolves person, fires channels."""
     rule = getattr(config.events, event_type)
     context = {}
-    if event_type in ("ring_to_open", "door_opened"):
-        context = await resolve_person(payload, clients.nuki)
+    if event_type in ("ring", "ring_to_open"):      # Opener events only (#176/#177)
+        context = await resolve_person(payload, ..., nuki_web=clients.nuki_web)
     await notifier.notify(rule, config, clients, context)
+
+async def correlate_opener_open(payload, config, clients) -> dict | None:
+    """#180: poll the Nuki Web log for a short window after an opener_status
+    callback; return a ring_to_open context on a user-driven open, else None.
+    A per-device cooldown guard collapses the callback burst into one poll run."""
+    ...
 ```
+
+`server.py` routes an `opener_status` classification to a background
+`_correlate_opener_with_logging` task: it calls `correlate_opener_open()` and,
+on a hit, dispatches the `ring_to_open` rule (applying night mode) with the
+resolved context; otherwise it logs the callback as ignored.
 
 ### Notifier (`notifier.py`)
 
@@ -672,10 +696,15 @@ Key fields:
 - `deviceType`: 0=SmartLock, 2=Opener
 
 **Opener states** (deviceType=2):
-  - `1` = online (routine status update — **NOT** a ring; must be ignored)
-  - `3` = rto active
+  - `1` = online (routine status update — **NOT** a ring; surfaced as `opener_status` for Nuki Web correlation — #180)
+  - `3` = rto active (surfaced as `opener_status` when `ringactionState` is false — #180)
   - `5` = open
   - `7` = opening (door being opened → event: **ring_to_open**)
+
+Opener callbacks that are neither a ring nor a ring_to_open but **do** match the
+configured opener are classified as **`opener_status`** (#180) instead of being
+ignored, so the dispatcher can correlate them with the Nuki Web activity log to
+detect a user-driven open the bridge never reported as `state=7`.
 
 **Opener ring detection**: A ring is signalled by the callback fields `ringactionState: true` / `ringactionTimestamp` (the ring-action flag, reset after 30 s — Bridge API §4.x), independent of `state`. Classification: `ringactionState == true` → **ring**; `state == 7` → **ring_to_open**. The old `state == 1 → ring` rule was incorrect (it fired on every "online" status callback) and was removed (#97).
 
