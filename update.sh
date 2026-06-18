@@ -28,8 +28,9 @@ git pull --ff-only
 # 2. Make sure bind-mounted paths exist on the host BEFORE `docker compose up`,
 #    otherwise Docker creates a *directory* in their place.
 #    - logs/ : event-log volume (logs/event_log.db lives here)
+#    - cache/ : persistent TTS mp3 cache volume (cache/tts lives here, #178)
 #    - secrets.yaml : secrets file split out of config.yaml (#123)
-mkdir -p logs
+mkdir -p logs cache
 
 # Repair a Docker bind-mount artifact (#129): if a previous `up` ran before
 # secrets.yaml existed as a file, Docker created an empty *directory* in its

@@ -144,8 +144,8 @@ All enabled channels fire in parallel. Each event rule selects which channels to
 
 Plays sounds on **Google Nest** speakers. Two audio modes:
 
-- **Chime** (`mode: chime`): Plays a bundled chime sound (pleasant doorbell tone). No internet required.
-- **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet. Message is configurable per event rule and supports `{name}` template variable for personalized announcements.
+- **Chime** (`mode: chime`): Plays the single built-in chime (pleasant doorbell tone, `sounds/chime.wav`). No internet required. The chime is **fixed and not configurable** (#179) — there is no per-event chime filename and no fallback.
+- **TTS** (`mode: tts`): Plays a custom spoken message via `gTTS`. Requires internet for first generation. Message is configurable per event rule and supports `{name}` template variable for personalized announcements. Generated `.mp3` files are **cached on a persistent volume** keyed by the message (#178), so repeated announcements replay instantly and offline.
 
 Speaker support:
 - **Google Nest / Home**: Uses Chromecast protocol via `pychromecast`. Speakers auto-discovered on LAN.
@@ -153,7 +153,7 @@ Speaker support:
 
 > **Note**: Apple HomePod / AirPlay output was removed in v0.4.x. HomePod owners still receive the ring via the HomeKit doorbell notification (which plays the built-in chime on the HomePod).
 
-Bundled chime sounds are stored in `nukiblinker/sounds/`. Future: user-uploadable custom sounds.
+The single bundled chime lives in `nukiblinker/sounds/chime.wav` (generated at Docker build time, no committed binary). The persistent TTS cache lives under `cache/tts` (mounted as `./cache:/app/cache`, overridable via `NUKIBLINKER_TTS_CACHE_DIR`).
 
 ### Apple HomeKit Doorbell
 - NukiBlinker exposes a virtual HomeKit doorbell accessory via `HAP-python`.
@@ -214,7 +214,7 @@ A simple, single-page web interface for configuring NukiBlinker.
    - One card per event type (Ring, Ring to open, Door opened).
    - Each card configures:
      - Hue: enable + blink mode (`none` / `short` / `long`).
-     - Audio: **Ring** (unknown visitor) and **Door opened** are **chime-only**; **Ring to open** supports TTS (`{name}` message) or chime (#125).
+     - Audio: **Ring** (unknown visitor) and **Door opened** are **chime-only**; **Ring to open** supports TTS (`{name}` message) or chime (#125). The chime itself is fixed (no filename input, #179).
      - HomeKit: enable/disable.
    - Also on this tab: **Event Validation** (drop stale callbacks) and **Deduplication** (collapse repeated callbacks from one interaction) as two clearly-separated cards (#125).
    - "Test" button per event rule (fires all enabled channels for that rule).

@@ -73,7 +73,6 @@ class AudioConfig(BaseModel):
     enabled: bool = False
     mode: str = "tts"
     message: str = "{name} llegó a casa"
-    chime: str = "chime.wav"
     fallback_name: str = "Alguien"
 
 

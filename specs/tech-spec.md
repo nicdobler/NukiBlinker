@@ -369,8 +369,8 @@ class AudioConfig(BaseModel):
     enabled: bool = False
     mode: str = "tts"              # "tts", "chime", or "none"
     message: str = "{name} llegó a casa"  # template, supports {name}
-    chime: str = "chime.wav"       # filename in sounds/ (when mode="chime")
     fallback_name: str = "Alguien" # used when {name} can't be resolved
+    # The chime is fixed (sounds/chime.wav) and not configurable (#179).
 
 class EventRuleConfig(BaseModel):
     blink: BlinkConfig = BlinkConfig()
@@ -499,10 +499,11 @@ Generates or selects audio files for playback:
 
 - **`render_message(template, context)`** — Replaces `{name}` (and future variables) in the template. Falls back to `fallback_name` if `name` is not available.
 - **`get_audio(audio_config: AudioConfig, context: dict) -> Path`** — Returns path to an audio file:
-  - `mode="tts"`: renders template → generates an `.mp3` via `gTTS`, caches by rendered message hash.
-  - `mode="chime"`: returns `sounds/{chime_filename}` (default `chime.wav`).
-- TTS cache is in-memory (same rendered message doesn’t regenerate).
-- The default `chime.wav` is generated at Docker build time by `script/generate_chime.py` (pure-stdlib, no committed binary); the `sounds/` dir ships only a `.gitkeep` in git.
+  - `mode="tts"`: renders template → generates an `.mp3` via `gTTS`, served from a **persistent on-disk cache** (#178).
+  - `mode="chime"`: returns the single fixed `sounds/chime.wav` — no fallback, not configurable (#179).
+- **`tts_cache_filename(message) -> str`** — message without spaces, ASCII-normalised (accents stripped) so it is safe both as a filename and inside the `/audio/{filename}` URL. Empty → `tts.mp3`.
+- **TTS cache (#178)** is on disk at `_TTS_CACHE_DIR` (env `NUKIBLINKER_TTS_CACHE_DIR`, default `cache/tts` → `/app/cache/tts` in Docker, mounted as a volume). A repeated message replays instantly across restarts; if the cached file exists, gTTS is skipped entirely.
+- **Fixed chime (#179)**: `mode="chime"` always serves `sounds/chime.wav`. WAV was chosen over MP3 because it is generated at Docker build time by `script/generate_chime.py` (pure-stdlib) and served as-is with **no transcoding** — the fastest path during event processing. The `sounds/` dir ships only a `.gitkeep` in git.
 
 ### Chromecast Client (`chromecast_client.py`)
 

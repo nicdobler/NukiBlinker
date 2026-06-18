@@ -47,8 +47,7 @@ events:
       mode: "none"
     audio:
       enabled: true
-      mode: "chime"
-      chime: "chime.wav"
+      mode: "chime"               # plays the single fixed chime (sounds/chime.wav)
     homekit: false
 
 server:

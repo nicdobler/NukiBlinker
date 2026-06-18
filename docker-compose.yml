@@ -11,4 +11,7 @@ services:
       - ./secrets.yaml:/app/secrets.yaml
       - ./homekit:/app/.homekit
       - ./logs:/app/logs
+      # Persistent TTS cache (#178): generated mp3s survive container rebuilds so
+      # repeated announcements replay instantly. Resolves to /app/cache/tts.
+      - ./cache:/app/cache
       - /etc/localtime:/etc/localtime:ro

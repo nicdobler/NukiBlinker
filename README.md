@@ -21,8 +21,8 @@ All project documentation lives in this repository (versioned alongside the code
 - **Per-event rules**: each event gets its own blink pattern, audio, and HomeKit toggle
 - **Personalized announcements**: "{name} llegó a casa" — the visitor name is resolved **only** from the Nuki Web API activity log (a Web API token is required; without it announcements use the fallback name)
 - **Hue light blinks**: built-in alert per event — `short` (1 blink) or `long` (~15s); lights restore their previous state automatically
-- **Voice announcements**: TTS via gTTS on Google Nest (Chromecast)
-- **Chime sounds**: bundled audio files for door-opened events
+- **Voice announcements**: TTS via gTTS on Google Nest (Chromecast), cached on a persistent volume so repeated messages replay instantly
+- **Chime sound**: a single built-in doorbell chime for ring / door-opened events (fixed, not configurable)
 - **Apple HomeKit**: virtual doorbell accessory — notifications on all paired Apple devices, plus a programmable button usable as a Home app automation trigger
 - **Event validation**: configurable timestamp validation to reject stale events
 - **Event deduplication**: collapses the burst of callbacks one real interaction emits (a genuine second ring still notifies)
@@ -284,6 +284,12 @@ cp secrets.example.yaml secrets.yaml
 The `docker-compose.yml` mounts `./logs:/app/logs` so the event-log SQLite
 database (`logs/event_log.db`) survives `docker compose build` rebuilds. Without
 this volume the event history is wiped on every redeploy.
+
+It also mounts `./cache:/app/cache` for the **persistent TTS cache** (#178):
+generated announcement `.mp3` files are stored under `cache/tts` (keyed by the
+spoken message) and reused across restarts so repeated messages replay
+instantly. The directory is overridable with the `NUKIBLINKER_TTS_CACHE_DIR`
+environment variable (default `cache/tts`).
 
 Edit `config.yaml` with your Nuki/Hue Bridge IPs and `secrets.yaml` with your tokens/keys (or configure everything later via the web UI).
 
