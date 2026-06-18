@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-18
+
 ### Added
 - **#181 — Event Log device filter & actions-only view**: the Event Log **Device** dropdown now labels each device with its **name, device type (Opener / Smart Lock) and ID** instead of the name alone, so the same friendly name on two devices is no longer ambiguous. Each log entry shows a small **device-type badge** (Opener / Smart Lock) next to the event type. A new **"Only events with actions"** checkbox filters the viewer (and pagination/count) to events that actually triggered an action. Backend: `EventLog.get_recent_events()` / `get_event_count()` gained an `actions_only` flag (shared `_build_filters` helper), and `GET /api/events/log` accepts `?actions_only=1`. Added unit + endpoint regression tests.
 - **#178 — Persistent TTS cache on a Docker volume**: generated TTS `.mp3` files are now stored on disk keyed by the spoken message (the message without spaces, ASCII-normalised so it is safe as both a filename and a `/audio/{filename}` URL) and reused across container restarts, so repeated announcements replay instantly without re-calling gTTS. The cache lives at `NUKIBLINKER_TTS_CACHE_DIR` (default `cache/tts` → `/app/cache/tts` in Docker). `docker-compose.yml` mounts `./cache:/app/cache`, `update.sh` pre-creates `cache/`, and `cache/` is git-ignored. New `audio.tts_cache_filename()` helper with tests for space-stripping, accent normalisation, persistent cache hits, and skip-on-existing-file.
