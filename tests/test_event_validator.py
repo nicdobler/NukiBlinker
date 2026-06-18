@@ -188,7 +188,7 @@ class TestEventValidator:
 
         assert extracted is not None
         assert extracted.tzinfo == timezone.utc
-        assert extracted == pytest.approx(event_time, rel=1e-6)
+        assert extracted == pytest.approx(event_time, abs=timedelta(milliseconds=1))
 
     def test_extract_timestamp_unix_milliseconds(self):
         """Test timestamp extraction from Unix milliseconds."""
@@ -213,7 +213,7 @@ class TestEventValidator:
 
         assert extracted is not None
         assert extracted.tzinfo == timezone.utc
-        assert extracted == pytest.approx(event_time, rel=1e-6)
+        assert extracted == pytest.approx(event_time, abs=timedelta(milliseconds=1))
 
     def test_extract_timestamp_none(self):
         """Test timestamp extraction when no timestamp present."""
