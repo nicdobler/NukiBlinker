@@ -231,7 +231,7 @@ A simple, single-page web interface for configuring NukiBlinker.
 
 8. **Event Log**
    - Event logging settings (enable, max entries, retention, persist to file) — relocated here from the Events tab (#125).
-   - Paginated event-log viewer with device filter and CSV export.
+   - Paginated event-log viewer with a device filter (labelled by **name + type + ID**), an **only-events-with-actions** filter, a per-entry device-type badge, and CSV export (#181).
    - **Send support bundle to GitHub** (#117): pick a reference time + window (± minutes); NukiBlinker zips the app-log slice + event-log entries in the window and opens a GitHub issue with the ZIP attached (link committed via the Contents API). Requires a GitHub token (General tab); the config summary in the issue is redacted.
 
 **Auto-discovery**:
@@ -402,6 +402,22 @@ went to the console (lost on container restart).
 
 > The "send a support bundle (app log + event log for a time window) to a GitHub
 > issue" button is tracked separately in issue #117.
+
+### Event Log viewer device filter & actions-only view (#181)
+
+**Problem**: The Event Log device filter listed devices by name only (ambiguous
+when two devices share a name), log entries didn't show whether an event came
+from the Opener or the Smart Lock, and there was no quick way to hide noisy
+events that triggered no action.
+
+**Solution**:
+- The device dropdown labels each device with **name + device type (Opener /
+  Smart Lock) + nukiId**.
+- Each log entry shows a small **device-type badge** next to the event type.
+- A **"Only events with actions"** checkbox filters the viewer, pagination and
+  counts to events that triggered at least one action. Backend support via the
+  `actions_only` flag on `EventLog.get_recent_events()` / `get_event_count()`
+  and the `?actions_only=1` query parameter on `GET /api/events/log`.
 
 ## Future Considerations
 

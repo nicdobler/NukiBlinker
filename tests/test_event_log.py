@@ -325,6 +325,38 @@ class TestEventLog:
         assert event_log.get_event_count() == 3
         assert len(event_log.get_recent_events(device_id=111)) == 2
 
+    def test_actions_only_filter(self):
+        """#181: filter events to only those that triggered actions."""
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        event_log.log_event({"nukiId": 111, "name": "Opener"}, "ring", ["Hue blinked"], vr)
+        event_log.log_event({"nukiId": 111, "name": "Opener"}, "ring", [], vr)
+        event_log.log_event({"nukiId": 222, "name": "Lock"}, "door_opened", ["TTS played"], vr)
+
+        # Count: 2 of 3 events have actions.
+        assert event_log.get_event_count() == 3
+        assert event_log.get_event_count(actions_only=True) == 2
+
+        # Recent events: only those with non-empty actions.
+        recent = event_log.get_recent_events(actions_only=True)
+        assert len(recent) == 2
+        assert all(e.actions for e in recent)
+
+    def test_actions_only_with_device_filter(self):
+        """#181: actions-only combines with the device filter."""
+        event_log = EventLog(persist_to_file=False)
+        vr = ValidationResult(valid=True, delay_seconds=0.0)
+        event_log.log_event({"nukiId": 111, "name": "Opener"}, "ring", ["Hue blinked"], vr)
+        event_log.log_event({"nukiId": 111, "name": "Opener"}, "ring", [], vr)
+        event_log.log_event({"nukiId": 222, "name": "Lock"}, "door_opened", ["TTS played"], vr)
+
+        assert event_log.get_event_count(device_id=111, actions_only=True) == 1
+        assert event_log.get_event_count(device_id=222, actions_only=True) == 1
+        recent = event_log.get_recent_events(device_id=111, actions_only=True)
+        assert len(recent) == 1
+        assert recent[0].payload["nukiId"] == 111
+        assert recent[0].actions == ["Hue blinked"]
+
     def test_clear_log(self):
         """Test clearing the event log."""
         event_log = EventLog(persist_to_file=False)
