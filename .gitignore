@@ -7,6 +7,9 @@ logs/
 *.log
 debug.log
 
+# Persistent TTS cache volume (#178)
+cache/
+
 # Config (may contain user settings) and secrets
 config.yaml
 secrets.yaml

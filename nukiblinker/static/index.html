@@ -268,7 +268,7 @@
                 <p class="help">An unknown ring has no visitor name, so only a chime is played (no TTS).</p>
                 <div class="toggle"><input type="checkbox" id="ringAudioEnabled" onchange="toggleAudioFields('ring')"><label for="ringAudioEnabled">Enable chime</label></div>
                 <div id="ringAudioFields" style="display:none">
-                    <label>Chime file</label><input id="ringChime" value="chime.wav">
+                    <p class="help">Plays the built-in doorbell chime.</p>
                 </div>
             </div>
             <div class="event-section"><h4>HomeKit</h4>
@@ -290,7 +290,7 @@
                     <label>Mode</label>
                     <select id="rtoAudioMode" onchange="toggleAudioMode('rto')"><option value="tts">TTS</option><option value="chime">Chime</option></select>
                     <div id="rtoTtsFields"><label>TTS Message</label><input id="rtoTtsMsg" value="{name} llegó a casa"><p class="help">Use {name} for visitor name (resolved from Nuki log)</p></div>
-                    <div id="rtoChimeFields" style="display:none"><label>Chime file</label><input id="rtoChime" value="chime.mp3"></div>
+                    <div id="rtoChimeFields" style="display:none"><p class="help">Plays the built-in doorbell chime.</p></div>
                 </div>
             </div>
             <div class="event-section"><h4>HomeKit</h4>
@@ -310,7 +310,7 @@
                 <p class="help">Door-opened only plays a chime (no TTS).</p>
                 <div class="toggle"><input type="checkbox" id="doorAudioEnabled" checked onchange="toggleAudioFields('door')"><label for="doorAudioEnabled">Enable chime</label></div>
                 <div id="doorAudioFields">
-                    <label>Chime file</label><input id="doorChime" value="chime.wav">
+                    <p class="help">Plays the built-in doorbell chime.</p>
                 </div>
             </div>
             <div class="event-section"><h4>HomeKit</h4>
@@ -613,7 +613,6 @@ function populateEventRule(prefix, rule) {
         setSelect(prefix + 'AudioMode', a.mode || 'tts'); toggleAudioMode(prefix);
         setVal(prefix + 'TtsMsg', a.message);
     }
-    if (document.getElementById(prefix + 'Chime')) setVal(prefix + 'Chime', a.chime);
     setChk(prefix + 'Hk', rule.homekit);
 }
 
@@ -621,8 +620,8 @@ function collectEventRule(prefix) {
     // ring/door_opened are chime-only (#125): no TTS mode/message is sent.
     const audio = document.getElementById(prefix + 'AudioMode')
         ? { enabled: chk(prefix + 'AudioEnabled'), mode: val(prefix + 'AudioMode'),
-            message: val(prefix + 'TtsMsg'), chime: val(prefix + 'Chime') }
-        : { enabled: chk(prefix + 'AudioEnabled'), mode: 'chime', chime: val(prefix + 'Chime') };
+            message: val(prefix + 'TtsMsg') }
+        : { enabled: chk(prefix + 'AudioEnabled'), mode: 'chime' };
     return {
         blink: { mode: val(prefix + 'BlinkMode') },
         audio,
