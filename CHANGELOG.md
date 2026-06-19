@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **#193 — Stale name resolved when Nuki Web API lags**: `resolve_person()` now retries the Nuki Web log query (up to 3 times, 2 s apart) when the most-recent candidate entry is older than 30 s relative to the `ringactionTimestamp` from the bridge callback. Previously a single one-shot query could return the *previous* visitor's name if the current event had not yet propagated to the Web API. Anonymous opens (no name in the most-recent non-sensor entry) are not retried — they are expected. If no fresh entry arrives within the retry window the fallback name is used.
 - **#190 — Nuki Web device ID mismatch**: the Nuki Bridge `nukiId` and the Nuki Web API `smartlockId` are different namespaces. Previously `resolve_person()` and `correlate_opener_open()` passed the Bridge `nukiId` as the Web API `smartlockId`, causing all scoped log queries to return no results and name resolution to silently fall back every time. Fix: new `nuki.opener_web_id` / `nuki.lock_web_id` config fields hold the correct Nuki Web `smartlockId`; when set, those values are used for Web API log queries; when not set (default), the global log endpoint is queried instead (works for single-device accounts). New `GET /api/nuki/web-devices` endpoint and `NukiWebClient.list_smartlocks()` fetch the Web device list so the UI can display the mapping for the user to configure.
 
 ## [0.1.0] - 2026-06-18

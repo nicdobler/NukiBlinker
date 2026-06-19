@@ -2,6 +2,22 @@
 
 ---
 
+## #193 — Stale name resolved when Nuki Web API lags
+
+**Branch**: fix/193-stale-name-resolution | **PR**: (pending)
+
+**Root cause**: `resolve_person()` made a single one-shot call to the Nuki Web API. The current ring event had not yet propagated to the cloud log, so the most-recent entry was from 42 minutes earlier ("Celi" instead of "Nico"). No recency check was performed.
+
+**Fix**: retry loop (max 3 × 2 s) in `resolve_person()` that compares the candidate entry's `date` to `ringactionTimestamp`; skips retry for anonymous opens.
+
+- [x] Add `_RESOLVE_MAX_RETRIES`, `_RESOLVE_RETRY_DELAY_S`, `_RESOLVE_RECENCY_S` constants to `event_router.py`
+- [x] Add retry loop + recency check to `resolve_person()`, injectable `sleep` for tests
+- [x] Regression tests (retry until fresh, exhaust retries → fallback, no ts → no retry)
+- [x] `CHANGELOG.md` [Unreleased] + `tasks/todo.md`
+- [ ] CI green → wrap-up
+
+---
+
 ## #190 — Nuki Web device ID mismatch
 
 **Branch**: fix/190-nuki-web-device-id-mapping | **PR**: (pending)
