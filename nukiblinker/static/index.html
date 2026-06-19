@@ -151,11 +151,22 @@
             <h2>Device Filter <span style="color:#64748b;font-size:0.75rem">(optional)</span></h2>
             <p class="help" style="margin-bottom:0.75rem">Only process events from specific devices. Leave empty to accept all.</p>
             <div class="grid">
-                <div><label>Opener ID</label><input id="nukiOpenerId" type="number" placeholder="e.g. 123456789"></div>
-                <div><label>Lock ID</label><input id="nukiLockId" type="number" placeholder="e.g. 987654321"></div>
+                <div>
+                    <label>Opener Bridge ID <span class="opt">(nukiId from Bridge)</span></label>
+                    <input id="nukiOpenerId" type="number" placeholder="e.g. 123456789">
+                    <label>Opener Web ID <span class="opt">(smartlockId from Nuki Web)</span></label>
+                    <input id="nukiOpenerWebId" type="number" placeholder="e.g. 9129696002">
+                </div>
+                <div>
+                    <label>Lock Bridge ID <span class="opt">(nukiId from Bridge)</span></label>
+                    <input id="nukiLockId" type="number" placeholder="e.g. 987654321">
+                    <label>Lock Web ID <span class="opt">(smartlockId from Nuki Web)</span></label>
+                    <input id="nukiLockWebId" type="number" placeholder="e.g. 1234567890">
+                </div>
             </div>
             <input id="nukiOpenerName" type="hidden">
             <input id="nukiLockName" type="hidden">
+            <p class="help">Click <strong>List Devices</strong> to fetch IDs from the Bridge and Nuki Web API and auto-fill the fields above.</p>
             <button class="btn-secondary btn-sm" onclick="nukiListDevices()">List Devices</button>
             <div id="nukiDeviceResults" class="discover-results"></div>
         </div>
@@ -636,6 +647,7 @@ async function loadBaseConfig() {
         setVal('nukiToken', d.nuki?.api_token); setVal('nukiWebToken', d.nuki?.web_api_token);
         setVal('nukiOpenerId', d.nuki?.opener_id); setVal('nukiLockId', d.nuki?.lock_id);
         setVal('nukiOpenerName', d.nuki?.opener_name); setVal('nukiLockName', d.nuki?.lock_name);
+        setVal('nukiOpenerWebId', d.nuki?.opener_web_id); setVal('nukiLockWebId', d.nuki?.lock_web_id);
         setVal('hueIp', d.hue?.bridge_ip); setVal('hueKey', d.hue?.api_key);
         hueSelection = { lights: (d.hue?.lights || []).map(Number), groups: (d.hue?.groups || []).map(Number) };
         refreshHueDevices();  // fetch + render checkboxes (#126); preserves stored ids on failure
@@ -664,7 +676,8 @@ async function saveBaseConfig() {
         nuki: { bridge_ip: val('nukiIp'), bridge_port: parseInt(val('nukiPort')) || 8080,
             api_token: val('nukiToken'), web_api_token: val('nukiWebToken'),
             opener_id: numOrNull('nukiOpenerId'), lock_id: numOrNull('nukiLockId'),
-            opener_name: val('nukiOpenerName'), lock_name: val('nukiLockName') },
+            opener_name: val('nukiOpenerName'), lock_name: val('nukiLockName'),
+            opener_web_id: numOrNull('nukiOpenerWebId'), lock_web_id: numOrNull('nukiLockWebId') },
         hue: { bridge_ip: val('hueIp'), api_key: val('hueKey'),
             lights: collectHueIds('light', hueSelection.lights),
             groups: collectHueIds('group', hueSelection.groups) },
@@ -717,23 +730,60 @@ async function nukiCheckCallbacks() {
 }
 async function nukiListDevices() {
     const el = document.getElementById('nukiDeviceResults');
-    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying bridge...</p>';
-    try {
-        const devices = await (await fetch(`${API}/nuki/devices`)).json();
-        if (devices.error) { el.innerHTML = `<p style="font-size:0.8rem;color:#ef4444">${devices.error}</p>`; return; }
-        if (!devices.length) { el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No devices found</p>'; return; }
-        el.innerHTML = devices.map(d => {
-            const type = d.deviceType === 2 ? 'Opener' : d.deviceType === 0 ? 'Smart Lock' : 'Type ' + d.deviceType;
-            const name = (d.name || 'Unknown').replace(/'/g, "\\'");
-            return `<div class="discover-item" onclick="pickNukiDevice(${d.deviceType},'${d.nukiId}','${name}')"><span>${d.name||'Unknown'} <small style="color:#64748b">(${type})</small></span><span style="color:#64748b">ID: ${d.nukiId}</span></div>`;
-        }).join('');
-    } catch (e) { el.innerHTML = '<p style="font-size:0.8rem;color:#ef4444">Failed to list devices</p>'; }
+    el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Querying Bridge and Nuki Web API...</p>';
+    // Fetch Bridge devices and Web devices in parallel; Web devices require a web token.
+    const [bridgeResp, webResp] = await Promise.allSettled([
+        fetch(`${API}/nuki/devices`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/nuki/web-devices`).then(r => r.json()).catch(() => []),
+    ]);
+    const bridgeDevices = bridgeResp.status === 'fulfilled' && !bridgeResp.value?.error ? (bridgeResp.value || []) : [];
+    const webDevices   = webResp.status === 'fulfilled'   && !webResp.value?.error   ? (webResp.value   || []) : [];
+    if (!bridgeDevices.length && !webDevices.length) {
+        el.innerHTML = '<p style="font-size:0.8rem;color:#64748b">No devices found. Check Bridge IP/token and (optionally) Web API token.</p>';
+        return;
+    }
+    // Build a name → webDevice map for cross-matching.
+    const webByName = {};
+    webDevices.forEach(w => { if (w.name) webByName[w.name.toLowerCase()] = w; });
+    // Merge: use Bridge list as the source of truth; annotate with Web ID when name matches.
+    const rows = bridgeDevices.map(b => {
+        const type = b.deviceType === 2 ? 'Opener' : b.deviceType === 0 ? 'Smart Lock' : 'Type ' + b.deviceType;
+        const webMatch = webByName[(b.name || '').toLowerCase()];
+        const webId = webMatch ? webMatch.smartlockId : null;
+        return { deviceType: b.deviceType, nukiId: b.nukiId, name: b.name || 'Unknown', type, webId };
+    });
+    // Also show Web-only devices (not found on Bridge) in case names differ.
+    const bridgeNames = new Set(bridgeDevices.map(b => (b.name || '').toLowerCase()));
+    webDevices.forEach(w => {
+        if (!bridgeNames.has((w.name || '').toLowerCase())) {
+            const type = w.type === 2 ? 'Opener' : w.type === 1 ? 'Smart Lock' : 'Type ' + w.type;
+            rows.push({ deviceType: w.type === 2 ? 2 : 0, nukiId: null, name: w.name || 'Unknown', type, webId: w.smartlockId });
+        }
+    });
+    const webTokenSet = document.getElementById('nukiWebToken')?.value?.trim();
+    const webNote = !webTokenSet && !webDevices.length
+        ? '<p style="font-size:0.75rem;color:#f59e0b;margin-bottom:0.5rem">&#9888; Web API token not set — Web IDs not available. Set it above to enable automatic mapping.</p>'
+        : '';
+    el.innerHTML = webNote + rows.map(r => {
+        const safeName = r.name.replace(/'/g, "\\'");
+        const bridgeCell = r.nukiId != null ? `<span style="color:#e2e8f0">Bridge: <strong>${r.nukiId}</strong></span>` : '<span style="color:#64748b">Bridge: —</span>';
+        const webCell    = r.webId   != null ? `<span style="color:#93c5fd">Web: <strong>${r.webId}</strong></span>`   : '<span style="color:#64748b">Web: —</span>';
+        return `<div class="discover-item" onclick="pickNukiDevice(${r.deviceType},'${r.nukiId}','${safeName}','${r.webId}')" title="Click to use these IDs">
+            <span>${r.name} <small style="color:#64748b">(${r.type})</small></span>
+            <span style="display:flex;gap:0.75rem;font-size:0.75rem">${bridgeCell}${webCell}</span>
+        </div>`;
+    }).join('');
 }
-function pickNukiDevice(deviceType, nukiId, name) {
-    // Store the selected device ID + its friendly name so the Event Log can
-    // label events by name (real callbacks carry no name) (#115).
-    if (deviceType === 2) { setVal('nukiOpenerId', nukiId); setVal('nukiOpenerName', name); }
-    else { setVal('nukiLockId', nukiId); setVal('nukiLockName', name); }
+function pickNukiDevice(deviceType, nukiId, name, webId) {
+    // Store Bridge ID, friendly name (for Event Log #115) and Web ID (for name resolution #190).
+    const wid = webId && webId !== 'null' ? webId : null;
+    if (deviceType === 2) {
+        if (nukiId && nukiId !== 'null') { setVal('nukiOpenerId', nukiId); setVal('nukiOpenerName', name); }
+        if (wid) setVal('nukiOpenerWebId', wid);
+    } else {
+        if (nukiId && nukiId !== 'null') { setVal('nukiLockId', nukiId); setVal('nukiLockName', name); }
+        if (wid) setVal('nukiLockWebId', wid);
+    }
 }
 
 /* --- Hue Discovery, Status & Pairing --- */
