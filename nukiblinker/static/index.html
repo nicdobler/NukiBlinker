@@ -1228,7 +1228,7 @@ function _renderEventLogTable(tbody, events) {
         const vr = ev.validation_result || {};
         const actions = ev.actions || [];
         const state = _resolveStateName(payload.deviceType, payload.state, payload.ringactionState);
-        const hasActions = actions.length > 0;
+        const hasActions = actions.some(a => !/^(Ignored|Suppressed|Rejected):/i.test(a));
         const live = _isLiveEvent(ev.timestamp);
 
         const ts = new Date(ev.timestamp);
