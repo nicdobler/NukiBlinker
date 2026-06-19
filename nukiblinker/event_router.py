@@ -48,8 +48,9 @@ _RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
 _RESOLVE_RECENCY_S = 10       # candidate must be within this many seconds of the ring
 
 
-def mark_ring_to_open_dispatched(nuki_id: int | None, recency_seconds: int = 60,
-                                  *, time_func=None) -> None:
+def mark_ring_to_open_dispatched(
+    nuki_id: int | None, recency_seconds: int = 60, *, time_func=None,
+) -> None:
     """Set the correlation cooldown for *nuki_id* after a direct ring_to_open.
 
     When the Nuki Bridge fires a genuine ring_to_open (state=7) callback, a
