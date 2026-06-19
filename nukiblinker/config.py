@@ -150,23 +150,6 @@ class DeduplicationConfig(BaseModel):
     window_seconds: int = 120  # suppress duplicate events within this window
 
 
-class OpenerCorrelationConfig(BaseModel):
-    """Correlate otherwise-ignored Opener status callbacks with Nuki Web (#180).
-
-    The Nuki Bridge does not always emit a ``ring_to_open`` (state 7) callback
-    when a user opens the gate from the app — only routine status callbacks
-    (e.g. ``state=1`` online / ``state=3`` rto active with ``ringactionState``
-    false) arrive, which classify as ``opener_status`` and would otherwise be
-    ignored. When enabled, NukiBlinker polls the Nuki Web activity log for a
-    short window after such a callback; if a user-attributed open appears, it
-    dispatches the ``ring_to_open`` rule. Requires a ``nuki.web_api_token``.
-    """
-    enabled: bool = True
-    window_seconds: int = 10            # how long to keep polling Nuki Web
-    poll_interval_seconds: float = 2.0  # delay between polls
-    recency_seconds: int = 60           # max age of a Web entry to count as "this open"
-
-
 class GithubConfig(BaseModel):
     """GitHub integration settings (#124).
 
@@ -209,7 +192,6 @@ class AppConfig(BaseModel):
     night_mode: NightModeConfig = Field(default_factory=NightModeConfig)
     event_log: EventLogConfig = Field(default_factory=EventLogConfig)
     deduplication: DeduplicationConfig = Field(default_factory=DeduplicationConfig)
-    opener_correlation: OpenerCorrelationConfig = Field(default_factory=OpenerCorrelationConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     github: GithubConfig = Field(default_factory=GithubConfig)
 

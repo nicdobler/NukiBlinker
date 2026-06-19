@@ -84,14 +84,6 @@ deduplication:
   enabled: false                   # disabled until event capture is confirmed correct
   window_seconds: 120              # suppress duplicate events within this window
 
-# Opener open correlation (#180) - catch user opens the bridge never reports as a
-# ring_to_open by polling the Nuki Web log after an ignored opener status callback.
-# Requires a nuki.web_api_token (set in secrets.yaml).
-opener_correlation:
-  enabled: true
-  window_seconds: 10               # how long to keep polling Nuki Web
-  poll_interval_seconds: 2.0       # delay between polls
-  recency_seconds: 60              # max age of a Web entry to count as "this open"
 
 # Application log file - rotating app log with basic weekly housekeeping
 logging:

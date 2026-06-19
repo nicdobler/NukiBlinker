@@ -91,20 +91,6 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         app.state.last_event = {"type": event_type, "payload": payload}
 
-        # Opener status callbacks are not a rule on their own — correlate them
-        # with the Nuki Web log in the background to detect a user-driven open
-        # that the bridge never reported as a ring_to_open (#180).
-        if event_type == event_router.OPENER_STATUS:
-            background_tasks.add_task(
-                _correlate_opener_with_logging,
-                event_type,
-                payload,
-                app.state.config,
-                app.state.clients,
-                validation_result,
-            )
-            return JSONResponse({"status": "ok", "event": event_type})
-
         # Dispatch in background so we return 200 immediately
         background_tasks.add_task(
             _dispatch_with_logging,
@@ -176,57 +162,3 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
             )
 
         logger.error("Event processing failed: %s", e)
-
-
-async def _correlate_opener_with_logging(event_type: str, payload: dict, config, clients, validation_result):
-    """Correlate an opener status callback with Nuki Web; dispatch on a hit (#180).
-
-    Polls the Nuki Web activity log for a short window. If a user-driven open is
-    found, dispatches the ``ring_to_open`` rule (applying night mode) with the
-    resolved name; otherwise logs the callback as ignored.
-    """
-    start_time = time.time()
-    try:
-        context = await event_router.correlate_opener_open(payload, config, clients)
-        if context is None:
-            if config.event_log.enabled:
-                clients.event_log.log_event(
-                    payload=payload,
-                    event_type=event_type,
-                    actions=["Ignored: no user open correlated in Nuki Web"],
-                    validation_result=validation_result,
-                    processing_time_ms=(time.time() - start_time) * 1000,
-                )
-            return
-
-        rule = getattr(config.events, "ring_to_open")
-        if config.night_mode.enabled:
-            rule = clients.night_mode.apply_night_mode(rule)
-
-        actions = await event_router.dispatch_with_actions(
-            "ring_to_open", payload, config, clients, rule, context_override=context,
-        )
-        processing_time_ms = (time.time() - start_time) * 1000
-        if config.event_log.enabled:
-            clients.event_log.log_event(
-                payload=payload,
-                event_type="ring_to_open",
-                actions=actions,
-                validation_result=validation_result,
-                processing_time_ms=processing_time_ms,
-            )
-        logger.info(
-            "Opener status correlated -> ring_to_open: %s (%.1fms)",
-            actions, processing_time_ms,
-        )
-    except Exception as e:
-        processing_time_ms = (time.time() - start_time) * 1000
-        if config.event_log.enabled:
-            clients.event_log.log_event(
-                payload=payload,
-                event_type=event_type,
-                actions=[f"Error: {str(e)}"],
-                validation_result=validation_result,
-                processing_time_ms=processing_time_ms,
-            )
-        logger.error("Opener correlation failed: %s", e)

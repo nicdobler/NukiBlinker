@@ -1,7 +1,5 @@
 """Tests for nukiblinker.event_router — classification, person resolution, dispatch."""
 
-from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -9,11 +7,9 @@ import pytest
 from nukiblinker.config import AppConfig
 from nukiblinker.event_router import (
     classify,
-    correlate_opener_open,
     dispatch_with_actions,
     resolve_person,
 )
-from nukiblinker import event_router
 
 
 # ---------------------------------------------------------------------------
@@ -40,16 +36,16 @@ class TestClassifyOpener:
     def test_state_1_online_is_not_ring(self):
         """Regression #97: Opener state==1 ('online') must NOT be a ring.
 
-        #180: it is now surfaced as ``opener_status`` (for Nuki Web correlation)
-        instead of a ring.
+        #197: it is now ignored (returns None) — the bridge always fires state=7
+        ("opening") for actual opens; state=1 is only a post-open idle callback.
         """
         payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": False}
-        assert classify(payload, AppConfig()) == "opener_status"
+        assert classify(payload, AppConfig()) is None
 
-    def test_state_1_without_ringaction_is_opener_status(self):
-        """#180: bare state==1 status callbacks become opener_status (was ignored)."""
+    def test_state_1_without_ringaction_is_ignored(self):
+        """#197: bare state==1 status callbacks are now ignored (not opener_status)."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 1}
-        assert classify(payload, AppConfig()) == "opener_status"
+        assert classify(payload, AppConfig()) is None
 
     def test_ring_to_open_takes_priority_over_ringaction(self):
         payload = {
@@ -57,10 +53,10 @@ class TestClassifyOpener:
         }
         assert classify(payload, AppConfig()) == "ring_to_open"
 
-    def test_rto_active_state_3_is_opener_status(self):
-        """#180: state==3 (rto active) status callback becomes opener_status."""
+    def test_rto_active_state_3_is_ignored(self):
+        """#197: state==3 (rto active) is now ignored — not a user-driven open."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 3, "ringactionState": False}
-        assert classify(payload, AppConfig()) == "opener_status"
+        assert classify(payload, AppConfig()) is None
 
     def test_opener_id_filter_match(self):
         cfg = AppConfig()
@@ -75,8 +71,8 @@ class TestClassifyOpener:
         payload = {"deviceType": 2, "nukiId": 100, "state": 7}
         assert classify(payload, cfg) is None
 
-    def test_opener_id_filter_mismatch_status_callback(self):
-        """#180: a status callback from a non-matching opener stays ignored (None)."""
+    def test_opener_status_callback_non_matching_opener_ignored(self):
+        """A status callback from a non-matching opener stays ignored (None)."""
         cfg = AppConfig()
         cfg.nuki.opener_id = 200
         payload = {"deviceType": 2, "nukiId": 100, "state": 1}
@@ -280,6 +276,33 @@ class TestResolvePerson:
         assert "Nico" not in result.values()
 
     @pytest.mark.asyncio
+    async def test_entry_25s_old_retried_for_fresh_name(self):
+        """#197: an entry 25s before ring_ts was accepted by the old 30s threshold
+        but is now stale under the tighter 10s threshold — must retry and resolve
+        the correct name ('Ele') instead of immediately returning 'Nico'.
+        """
+        slept = []
+
+        async def fake_sleep(s):
+            slept.append(s)
+
+        ring_ts = "2026-06-19T15:25:00+00:00"
+        # First call: "Nico" from 25 seconds before ring — was accepted before, now stale.
+        nico_entry = [{"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
+                       "date": "2026-06-19T15:24:35+00:00"}]
+        # Second call: "Ele" right at the ring time — fresh.
+        ele_entry = [{"smartlockId": 9129696002, "name": "Ele", "trigger": 5, "source": 1,
+                      "date": "2026-06-19T15:25:00+00:00"}]
+        web = AsyncMock()
+        web.get_recent_log.side_effect = [nico_entry, ele_entry]
+        payload = {"nukiId": 539761410, "ringactionTimestamp": ring_ts}
+        result = await resolve_person(payload, nuki_web=web, sleep=fake_sleep)
+        assert result["name"] == "Ele"
+        assert result["name_source"] == "web_api"
+        assert web.get_recent_log.await_count == 2
+        assert len(slept) == 1
+
+    @pytest.mark.asyncio
     async def test_stale_candidate_retried_until_fresh_entry_arrives(self):
         """#193: when the Web API lags, resolve_person retries until a fresh entry appears.
 
@@ -462,137 +485,3 @@ class TestDispatchResolutionSet:
         resolver.assert_not_called()
         # Context passed to the notifier is empty (no name).
         assert notify.await_args.args[3] == {}
-
-
-# ---------------------------------------------------------------------------
-# correlate_opener_open() — #180
-# ---------------------------------------------------------------------------
-
-
-class _Clock:
-    """Deterministic monotonic clock returning a preset sequence."""
-
-    def __init__(self, values):
-        self._values = list(values)
-        self.i = 0
-
-    def __call__(self):
-        v = self._values[min(self.i, len(self._values) - 1)]
-        self.i += 1
-        return v
-
-
-_FIXED_NOW = datetime(2026, 6, 17, 16, 15, 0, tzinfo=timezone.utc)
-
-
-class TestCorrelateOpenerOpen:
-    @pytest.fixture(autouse=True)
-    def _reset_guard(self):
-        event_router._correlation_block_until.clear()
-        yield
-        event_router._correlation_block_until.clear()
-
-    def _clients(self, web):
-        return SimpleNamespace(nuki_web=web)
-
-    @pytest.mark.asyncio
-    async def test_hit_on_first_poll_returns_context(self):
-        """#190: without a web_id mapping, the global log (smartlock_id=None) is used."""
-        web = AsyncMock()
-        web.get_recent_log.return_value = [
-            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
-             "date": _FIXED_NOW.isoformat()},
-        ]
-        cfg = AppConfig()
-        result = await correlate_opener_open(
-            {"nukiId": 100}, cfg, self._clients(web),
-            sleep=AsyncMock(), time_func=_Clock([0, 0]), now_func=lambda: _FIXED_NOW,
-        )
-        assert result == {"name": "Nico", "trigger": 5, "name_source": "web_api"}
-        web.get_recent_log.assert_awaited_once_with(smartlock_id=None, limit=20)
-
-    @pytest.mark.asyncio
-    async def test_correlate_uses_opener_web_id_not_bridge_id(self):
-        """#190: correlate_opener_open uses opener_web_id when set, not Bridge nukiId."""
-        web = AsyncMock()
-        web.get_recent_log.return_value = [
-            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
-             "date": _FIXED_NOW.isoformat()},
-        ]
-        cfg = AppConfig()
-        cfg.nuki.opener_web_id = 9129696002
-        result = await correlate_opener_open(
-            {"nukiId": 100, "deviceType": 2}, cfg, self._clients(web),
-            sleep=AsyncMock(), time_func=_Clock([0, 0]), now_func=lambda: _FIXED_NOW,
-        )
-        assert result is not None
-        assert result["name"] == "Nico"
-        web.get_recent_log.assert_awaited_once_with(smartlock_id=9129696002, limit=20)
-
-    @pytest.mark.asyncio
-    async def test_no_web_client_returns_none(self):
-        result = await correlate_opener_open(
-            {"nukiId": 100}, AppConfig(), SimpleNamespace(nuki_web=None),
-        )
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_disabled_returns_none(self):
-        web = AsyncMock()
-        cfg = AppConfig()
-        cfg.opener_correlation.enabled = False
-        result = await correlate_opener_open({"nukiId": 100}, cfg, self._clients(web))
-        assert result is None
-        web.get_recent_log.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_no_user_open_polls_then_returns_none(self):
-        web = AsyncMock()
-        web.get_recent_log.return_value = []  # nothing to correlate
-        sleep = AsyncMock()
-        cfg = AppConfig()
-        result = await correlate_opener_open(
-            {"nukiId": 100}, cfg, self._clients(web),
-            sleep=sleep, time_func=_Clock([0, 6, 12]), now_func=lambda: _FIXED_NOW,
-        )
-        assert result is None
-        assert web.get_recent_log.await_count == 2  # polled twice within the window
-        sleep.assert_awaited()
-
-    @pytest.mark.asyncio
-    async def test_stale_open_outside_recency_is_ignored(self):
-        from datetime import timedelta
-        old_date = (_FIXED_NOW - timedelta(seconds=600)).isoformat()
-        web = AsyncMock()
-        web.get_recent_log.return_value = [
-            {"smartlockId": 100, "name": "Nico", "trigger": 5, "source": 1, "date": old_date},
-        ]
-        cfg = AppConfig()
-        result = await correlate_opener_open(
-            {"nukiId": 100}, cfg, self._clients(web),
-            sleep=AsyncMock(), time_func=_Clock([0, 6, 12]), now_func=lambda: _FIXED_NOW,
-        )
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_cooldown_guard_skips_overlapping_run(self):
-        web = AsyncMock()
-        web.get_recent_log.return_value = [
-            {"smartlockId": 100, "name": "Nico", "trigger": 5, "source": 1,
-             "date": _FIXED_NOW.isoformat()},
-        ]
-        cfg = AppConfig()
-        # First call hits and sets a cooldown.
-        first = await correlate_opener_open(
-            {"nukiId": 100}, cfg, self._clients(web),
-            sleep=AsyncMock(), time_func=_Clock([0, 0]), now_func=lambda: _FIXED_NOW,
-        )
-        assert first is not None
-        web.get_recent_log.reset_mock()
-        # Second call within the cooldown window is skipped (no polling).
-        second = await correlate_opener_open(
-            {"nukiId": 100}, cfg, self._clients(web),
-            sleep=AsyncMock(), time_func=_Clock([1, 1]), now_func=lambda: _FIXED_NOW,
-        )
-        assert second is None
-        web.get_recent_log.assert_not_called()
