@@ -237,6 +237,8 @@ nuki:
 ```
 Name resolution for **Opener** events (ring / ring to open) is done **exclusively** via the Nuki Web API — the local Bridge `/log` is no longer used. Without a token, announcements use the fallback name. **Door opened** (Smart Lock) events never resolve a name (chime/blink only).
 
+> **Device ID mapping (#190)**: the Nuki Bridge `nukiId` and the Nuki Web API `smartlockId` are **different** identifiers. For efficient per-device log queries, set `nuki.opener_web_id` / `nuki.lock_web_id` in `config.yaml` to the Web API `smartlockId` for each device. Use the **Nuki Web Devices** button in the Nuki tab (or `GET /api/nuki/web-devices`) to look up the correct IDs. Without these fields, the global log endpoint is used (works but less efficient for multi-device accounts).
+
 ### Getting API Keys
 
 - **Nuki Bridge**: Nuki app → Settings → Manage Bridge → Enable API. Note the token. Or use the Web UI's Nuki tab.

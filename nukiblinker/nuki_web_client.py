@@ -93,3 +93,26 @@ class NukiWebClient:
         except Exception:
             logger.warning("Nuki Web API log request failed", exc_info=True)
             return []
+
+    async def list_smartlocks(self) -> list[dict]:
+        """Fetch all smartlocks from the Nuki Web API.
+
+        Returns a list of smartlock dicts, each with at least ``smartlockId``,
+        ``name``, and ``type`` (1=Smart Lock, 2=Opener, 3=Smart Door,
+        4=Smart Gate, 0=Unknown).  Used to build the Bridge nukiId →
+        Web smartlockId mapping (#190).
+        """
+        url = f"{self._base}/smartlock"
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                logger.info("Nuki Web API request: GET %s", url)
+                r = await c.get(url, headers=self._headers())
+                logger.info("Nuki Web API response: status=%s", r.status_code)
+                r.raise_for_status()
+                data = r.json()
+                devices = data if isinstance(data, list) else []
+                logger.info("Nuki Web API returned %d smartlock(s)", len(devices))
+                return devices
+        except Exception:
+            logger.warning("Nuki Web API smartlock list request failed", exc_info=True)
+            return []

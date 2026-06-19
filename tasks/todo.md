@@ -2,6 +2,22 @@
 
 ---
 
+## #190 — Nuki Web device ID mismatch
+
+**Branch**: fix/190-nuki-web-device-id-mapping | **PR**: (pending)
+
+**Root cause**: `resolve_person()` and `correlate_opener_open()` passed the Bridge `nukiId` as the Web API `smartlockId` — different namespaces. All scoped log queries returned empty, making name resolution always fall back.
+
+- [x] Add `opener_web_id` / `lock_web_id` to `NukiConfig`
+- [x] Add `_resolve_web_id()` helper in `event_router.py`; pass `config` to `resolve_person()`
+- [x] Fix `resolve_person()` and `correlate_opener_open()` to use the correct Web ID
+- [x] Add `NukiWebClient.list_smartlocks()` + `GET /api/nuki/web-devices` endpoint
+- [x] Regression tests: `test_event_router.py`, `test_nuki_web_client.py`, `test_web_ui.py`
+- [x] `config.example.yaml`, `CHANGELOG.md`, `tasks/todo.md`
+- [ ] CI green → auto wrap-up
+
+---
+
 ## #175 #176 #177 #180 — Nuki Web name resolution & opener correlation — DONE
 
 **Branch**: fix/175-177-180-nuki-web-name-resolution | **PR**: (pending) | CI: (pending)

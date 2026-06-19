@@ -245,6 +245,27 @@ class TestBridgeError:
         assert body["error"]  # must not be empty
 
 
+class TestNukiWebDevices:
+    """GET /api/nuki/web-devices — list Nuki Web API smartlocks (#190)."""
+
+    def test_returns_device_list(self, app, client):
+        app.state.config.nuki.web_api_token = "web-secret"
+        devices = [{"smartlockId": 9129696002, "name": "Portal", "type": 2}]
+        with patch(
+            "nukiblinker.nuki_web_client.NukiWebClient.list_smartlocks",
+            new_callable=AsyncMock, return_value=devices,
+        ):
+            r = client.get("/api/nuki/web-devices")
+        assert r.status_code == 200
+        assert r.json()[0]["smartlockId"] == 9129696002
+
+    def test_no_web_token_returns_400(self, app, client):
+        app.state.config.nuki.web_api_token = ""
+        r = client.get("/api/nuki/web-devices")
+        assert r.status_code == 400
+        assert "token" in r.json()["error"]
+
+
 class TestNukiPairTimeout:
     """Regression: POST /api/nuki/pair should return 502 on ConnectTimeout, not 500."""
 
