@@ -8,7 +8,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-fastapi = ">=0.115,<0.137"
+fastapi = ">=0.115,<0.138"
 uvicorn = {version = ">=0.34,<0.50", extras = ["standard"]}
 httpx = "^0.28.0"
 pyyaml = "^6.0"
