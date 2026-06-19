@@ -695,3 +695,23 @@ chose two improvements. Wrap-up mode: **Auto**.
 - [x] Tests: unit (actions_only + combined device filter) in `test_event_log.py`; endpoint test in `test_web_ui_new_endpoints.py`.
 - [x] Docs: CHANGELOG `[Unreleased] / Added`, README, product-spec, tech-spec.
 - [ ] Push branch -> open PR -> CI green (do not merge).
+
+---
+
+## Dependabot PRs #183 (pytest 9.1.0) + #182 (fastapi 0.137.1)
+
+**Session wrap-up mode**: Approval
+
+**Batch**: Sequential — #183 first (green), then rebase #182.
+
+- PR #183: `dependabot/pip/pytest-9.1.0` — ✅ CI green, awaiting approval to merge
+- PR #182: `dependabot/pip/fastapi-0.137.1` — ❌ CI failing; stale branch needs rebase onto main after #183 merges (test at line 216 uses old `rel=1e-6` syntax, main already has the `abs=timedelta` fix)
+
+**Steps**:
+- [x] User approves merge of PR #183
+- [x] Merge PR #183 (pytest) — squash-merged
+- [x] Trigger `@dependabot rebase` on PR #182
+- [x] Wait for CI on #182 → green
+- [x] User approves merge of PR #182
+- [x] Merge PR #182 (fastapi 0.137.2) — squash-merged
+- Note: PR #174 (aiohttp 3.14.1) auto-closed by Dependabot (superseded by fastapi lockfile update)
