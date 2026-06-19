@@ -63,7 +63,73 @@ Nuki devices produce different events. NukiBlinker maps each to a configurable s
 | **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + personalized announcement |
 | **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime or personalized announcement |
 
-> **Ring detection (Opener)**: A doorbell ring is detected via the callback's `ringactionState`/`ringactionTimestamp` fields (per Bridge API §4 — the ring action flag, reset after 30 s), **not** via the lock `state`. Opener `state == 1` means "online" (a routine status update) and must not be treated as a ring. The door being opened (Ring to Open / manual open) is signalled by `state == 7` ("opening").
+> **Ring detection (Opener)**: A doorbell ring is detected via the callback's `ringactionState`/`ringactionTimestamp` fields (per Bridge API §4 — the ring action flag, reset after 30 s), **not** via the lock `state`. The door being opened (Ring to Open / manual open) is signalled by `state == 7` ("opening"). All other Opener states (1 "online", 3 "rto active", 5 "open", 253 "boot run") are routine status updates and are **silently ignored** (#197).
+
+### Nuki device state machines
+
+The following diagrams show the operational states for each Nuki device and the NukiBlinker reactions. Calibration/error states (0 "uncalibrated/untrained", 254 "motor blocked", 255 "undefined") are omitted.
+
+#### Opener (deviceType=2)
+
+```mermaid
+stateDiagram-v2
+    [*] --> online : power on / RTO expires / post-open reset
+    online --> rto_active : RTO activated (geofence or app)
+    rto_active --> opening : user opens (app / button / geofence auto-open)
+    opening --> open : gate physically opens
+    open --> online : gate closes / RTO resets
+
+    note right of online
+        state=1 · Ignored by NukiBlinker
+    end note
+    note right of rto_active
+        state=3 · Ignored by NukiBlinker
+    end note
+    note right of opening
+        state=7 · ✅ Triggers ring_to_open rule
+        Name resolved via Nuki Web API
+    end note
+    note right of open
+        state=5 · Ignored by NukiBlinker
+    end note
+
+    online --> ring : visitor presses doorbell (ringactionState=true)
+    ring --> online : ring acknowledged (30 s timeout)
+    note right of ring
+        ringactionState=true · ✅ Triggers ring rule
+    end note
+```
+
+#### Smart Lock (deviceType=0)
+
+```mermaid
+stateDiagram-v2
+    [*] --> locked : default / after locking
+    locked --> unlocking : unlock command sent
+    unlocking --> unlocked : unlocked (no open)
+    unlocked --> locking : lock command sent
+    locking --> locked : locked
+
+    unlocked --> unlatching : unlatch command sent
+    locked --> unlatching : direct unlatch command
+    unlatching --> unlatched : door physically open
+    unlatched --> locked : door closes + relocks
+
+    note right of locked
+        state=1 · Ignored
+    end note
+    note right of unlocked
+        state=3 · Ignored (#60 — unlock ≠ open)
+    end note
+    note right of unlatching
+        state=7 · ✅ Triggers door_opened rule
+    end note
+    note right of unlatched
+        state=5 · ✅ Triggers door_opened rule
+    end note
+```
+
+> **Door sensor**: `doorsensorState=3` (door physically opened) also triggers `door_opened` independently of lock state (#169).
 
 ### Event Deduplication
 
@@ -78,13 +144,10 @@ A single real interaction makes the Nuki Bridge emit several callbacks (status t
 
 For **Opener** events (**ring** and **ring to open**) NukiBlinker resolves which user triggered the action and exposes it as a `{name}` template variable in the TTS message. **Door opened** (Smart Lock) events deliberately do **not** resolve a name — their only actions are a chime/blink and the opener identity is irrelevant (#176).
 
-- **Nuki Web API only** (#175): names are resolved **exclusively** through the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also tells *how* the door was opened (e.g. physical button vs Ring to Open). The local Bridge `/log` endpoint is **no longer** used for name resolution — it never carries the caller's name for the cases we care about (it lags and is empty on the software bridge), so retrying it only added latency and noise.
-- When the Web API is not configured, or returns no named entry (e.g. an anonymous Ring-to-Open), NukiBlinker falls back to `fallback_name` ("Alguien").
-- Every Nuki Web request and response (and the first few log entries) is logged at **INFO** so name resolution can be troubleshooted from the standard logs without raising the global log level (#176/#177).
-
-### Opener open correlation (#180)
-
-Some user opens (e.g. opening the gate from the Nuki app while Ring-to-Open is active) never produce a `ring_to_open` (state 7) callback from the Bridge — only routine Opener status callbacks (`state=1` online / `state=3` rto active with `ringactionState` false) arrive, which would otherwise be ignored. When `opener_correlation` is enabled (default) **and** a Nuki Web token is configured, NukiBlinker polls the Nuki Web activity log for a short window (default 10 s, every 2 s) after such a callback; if a user-attributed open appears within the recency window it dispatches the **ring to open** rule with the resolved name. A per-device cooldown collapses the burst of status callbacks one open emits into a single poll run and prevents re-firing.
+- **Nuki Web API only** (#175): names are resolved **exclusively** through the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also tells *how* the door was opened (e.g. physical button vs Ring to Open). The local Bridge `/log` endpoint is **no longer** used for name resolution.
+- The Nuki Web API can lag a few seconds behind the Bridge callback (#193). NukiBlinker retries the log query up to **7 times** (2 s apart, ~14 s total) when the most recent candidate entry is older than 10 s relative to the `ringactionTimestamp`. This ensures the correct visitor name is returned even if the Web API hasn't propagated the event yet.
+- When the Web API is not configured, or no named entry arrives within the retry window (e.g. an anonymous Ring-to-Open), NukiBlinker falls back to `fallback_name` ("Alguien").
+- Every Nuki Web request and response is logged at **INFO** so name resolution can be troubleshot from the standard logs.
 
 Examples:
 - Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
