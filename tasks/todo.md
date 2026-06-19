@@ -735,3 +735,21 @@ chose two improvements. Wrap-up mode: **Auto**.
 - [x] User approves merge of PR #182
 - [x] Merge PR #182 (fastapi 0.137.2) — squash-merged
 - Note: PR #174 (aiohttp 3.14.1) auto-closed by Dependabot (superseded by fastapi lockfile update)
+
+---
+
+## #201 — Event Log table redesign
+
+**Branch**: feat/201-event-log-table | **PR**: (pending)
+
+Pure frontend change — no backend modifications.
+
+**Steps**:
+- [x] Read existing event log implementation (`event_log.py`, `web_ui.py`, `index.html`)
+- [x] Build standalone mock for user approval (`tasks/event-log-mock.html`)
+- [x] Update `specs/product-spec.md` with #201 feature description
+- [x] Replace event log viewer HTML with compact table + compact toolbar
+- [x] Implement `_resolveStateName()`, `_renderEventLogTable()`, `_toggleDetailRow()`, `_renderDetailPanel()`, `_liveRefreshRow()` in JS
+- [x] Update `CHANGELOG.md` and `tasks/todo.md`
+- [ ] Push branch, open PR, wait for CI green
+- [ ] Auto wrap-up once CI green

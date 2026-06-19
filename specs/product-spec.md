@@ -467,6 +467,38 @@ went to the console (lost on container restart).
 > The "send a support bundle (app log + event log for a time window) to a GitHub
 > issue" button is tracked separately in issue #117.
 
+### Event Log table redesign (#201)
+
+**Problem**: The card-per-event layout required mentally mapping state IDs to
+meanings and offered no quick scan path across many events.
+
+**Solution**: Replace the stacked-card layout with a compact table optimised
+for scanning, with expandable detail rows for investigation.
+
+**Always-visible columns**: Date · Time · Device · State (human-readable text
+from the official Nuki Bridge API table, colour-coded by significance) ·
+Triggered (✅ dispatched / ⬜ ignored/suppressed) · Actions (inline summary) ·
+▶ expand chevron.
+
+**Expandable detail panel** (click any row):
+- Full action list with per-step and total timings.
+- Foldable raw Bridge payload JSON.
+- Foldable raw Nuki Web API response JSON (when a Web API call was made for
+  the event; otherwise shows "none").
+
+**State colour coding**: action states (opening, unlatching, ring) highlighted
+in blue/red; settled states (online, locked) shown in a muted grey; invalid/
+rejected rows get a red left-border stripe.
+
+**Live badge**: events received within the last 60 s display an animated LIVE
+badge that re-fetches that row on click, useful to watch name resolution
+complete after a Ring to Open.
+
+**Preserved**: existing pagination (Prev/Next), device filter dropdown
+(name + type + ID), actions-only checkbox, Export CSV, Clear — all moved to a
+compact toolbar above the table. Backend `GET /api/events/log` contract is
+unchanged.
+
 ### Event Log viewer device filter & actions-only view (#181)
 
 **Problem**: The Event Log device filter listed devices by name only (ambiguous
