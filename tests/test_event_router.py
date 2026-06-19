@@ -10,7 +10,6 @@ from nukiblinker.event_router import (
     dispatch_with_actions,
     resolve_person,
 )
-from nukiblinker import event_router
 
 
 # ---------------------------------------------------------------------------

@@ -66,19 +66,19 @@ class TestNukiCallback:
         assert r.status_code == 200
         assert r.json()["event"] == "door_opened"
 
-    def test_opener_status_event_state_3(self, client):
-        """#180: Opener state==3 (rto active) is surfaced as opener_status for correlation."""
+    def test_opener_status_event_state_3_ignored(self, client):
+        """#197: Opener state==3 (rto active) is now silently ignored — not a user-driven open."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 3}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
-        assert r.json()["event"] == "opener_status"
+        assert r.json()["status"] == "ignored"
 
-    def test_state_1_online_is_opener_status(self, client):
-        """#97/#180: bare Opener state==1 (online) is not a ring; it becomes opener_status."""
+    def test_state_1_online_is_ignored(self, client):
+        """#97/#197: bare Opener state==1 (online) is not a ring and is now ignored entirely."""
         payload = {"deviceType": 2, "nukiId": 100, "state": 1}
         r = client.post("/nuki/callback", json=payload)
         assert r.status_code == 200
-        assert r.json()["event"] == "opener_status"
+        assert r.json()["status"] == "ignored"
 
     def test_unknown_device_type(self, client):
         payload = {"deviceType": 99, "nukiId": 100, "state": 1}
@@ -136,18 +136,18 @@ class TestNukiCallback:
             if rec.name == "nukiblinker.server"
         )
 
-    def test_opener_status_callback_logged_at_info_level(self, client, caplog):
-        """#180: opener status callbacks are surfaced (not silently dropped) at INFO."""
+    def test_opener_status_callback_ignored_at_debug_level(self, client, caplog):
+        """#197: opener state=1 callbacks are now ignored (not surfaced for correlation)."""
         import logging
         payload = {
             "deviceType": 2, "nukiId": 100, "state": 1,
             "ringactionState": False, "ringactionTimestamp": "2026-06-16T15:17:17+00:00",
         }
-        with caplog.at_level(logging.INFO, logger="nukiblinker.event_router"):
+        with caplog.at_level(logging.DEBUG, logger="nukiblinker.event_router"):
             r = client.post("/nuki/callback", json=payload)
-        assert r.json()["event"] == "opener_status"
+        assert r.json()["status"] == "ignored"
         assert any(
-            "Opener status callback" in rec.message and rec.levelno == logging.INFO
+            "ignored" in rec.message.lower()
             for rec in caplog.records
             if rec.name == "nukiblinker.event_router"
         )
