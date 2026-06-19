@@ -73,9 +73,10 @@ The following diagrams show the operational states for each Nuki device and the 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> online : power on / RTO expires / post-open reset
+    [*] --> online : power on / post-open reset
     online --> rto_active : RTO activated (geofence or app)
     rto_active --> opening : user opens (app / button / geofence auto-open)
+    rto_active --> online : RTO expires without opening
     opening --> open : gate physically opens
     open --> online : gate closes / RTO resets
 
