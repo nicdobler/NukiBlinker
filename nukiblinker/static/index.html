@@ -495,34 +495,47 @@
         <div class="card">
             <h2>Event Log Viewer</h2>
             <p class="help" style="margin-bottom:0.75rem">View detailed history of all Nuki events and processing results.</p>
-            <div class="btn-row">
-                <button class="btn-secondary btn-sm" onclick="refreshEventLog()">Refresh</button>
-                <button class="btn-secondary btn-sm" onclick="exportEventLog()">Export CSV</button>
-                <button class="btn-secondary btn-sm" onclick="clearEventLog()">Clear Log</button>
-                <label style="font-size:0.8rem; color:#64748b; margin-left:0.5rem;">Device
-                    <select id="eventLogDeviceFilter" class="btn-sm" onchange="refreshEventLog()">
-                        <option value="">All devices</option>
+
+            <!-- Compact toolbar: filters left, pagination right -->
+            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+                <button class="btn-secondary btn-sm" onclick="refreshEventLog()">↺ Refresh</button>
+                <button class="btn-secondary btn-sm" onclick="exportEventLog()">↓ CSV</button>
+                <button class="btn-secondary btn-sm" onclick="clearEventLog()">✕ Clear</button>
+                <label style="font-size:0.78rem; color:#94a3b8; display:inline-flex; align-items:center; gap:0.3rem;">
+                    Device:
+                    <select id="eventLogDeviceFilter" class="btn-sm" onchange="refreshEventLog()" style="width:auto;">
+                        <option value="">All</option>
                     </select>
                 </label>
-                <label style="font-size:0.8rem; color:#64748b; margin-left:0.5rem; display:inline-flex; align-items:center; gap:0.3rem;">
-                    <input type="checkbox" id="eventLogActionsOnly" onchange="refreshEventLog()">
-                    Only events with actions
+                <label style="font-size:0.78rem; color:#94a3b8; display:inline-flex; align-items:center; gap:0.3rem;">
+                    <input type="checkbox" id="eventLogActionsOnly" onchange="refreshEventLog()" style="width:auto;margin:0;"> With actions
                 </label>
+                <span style="flex:1;"></span>
+                <span id="eventLogInfo" style="color:#64748b; font-size:0.78rem; white-space:nowrap;"></span>
+                <button id="eventLogPrev" class="btn-secondary btn-sm" onclick="prevEvents()">&#8592; Prev</button>
+                <button id="eventLogNext" class="btn-secondary btn-sm" onclick="nextEvents()">Next &#8594;</button>
             </div>
+
             <div id="eventLogStatus" class="discover-results"></div>
-        </div>
-        
-        <div class="card">
-            <h2>Recent Events</h2>
-            <div id="eventLogContainer">
-                <div style="text-align:center; color:#64748b; padding:2rem;">
-                    Loading event log...
-                </div>
-            </div>
-            <div class="btn-row" style="margin-top:1rem; align-items:center; gap:0.5rem;">
-                <button id="eventLogPrev" class="btn-secondary btn-sm" onclick="prevEvents()">Previous</button>
-                <button id="eventLogNext" class="btn-secondary btn-sm" onclick="nextEvents()">Next</button>
-                <span id="eventLogInfo" style="color:#64748b; font-size:0.8rem;"></span>
+
+            <!-- Scrollable table -->
+            <div style="overflow-x:auto;">
+                <table id="eventLogTable" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Date</th>
+                            <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Time</th>
+                            <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Device</th>
+                            <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">State</th>
+                            <th style="text-align:center; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Triggered</th>
+                            <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155;">Actions</th>
+                            <th style="width:28px; border-bottom:1px solid #334155;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventLogBody">
+                        <tr><td colspan="7" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">Loading event log...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -1096,6 +1109,47 @@ function deviceTypeLabel(deviceType) {
     return 'Type ' + deviceType;
 }
 
+// Official Nuki Bridge API state name tables (#201).
+const _OPENER_STATES = {
+    0: 'untrained', 1: 'online', 3: 'rto active', 5: 'open',
+    7: 'opening', 253: 'boot run', 255: 'undefined'
+};
+const _LOCK_STATES = {
+    0: 'uncalibrated', 1: 'locked', 2: 'unlocking', 3: 'unlocked',
+    4: 'locking', 5: 'unlatched', 6: "unlocked (lock 'n' go)",
+    7: 'unlatching', 254: 'motor blocked', 255: 'undefined'
+};
+
+function _resolveStateName(deviceType, state, ringactionState) {
+    if (ringactionState) return { label: 'ring', color: '#fca5a5', bg: '#3b1f1f' };
+    const map = deviceType === 2 ? _OPENER_STATES : _LOCK_STATES;
+    const name = (state != null) ? (map[state] || ('state ' + state)) : '—';
+    const palette = {
+        'opening':    { color: '#93c5fd', bg: '#1e3a5f' },
+        'open':       { color: '#86efac', bg: '#1c3a2c' },
+        'rto active': { color: '#fde68a', bg: '#2d2a1a' },
+        'ring':       { color: '#fca5a5', bg: '#3b1f1f' },
+        'unlatching': { color: '#93c5fd', bg: '#1e3a5f' },
+        'unlatched':  { color: '#86efac', bg: '#1c3a2c' },
+        'unlocked':   { color: '#fcd34d', bg: '#2a2010' },
+    };
+    const p = palette[name] || { color: '#64748b', bg: '#1e293b' };
+    return { label: name, color: p.color, bg: p.bg };
+}
+
+function _isLiveEvent(ts) {
+    return (Date.now() - new Date(ts).getTime()) < 60000;
+}
+
+function _actionSummary(actions) {
+    if (!actions || actions.length === 0) return '<span style="color:#475569">—</span>';
+    const labels = actions.map(a => {
+        const m = a.match(/^(TTS|Hue|HomeKit|Chime|Suppressed)/i);
+        return m ? m[1] : a.split('(')[0].trim().split(':')[0].trim();
+    });
+    return '<span style="color:#94a3b8">' + [...new Set(labels)].join(' · ') + '</span>';
+}
+
 async function populateDeviceFilter() {
     const sel = document.getElementById('eventLogDeviceFilter');
     if (!sel) return;
@@ -1124,15 +1178,15 @@ async function refreshEventLog() {
 }
 
 async function loadEventLog() {
-    const container = document.getElementById('eventLogContainer');
+    const tbody = document.getElementById('eventLogBody');
     const statusEl = document.getElementById('eventLogStatus');
     const infoEl = document.getElementById('eventLogInfo');
     const prevBtn = document.getElementById('eventLogPrev');
     const nextBtn = document.getElementById('eventLogNext');
-    
+
     try {
         statusEl.innerHTML = '<span style="color:#94a3b8;font-size:0.8rem;">Loading...</span>';
-        
+
         const deviceId = getEventLogDeviceId();
         const deviceParam = deviceId ? `&device_id=${deviceId}` : '';
         const actionsParam = getEventLogActionsOnly() ? '&actions_only=1' : '';
@@ -1141,30 +1195,180 @@ async function loadEventLog() {
             const error = await response.json();
             throw new Error(error.error || 'Failed to load event log');
         }
-        
+
         const data = await response.json();
         const total = data.total_count || 0;
-        
+
         if (total === 0) {
-            container.innerHTML = '<div style="text-align:center; color:#64748b; padding:2rem;">No events logged yet</div>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">No events logged yet</td></tr>';
             infoEl.textContent = '';
         } else {
-            container.innerHTML = data.events.map(renderEventLogEntry).join('');
+            _renderEventLogTable(tbody, data.events);
             const page = Math.floor(eventLogOffset / EVENT_LOG_LIMIT) + 1;
             const pages = Math.max(1, Math.ceil(total / EVENT_LOG_LIMIT));
             const first = eventLogOffset + 1;
             const last = eventLogOffset + data.events.length;
-            infoEl.textContent = `Page ${page} of ${pages} — events ${first}-${last} of ${total}`;
+            infoEl.textContent = `Page ${page} of ${pages} — ${first}-${last} of ${total}`;
         }
-        // Disable Prev on the first page, Next on the last page.
         if (prevBtn) prevBtn.disabled = eventLogOffset === 0;
         if (nextBtn) nextBtn.disabled = eventLogOffset + EVENT_LOG_LIMIT >= total;
-        
+
         statusEl.innerHTML = '';
     } catch (e) {
         console.error('Failed to load event log:', e);
         statusEl.innerHTML = `<span style="color:#ef4444;font-size:0.8rem;">Error: ${e.message}</span>`;
-        container.innerHTML = '<div style="text-align:center; color:#ef4444; padding:2rem;">Failed to load events</div>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#ef4444; padding:2rem;">Failed to load events</td></tr>';
+    }
+}
+
+function _renderEventLogTable(tbody, events) {
+    tbody.innerHTML = '';
+    events.forEach(ev => {
+        const payload = ev.payload || {};
+        const vr = ev.validation_result || {};
+        const actions = ev.actions || [];
+        const state = _resolveStateName(payload.deviceType, payload.state, payload.ringactionState);
+        const hasActions = actions.length > 0;
+        const live = _isLiveEvent(ev.timestamp);
+
+        const ts = new Date(ev.timestamp);
+        const dateStr = ts.toLocaleDateString('sv-SE');          // YYYY-MM-DD
+        const timeStr = ts.toLocaleTimeString('sv-SE', { hour12: false }); // HH:MM:SS
+        const deviceName = ev.device_name || (payload.name) || '';
+
+        const statePill = `<span style="display:inline-block;padding:0.15rem 0.45rem;border-radius:10px;font-size:0.68rem;font-weight:600;background:${state.bg};color:${state.color};">${state.label}</span>`;
+        const invalidNote = !vr.valid
+            ? `<span style="color:#ef4444;font-size:0.65rem;display:block;margin-top:2px;" title="${vr.reason || ''}">⚠ rejected</span>`
+            : '';
+        const liveBtn = live
+            ? ` <button onclick="event.stopPropagation();_liveRefreshRow(this,'${ev.timestamp}')" style="background:#1e3a5f;color:#60a5fa;border:1px solid #1d4ed8;padding:0.1rem 0.35rem;border-radius:8px;font-size:0.62rem;font-weight:700;cursor:pointer;animation:elPulse 1.8s infinite;">LIVE</button>`
+            : '';
+
+        // Data row
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom:1px solid #1e293b;cursor:pointer;transition:background 0.12s;' + (!vr.valid ? 'border-left:3px solid #7f1d1d;' : '');
+        tr.innerHTML = `
+            <td style="padding:0.48rem 0.55rem;color:#94a3b8;white-space:nowrap;font-variant-numeric:tabular-nums;">${dateStr}</td>
+            <td style="padding:0.48rem 0.55rem;white-space:nowrap;font-variant-numeric:tabular-nums;">${timeStr}</td>
+            <td style="padding:0.48rem 0.55rem;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${deviceName}</td>
+            <td style="padding:0.48rem 0.55rem;white-space:nowrap;">${statePill}${invalidNote}</td>
+            <td style="padding:0.48rem 0.55rem;text-align:center;white-space:nowrap;">
+                ${hasActions ? '✅' : '<span style="opacity:0.3;">⬜</span>'}${liveBtn}
+            </td>
+            <td style="padding:0.48rem 0.55rem;max-width:200px;">${_actionSummary(actions)}</td>
+            <td style="padding:0.48rem 0.55rem;text-align:center;"><span class="_elChevron" style="font-size:0.6rem;color:#64748b;display:inline-block;transition:transform 0.15s;">▶</span></td>
+        `;
+        tr.addEventListener('mouseenter', () => { if (!tr._elExpanded) tr.style.background = '#253047'; });
+        tr.addEventListener('mouseleave', () => { if (!tr._elExpanded) tr.style.background = ''; });
+        tr.addEventListener('click', () => _toggleDetailRow(tr, detailTr, ev));
+        tbody.appendChild(tr);
+
+        // Detail row (hidden)
+        const detailTr = document.createElement('tr');
+        detailTr.style.display = 'none';
+        const detailTd = document.createElement('td');
+        detailTd.colSpan = 7;
+        detailTd.style.padding = '0';
+        detailTr.appendChild(detailTd);
+        tbody.appendChild(detailTr);
+
+        tr._elDetailTr = detailTr;
+        tr._elDetailTd = detailTd;
+        tr._elExpanded = false;
+        tr._elData = ev;
+    });
+
+    // Inject pulse keyframes once
+    if (!document.getElementById('_elPulseKf')) {
+        const s = document.createElement('style');
+        s.id = '_elPulseKf';
+        s.textContent = '@keyframes elPulse{0%,100%{opacity:1}50%{opacity:0.55}}';
+        document.head.appendChild(s);
+    }
+}
+
+function _toggleDetailRow(tr, detailTr, ev) {
+    // Close all other open rows first
+    document.querySelectorAll('._elOpenRow').forEach(openTr => {
+        if (openTr === tr) return;
+        openTr._elDetailTr.style.display = 'none';
+        openTr._elExpanded = false;
+        openTr.style.background = '';
+        openTr.classList.remove('_elOpenRow');
+        const ch = openTr.querySelector('._elChevron');
+        if (ch) ch.style.transform = '';
+    });
+
+    tr._elExpanded = !tr._elExpanded;
+    if (tr._elExpanded) {
+        tr.style.background = '#1a2540';
+        tr.classList.add('_elOpenRow');
+        const ch = tr.querySelector('._elChevron');
+        if (ch) ch.style.transform = 'rotate(90deg)';
+        _renderDetailPanel(tr._elDetailTd, ev);
+        detailTr.style.display = '';
+    } else {
+        tr.style.background = '';
+        tr.classList.remove('_elOpenRow');
+        const ch = tr.querySelector('._elChevron');
+        if (ch) ch.style.transform = '';
+        detailTr.style.display = 'none';
+    }
+}
+
+function _renderDetailPanel(td, ev) {
+    const actions = ev.actions || [];
+    const pt = ev.processing_time_ms;
+    const ptHtml = pt != null ? ` <span style="color:#64748b;font-size:0.7rem;">(total ${pt.toFixed(1)} ms)</span>` : '';
+
+    const actionsHtml = actions.length > 0
+        ? actions.map(a => {
+            const m = a.match(/^(.*?)(\s*\(\d+ms\))$/);
+            return m
+                ? `<div style="line-height:1.8;">• ${m[1].trim()} <span style="color:#64748b;font-size:0.7rem;">${m[2].trim()}</span></div>`
+                : `<div style="line-height:1.8;">• ${a}</div>`;
+          }).join('')
+        : '<div style="color:#475569;">No actions taken</div>';
+
+    const payloadJson = JSON.stringify(ev.payload || {}, null, 2);
+    // Check if a Nuki Web response is embedded in the actions text
+    const webSection = ev.nuki_web_response
+        ? `<details style="margin-top:0.3rem;"><summary style="cursor:pointer;font-size:0.75rem;color:#64748b;list-style:none;display:flex;align-items:center;gap:0.3rem;padding:0.2rem 0;"><span style="font-size:0.6rem;display:inline-block;transition:transform 0.15s;" class="_djArrow">▶</span> Raw JSON</summary><pre style="font-size:0.68rem;color:#94a3b8;background:#0a1020;padding:0.6rem;border-radius:6px;margin-top:0.3rem;overflow-x:auto;line-height:1.5;border:1px solid #1e293b;">${JSON.stringify(ev.nuki_web_response, null, 2)}</pre></details>`
+        : '<p style="font-size:0.75rem;color:#475569;margin-top:0.2rem;">None (no Web API call for this event)</p>';
+
+    td.innerHTML = `
+        <div style="background:#0f172a;border-top:1px solid #334155;padding:0.8rem 1rem;">
+            <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:0.4rem;">Actions${ptHtml}</div>
+            <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:0.75rem;">${actionsHtml}</div>
+
+            <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:0.3rem;">Bridge payload</div>
+            <details style="margin-bottom:0.75rem;"><summary style="cursor:pointer;font-size:0.75rem;color:#64748b;list-style:none;display:flex;align-items:center;gap:0.3rem;padding:0.2rem 0;"><span style="font-size:0.6rem;display:inline-block;" class="_djArrow">▶</span> Raw JSON</summary><pre style="font-size:0.68rem;color:#94a3b8;background:#0a1020;padding:0.6rem;border-radius:6px;margin-top:0.3rem;overflow-x:auto;line-height:1.5;border:1px solid #1e293b;">${payloadJson}</pre></details>
+
+            <div style="font-size:0.72rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;margin-bottom:0.3rem;">Nuki Web response</div>
+            ${webSection}
+        </div>`;
+
+    // Rotate summary arrows on open/close
+    td.querySelectorAll('details').forEach(det => {
+        det.addEventListener('toggle', () => {
+            const arr = det.querySelector('._djArrow');
+            if (arr) arr.style.transform = det.open ? 'rotate(90deg)' : '';
+        });
+    });
+}
+
+async function _liveRefreshRow(btn, originalTs) {
+    // Re-fetch the most recent event with this timestamp and update the row
+    try {
+        const response = await fetch(`${API}/events/log?limit=1&offset=0`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const match = (data.events || []).find(e => e.timestamp === originalTs);
+        if (match && btn.closest('tr') && btn.closest('tr')._elData) {
+            btn.closest('tr')._elData = match;
+        }
+    } catch (e) {
+        console.error('Live refresh failed:', e);
     }
 }
 
@@ -1178,48 +1382,9 @@ async function prevEvents() {
     await loadEventLog();
 }
 
+// renderEventLogEntry kept for any external callers but no longer used by the viewer.
 function renderEventLogEntry(entry) {
-    const timestamp = new Date(entry.timestamp).toLocaleString();
-    const eventType = entry.event_type || 'Unknown';
-    const deviceName = entry.device_name || (entry.payload && entry.payload.name) || '';
-    const deviceLabel = deviceName
-        ? `<span style="font-size:0.75rem;color:#94a3b8;"> · ${deviceName}</span>`
-        : '';
-    const deviceType = entry.payload ? entry.payload.deviceType : undefined;
-    const typeText = deviceTypeLabel(deviceType);
-    const typeBadge = typeText
-        ? `<span class="badge" style="font-size:0.65rem;margin-left:0.4rem;background:#1e293b;color:#94a3b8;">${typeText}</span>`
-        : '';
-    const validationClass = entry.validation_result.valid ? 'badge-ok' : 'badge-warn';
-    const validationText = entry.validation_result.valid ? 'Valid' : `Invalid: ${entry.validation_result.reason}`;
-    
-    const actionsHtml = entry.actions.length > 0 
-        ? entry.actions.map(action => `<div style="font-size:0.75rem;color:#94a3b8;">• ${action}</div>`).join('')
-        : '<div style="font-size:0.75rem;color:#64748b;">No actions</div>';
-    
-    const processingTime = entry.processing_time_ms 
-        ? `<span style="color:#64748b;font-size:0.75rem;">(${entry.processing_time_ms.toFixed(1)}ms)</span>`
-        : '';
-    
-    return `
-        <div class="card" style="margin-bottom:0.75rem; padding:1rem;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.5rem;">
-                <div>
-                    <strong>${eventType}</strong>${typeBadge}${deviceLabel} ${processingTime}
-                    <div style="font-size:0.75rem;color:#64748b;">${timestamp}</div>
-                </div>
-                <span class="badge ${validationClass}" style="font-size:0.7rem;">${validationText}</span>
-            </div>
-            <div style="font-size:0.8rem;margin-bottom:0.5rem;">
-                <strong>Actions:</strong>
-                ${actionsHtml}
-            </div>
-            <details style="margin-top:0.5rem;">
-                <summary style="cursor:pointer;font-size:0.75rem;color:#64748b;">View payload</summary>
-                <pre style="font-size:0.7rem;color:#94a3b8;background:#0f172a;padding:0.5rem;border-radius:4px;margin-top:0.5rem;overflow-x:auto;">${JSON.stringify(entry.payload, null, 2)}</pre>
-            </details>
-        </div>
-    `;
+    return `<tr><td colspan="7" style="padding:0.5rem;color:#94a3b8;font-size:0.8rem;">${entry.event_type || 'Unknown'} — ${new Date(entry.timestamp).toLocaleString()}</td></tr>`;
 }
 
 async function exportEventLog() {

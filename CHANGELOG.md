@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **#201 — Event Log table redesign**: replaced the stacked card layout with a compact, scannable table. Always-visible columns: **Date**, **Time**, **Device**, **State** (human-readable text from the official Nuki Bridge API state table, colour-coded — blue for action states like *opening*, red for *ring*, muted for idle states like *online/locked*), **Triggered** (✅ / ⬜ icon), **Actions** (inline summary). Clicking any row expands a detail panel with: full action list with per-step timings, foldable raw Bridge payload JSON, and foldable raw Nuki Web response JSON (or "none" when no Web API call was made). Invalid/rejected events show a red left-border stripe and a ⚠ label. Events received within the last 60 s display an animated **LIVE** badge that re-fetches the row on click. Pagination toolbar and device / actions-only filters preserved, moved to a compact toolbar above the table. No backend changes — `GET /api/events/log` contract is unchanged.
+
 ### Fixed
 - **#197 — Wrong name announced / double event on ring_to_open** (architectural simplification):
   - **Wrong name**: `resolve_person()` now uses a tighter recency threshold (10 s, down from 30 s) and retries up to 7 times (14 s total, up from 3 × 2 s = 6 s). A previous visitor's Nuki Web entry 25 s old was previously accepted as "fresh enough"; it now triggers a retry so the correct current visitor name is returned once the Web API propagates the new entry.
