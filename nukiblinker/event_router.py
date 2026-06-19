@@ -38,6 +38,13 @@ OPENER_STATUS = "opener_status"
 # poll runs and re-firing from the burst of status callbacks one open emits.
 _correlation_block_until: dict = {}
 
+# Retry parameters for resolve_person() (#193): the Nuki Web API can lag a few
+# seconds behind the bridge callback, so we retry when the best candidate is
+# older than _RESOLVE_RECENCY_S relative to the ringactionTimestamp.
+_RESOLVE_MAX_RETRIES = 3      # max number of extra attempts
+_RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
+_RESOLVE_RECENCY_S = 30       # candidate must be within this many seconds of the ring
+
 
 def classify(payload: dict, config: AppConfig) -> str | None:
     """Return event type string or None if the payload should be ignored.
@@ -120,7 +127,7 @@ def _resolve_web_id(payload: dict, config) -> int | None:
 
 
 async def resolve_person(payload: dict, fallback_name: str = "Alguien",
-                         *, nuki_web=None, config=None) -> dict:
+                         *, nuki_web=None, config=None, sleep=None) -> dict:
     """Resolve the user name (and trigger) for the event via the Nuki Web API.
 
     Name resolution is done **exclusively** through the Nuki Web API (#175). The
@@ -130,11 +137,20 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     removed. When the Web API is not configured or cannot resolve a name, we
     return the configured ``fallback_name``.
 
+    The Nuki Web API sometimes lags a few seconds behind the bridge callback
+    (#193): the entry for the current ring may not yet be in the log on the
+    first query. ``resolve_person`` retries up to ``_RESOLVE_MAX_RETRIES`` times
+    (each ``_RESOLVE_RETRY_DELAY_S`` seconds apart) when the best candidate is
+    older than ``_RESOLVE_RECENCY_S`` relative to ``ringactionTimestamp``. If the
+    candidate is genuinely anonymous (no name in the most-recent non-sensor
+    entry), no retry is done — anonymous opens are expected (#155).
+
     Returns context dict: {"name": "Nico", "name_source": ...} (plus "trigger"
     when known). ``name_source`` is one of "web_api" or "fallback" — the latter
     meaning no identity was resolved (e.g. an anonymous Ring-to-Open, or no Web
     API token), which is expected, not a failure (#155).
     """
+    _sleep = sleep if sleep is not None else asyncio.sleep
     nuki_id = payload.get("nukiId")
     # Trigger code (how the action was performed). Captured for observability so
     # the user can confirm the real code before any suppression is wired (#97).
@@ -153,57 +169,91 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
         )
         return _result(fallback_name, "fallback")
 
+    # Parse the ring timestamp from the payload so we can judge whether the
+    # Web API entry we retrieved belongs to this event or is a stale older one.
+    ring_ts = _parse_iso(payload.get("ringactionTimestamp"))
+
     try:
         from nukiblinker.nuki_web_client import TRIGGER_NAMES, SOURCE_DOOR_SENSOR
 
         web_id = _resolve_web_id(payload, config)
-        entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
-        if not entries:
-            logger.info("Nuki Web API log empty for nukiId=%s — using fallback", nuki_id)
+
+        for attempt in range(_RESOLVE_MAX_RETRIES + 1):
+            entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
+            if not entries:
+                logger.info("Nuki Web API log empty for nukiId=%s — using fallback", nuki_id)
+                return _result(fallback_name, "fallback")
+
+            # The most recent entry is the best candidate, but door-sensor entries
+            # (source=SOURCE_DOOR_SENSOR) carry no name and arrive immediately after
+            # an open, pushing the real named entry down the list (#157). Capture the
+            # trigger from the most recent entry, then take the first non-sensor
+            # entry. If that entry has no name, the open is genuinely anonymous and
+            # we must NOT look further (only the most recent open counts — #155).
+            most_recent = entries[0]
+            resolved_trigger = most_recent.get("trigger")
+
+            first_non_sensor = next(
+                (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
+                None,
+            )
+            candidate = first_non_sensor if first_non_sensor is not None else most_recent
+            trigger_for_log = candidate.get("trigger")
+            if trigger_for_log is not None:
+                resolved_trigger = trigger_for_log
+
+            # #193: check whether the candidate belongs to this ring. If ring_ts
+            # is known and the candidate's date is older than _RESOLVE_RECENCY_S,
+            # the Web API hasn't propagated the current event yet — retry.
+            if ring_ts is not None and candidate.get("name"):
+                candidate_ts = _parse_iso(candidate.get("date"))
+                if candidate_ts is not None:
+                    age = (ring_ts - candidate_ts).total_seconds()
+                    if age > _RESOLVE_RECENCY_S:
+                        if attempt < _RESOLVE_MAX_RETRIES:
+                            logger.info(
+                                "Web API candidate for nukiId=%s is stale (age=%.0fs > %ds) "
+                                "— retry %d/%d in %ds",
+                                nuki_id, age, _RESOLVE_RECENCY_S,
+                                attempt + 1, _RESOLVE_MAX_RETRIES, _RESOLVE_RETRY_DELAY_S,
+                            )
+                            await _sleep(_RESOLVE_RETRY_DELAY_S)
+                            continue
+                        # Last attempt — still stale; fall back.
+                        logger.info(
+                            "Web API: candidate for nukiId=%s still stale after %d "
+                            "retries — using fallback",
+                            nuki_id, _RESOLVE_MAX_RETRIES,
+                        )
+                        return _result(fallback_name, "fallback")
+
+            name = candidate.get("name")
+            if name:
+                logger.info(
+                    "Resolved person via Web API: name=%s trigger=%s(%s) source=%s "
+                    "(sensor_entries_skipped=%d, attempt=%d)",
+                    name, resolved_trigger,
+                    TRIGGER_NAMES.get(resolved_trigger, "unknown"),
+                    candidate.get("source"),
+                    entries.index(candidate),
+                    attempt,
+                )
+                return _result(name, "web_api")
+
+            # Anonymous open: surface the trigger for observability (#97) but there
+            # is no name to resolve — use the fallback. Do NOT retry: anonymous opens
+            # are expected and the most-recent entry already tells the full story (#155).
+            logger.info(
+                "Web API: no name found for nukiId=%s (checked %d entries, "
+                "first_non_sensor=%s); trigger=%s(%s) — using fallback",
+                nuki_id,
+                len(entries),
+                first_non_sensor is not None,
+                resolved_trigger,
+                TRIGGER_NAMES.get(resolved_trigger, "unknown"),
+            )
             return _result(fallback_name, "fallback")
 
-        # The most recent entry is the best candidate, but door-sensor entries
-        # (source=SOURCE_DOOR_SENSOR) carry no name and arrive immediately after
-        # an open, pushing the real named entry down the list (#157). Capture the
-        # trigger from the most recent entry, then take the first non-sensor
-        # entry. If that entry has no name, the open is genuinely anonymous and
-        # we must NOT look further (only the most recent open counts — #155).
-        most_recent = entries[0]
-        resolved_trigger = most_recent.get("trigger")
-
-        first_non_sensor = next(
-            (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
-            None,
-        )
-        candidate = first_non_sensor if first_non_sensor is not None else most_recent
-        name = candidate.get("name")
-        trigger_for_log = candidate.get("trigger")
-        if trigger_for_log is not None:
-            resolved_trigger = trigger_for_log
-
-        if name:
-            logger.info(
-                "Resolved person via Web API: name=%s trigger=%s(%s) source=%s "
-                "(sensor_entries_skipped=%d)",
-                name, resolved_trigger,
-                TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-                candidate.get("source"),
-                entries.index(candidate),
-            )
-            return _result(name, "web_api")
-
-        # Anonymous open: surface the trigger for observability (#97) but there
-        # is no name to resolve — use the fallback.
-        logger.info(
-            "Web API: no name found for nukiId=%s (checked %d entries, "
-            "first_non_sensor=%s); trigger=%s(%s) — using fallback",
-            nuki_id,
-            len(entries),
-            first_non_sensor is not None,
-            resolved_trigger,
-            TRIGGER_NAMES.get(resolved_trigger, "unknown"),
-        )
-        return _result(fallback_name, "fallback")
     except Exception:
         logger.warning(
             "Nuki Web API resolution failed for nukiId=%s — using fallback",

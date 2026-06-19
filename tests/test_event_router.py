@@ -279,6 +279,76 @@ class TestResolvePerson:
         assert result == {"name": "Alguien", "trigger": 6, "name_source": "fallback"}
         assert "Nico" not in result.values()
 
+    @pytest.mark.asyncio
+    async def test_stale_candidate_retried_until_fresh_entry_arrives(self):
+        """#193: when the Web API lags, resolve_person retries until a fresh entry appears.
+
+        First call returns a 42-minute-old 'Celi' entry (stale relative to the
+        ring timestamp). Second call returns the actual 'Nico' entry at the ring time.
+        """
+        slept = []
+
+        async def fake_sleep(s):
+            slept.append(s)
+
+        ring_ts = "2026-06-19T09:01:27+00:00"
+        web = AsyncMock()
+        web.get_recent_log.side_effect = [
+            # Attempt 0: Celi from 42 min ago — stale
+            [{"smartlockId": 9129696002, "name": "Celi", "trigger": 0, "source": 0,
+              "date": "2026-06-19T08:19:55.000Z"}],
+            # Attempt 1: Nico at the ring time — fresh
+            [{"smartlockId": 9129696002, "name": "Nico", "trigger": 0, "source": 0,
+              "date": "2026-06-19T09:01:27.000Z"}],
+        ]
+        payload = {"nukiId": 539761410, "ringactionTimestamp": ring_ts}
+        result = await resolve_person(payload, nuki_web=web, sleep=fake_sleep)
+        assert result["name"] == "Nico"
+        assert result["name_source"] == "web_api"
+        assert web.get_recent_log.await_count == 2
+        assert len(slept) == 1  # exactly one retry delay
+
+    @pytest.mark.asyncio
+    async def test_stale_candidate_falls_back_after_max_retries(self):
+        """#193: if the Web API never delivers a fresh entry, fall back after max retries."""
+        from nukiblinker import event_router as er
+
+        slept = []
+
+        async def fake_sleep(s):
+            slept.append(s)
+
+        ring_ts = "2026-06-19T09:01:27+00:00"
+        stale_entry = [{"smartlockId": 9129696002, "name": "Celi", "trigger": 0,
+                        "source": 0, "date": "2026-06-19T08:19:55.000Z"}]
+        web = AsyncMock()
+        web.get_recent_log.return_value = stale_entry  # always stale
+        payload = {"nukiId": 539761410, "ringactionTimestamp": ring_ts}
+        result = await resolve_person(payload, nuki_web=web, sleep=fake_sleep)
+        assert result["name_source"] == "fallback"
+        assert web.get_recent_log.await_count == er._RESOLVE_MAX_RETRIES + 1
+        assert len(slept) == er._RESOLVE_MAX_RETRIES
+
+    @pytest.mark.asyncio
+    async def test_no_ring_ts_in_payload_skips_recency_check(self):
+        """#193: when ringactionTimestamp is absent, no retry is done (no ts to compare)."""
+        slept = []
+
+        async def fake_sleep(s):
+            slept.append(s)
+
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Celi", "trigger": 0, "source": 0,
+             "date": "2026-06-19T08:19:55.000Z"},
+        ]
+        # Payload has no ringactionTimestamp — recency check must be skipped
+        result = await resolve_person({"nukiId": 100}, nuki_web=web, sleep=fake_sleep)
+        assert result["name"] == "Celi"
+        assert result["name_source"] == "web_api"
+        assert len(slept) == 0  # no retries
+        assert web.get_recent_log.await_count == 1
+
 
 # ---------------------------------------------------------------------------
 # dispatch_with_actions() — trigger observability (#97)
