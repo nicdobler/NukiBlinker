@@ -107,13 +107,13 @@ stateDiagram-v2
     [*] --> locked : default / after locking
     locked --> unlocking : unlock command sent
     unlocking --> unlocked : unlocked (no open)
-    unlocked --> locking : lock command sent
+    unlocked --> locking : lock command / auto-relock
     locking --> locked : locked
 
     unlocked --> unlatching : unlatch command sent
     locked --> unlatching : direct unlatch command
     unlatching --> unlatched : door physically open
-    unlatched --> locked : door closes + relocks
+    unlatched --> unlocked : door closes
 
     note right of locked
         state=1 · Ignored
