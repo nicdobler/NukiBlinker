@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time as _time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -30,53 +29,25 @@ _LOCK_STATE_UNLATCHING = 7  # actively unlatching = door being opened (#160)
 # Door sensor states (doorsensorState field)
 _DOORSENSOR_DOOR_OPENED = 3  # door physically opened (#169)
 
-# Opener status callbacks that classify() now surfaces for Nuki Web correlation
-# (#180) instead of silently ignoring them.
-OPENER_STATUS = "opener_status"
-
-# Per-device cooldown guard for opener correlation (#180): prevents overlapping
-# poll runs and re-firing from the burst of status callbacks one open emits.
-# Also set by mark_ring_to_open_dispatched() when a direct ring_to_open (state=7)
-# is dispatched, preventing a trailing opener_status from firing a second event.
-_correlation_block_until: dict = {}
-
-# Retry parameters for resolve_person() (#193): the Nuki Web API can lag a few
-# seconds behind the bridge callback, so we retry when the best candidate is
-# older than _RESOLVE_RECENCY_S relative to the ringactionTimestamp.
+# Retry parameters for resolve_person() (#193/#197): the Nuki Web API can lag
+# a few seconds behind the bridge callback, so we retry when the best candidate
+# is older than _RESOLVE_RECENCY_S relative to the ringactionTimestamp.
 _RESOLVE_MAX_RETRIES = 7      # max number of extra attempts (~14s total at 2s each)
 _RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
 _RESOLVE_RECENCY_S = 10       # candidate must be within this many seconds of the ring
 
 
-def mark_ring_to_open_dispatched(
-    nuki_id: int | None, recency_seconds: int = 60, *, time_func=None,
-) -> None:
-    """Set the correlation cooldown for *nuki_id* after a direct ring_to_open.
-
-    When the Nuki Bridge fires a genuine ring_to_open (state=7) callback, a
-    burst of trailing opener_status callbacks often follows. Without this guard
-    the correlation path would poll Nuki Web, find the same user entry, and
-    dispatch a second ring_to_open announcement (#197).  Call this immediately
-    after dispatching the direct ring_to_open so the cooldown is in place before
-    the status callbacks arrive.
-    """
-    _mono = time_func or _time.monotonic
-    _correlation_block_until[nuki_id] = _mono() + recency_seconds
-    logger.debug(
-        "Correlation cooldown set for nukiId=%s (%ds) after direct ring_to_open",
-        nuki_id, recency_seconds,
-    )
-
-
 def classify(payload: dict, config: AppConfig) -> str | None:
     """Return event type string or None if the payload should be ignored.
 
-    Possible return values: 'ring', 'ring_to_open', 'door_opened',
-    'opener_status'. ``opener_status`` is returned for Opener callbacks that
-    match the configured opener but are neither a ring nor a ring_to_open
-    (e.g. routine ``state=1`` online / ``state=3`` rto-active updates). These
-    used to be ignored; they are now surfaced so the dispatcher can correlate
-    them with the Nuki Web activity log to detect a user-driven open (#180).
+    Possible return values: 'ring', 'ring_to_open', 'door_opened'.
+
+    Opener state machine (source of truth — official Nuki Bridge API):
+      state=1  "online"     — RTO expired / post-open idle.    Ignore.
+      state=3  "rto active" — Ring-to-Open mode activated.     Ignore.
+      state=5  "open"       — Post-open settled state.         Ignore.
+      state=7  "opening"    — Gate is opening NOW.             → ring_to_open
+      ringactionState=true  — Someone pressed the doorbell.    → ring
     """
     device_type = payload.get("deviceType")
     nuki_id = payload.get("nukiId")
@@ -95,16 +66,13 @@ def classify(payload: dict, config: AppConfig) -> str | None:
                 nuki_id, payload.get("ringactionTimestamp"),
             )
             return "ring"
-        # Not a ring/ring_to_open, but it IS our Opener. Surface it as a status
-        # callback so the dispatcher can correlate it with Nuki Web to catch a
-        # user-driven open that the bridge never reported as state=7 (#180).
-        logger.info(
-            "Opener status callback (will correlate with Nuki Web): state=%s "
-            "nukiId=%s ringactionState=%s ringactionTimestamp=%s — full payload: %s",
+        # All other Opener states (online/rto-active/open/boot-run/etc.) are
+        # routine status updates — ignore them (#197).
+        logger.debug(
+            "Opener status callback ignored: state=%s nukiId=%s ringactionState=%s",
             state, nuki_id, payload.get("ringactionState"),
-            payload.get("ringactionTimestamp"), payload,
         )
-        return OPENER_STATUS
+        return None
 
     if device_type == 0:  # Smart Lock
         if config.nuki.lock_id is not None and nuki_id != config.nuki.lock_id:
@@ -370,114 +338,3 @@ def _parse_iso(value) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-
-def _find_recent_user_open(entries: list[dict], *, now: datetime,
-                           recency_seconds: int) -> dict | None:
-    """Return the most recent user-attributed open entry, if it is recent.
-
-    Reuses the same "most recent non-sensor entry wins" rule as
-    ``resolve_person`` (#155/#157): door-sensor entries carry no identity and
-    are skipped, but the first non-sensor entry is decisive — if it has no name
-    the open is anonymous and we do not look further. The entry is only accepted
-    when its ``date`` is within ``recency_seconds`` of ``now`` so an old open is
-    not mistaken for the one that just happened. When the entry has no parseable
-    ``date`` we accept it (best-effort), since polling already scoped it in time.
-    """
-    from nukiblinker.nuki_web_client import SOURCE_DOOR_SENSOR
-
-    first_non_sensor = next(
-        (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
-        None,
-    )
-    if first_non_sensor is None or not first_non_sensor.get("name"):
-        return None
-    date = _parse_iso(first_non_sensor.get("date"))
-    if date is not None and abs((now - date).total_seconds()) > recency_seconds:
-        return None
-    return first_non_sensor
-
-
-async def correlate_opener_open(
-    payload: dict, config: AppConfig, clients,
-    *, sleep=None, time_func=None, now_func=None,
-) -> dict | None:
-    """Poll the Nuki Web log to detect a user-driven Opener open (#180).
-
-    Some user opens (e.g. opening from the app while RTO is active) never produce
-    a ``ring_to_open`` (state 7) callback — only routine ``opener_status``
-    callbacks arrive. This polls the Nuki Web activity log for a short window
-    after such a callback; if a user-attributed open appears it returns a context
-    dict (``{"name", "name_source": "web_api", "trigger"?}``) for the caller to
-    dispatch as a ``ring_to_open``. Returns ``None`` when nothing correlates.
-
-    A per-device cooldown guard collapses the burst of status callbacks one open
-    emits into a single poll run and prevents re-firing within the window.
-    """
-    sleep = sleep or asyncio.sleep
-    time_func = time_func or _time.monotonic
-    now_func = now_func or (lambda: datetime.now(timezone.utc))
-
-    nuki_id = payload.get("nukiId")
-    cfg = config.opener_correlation
-    if not cfg.enabled:
-        logger.debug("Opener correlation disabled — ignoring status callback for nukiId=%s", nuki_id)
-        return None
-
-    nuki_web = getattr(clients, "nuki_web", None)
-    if nuki_web is None:
-        logger.info(
-            "Opener status callback for nukiId=%s ignored — Nuki Web not configured, "
-            "cannot correlate", nuki_id,
-        )
-        return None
-
-    mono = time_func()
-    if mono < _correlation_block_until.get(nuki_id, 0.0):
-        logger.debug(
-            "Opener correlation already running/cooling down for nukiId=%s — skipping",
-            nuki_id,
-        )
-        return None
-    # Block overlapping poll runs for the duration of the window.
-    _correlation_block_until[nuki_id] = mono + cfg.window_seconds
-
-    logger.info(
-        "Correlating opener status callback for nukiId=%s with Nuki Web "
-        "(window=%ss, interval=%ss)",
-        nuki_id, cfg.window_seconds, cfg.poll_interval_seconds,
-    )
-    deadline = mono + cfg.window_seconds
-    attempt = 0
-    while True:
-        attempt += 1
-        web_id = _resolve_web_id(payload, config)
-        entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
-        match = _find_recent_user_open(
-            entries, now=now_func(), recency_seconds=cfg.recency_seconds,
-        )
-        if match is not None:
-            from nukiblinker.nuki_web_client import TRIGGER_NAMES
-            trigger = match.get("trigger")
-            context: dict = {"name": match["name"], "name_source": "web_api"}
-            if trigger is not None:
-                context["trigger"] = trigger
-            logger.info(
-                "Opener open correlated via Nuki Web for nukiId=%s: name=%s "
-                "trigger=%s(%s) after %d poll(s)",
-                nuki_id, match["name"], trigger,
-                TRIGGER_NAMES.get(trigger, "unknown"), attempt,
-            )
-            # Cooldown so trailing status callbacks from the same open don't
-            # trigger a second ring_to_open.
-            _correlation_block_until[nuki_id] = time_func() + cfg.recency_seconds
-            return context
-        if time_func() >= deadline:
-            break
-        await sleep(cfg.poll_interval_seconds)
-
-    logger.info(
-        "No user open correlated in Nuki Web for nukiId=%s within %ss (%d poll(s))",
-        nuki_id, cfg.window_seconds, attempt,
-    )
-    return None
