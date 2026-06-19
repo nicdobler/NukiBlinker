@@ -162,13 +162,43 @@ class TestResolvePerson:
 
     @pytest.mark.asyncio
     async def test_web_api_returns_name_and_trigger(self):
+        """Without a web_id mapping, the global log (smartlock_id=None) is queried."""
         web = AsyncMock()
         web.get_recent_log.return_value = [
             {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
         assert result == {"name": "Nico", "trigger": 2, "name_source": "web_api"}
-        web.get_recent_log.assert_awaited_once_with(smartlock_id=100, limit=20)
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=None, limit=20)
+
+    @pytest.mark.asyncio
+    async def test_web_api_uses_opener_web_id_not_bridge_id(self):
+        """#190: when opener_web_id is configured, it is used — not the Bridge nukiId."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1},
+        ]
+        cfg = AppConfig()
+        cfg.nuki.opener_web_id = 9129696002  # Web smartlockId (different from Bridge nukiId)
+        result = await resolve_person(
+            {"nukiId": 100, "deviceType": 2}, nuki_web=web, config=cfg,
+        )
+        assert result == {"name": "Nico", "trigger": 5, "name_source": "web_api"}
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=9129696002, limit=20)
+
+    @pytest.mark.asyncio
+    async def test_web_api_falls_back_to_global_log_when_no_web_id(self):
+        """#190: when opener_web_id is None, smartlock_id=None (global log endpoint)."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1},
+        ]
+        cfg = AppConfig()  # opener_web_id defaults to None
+        result = await resolve_person(
+            {"nukiId": 100, "deviceType": 2}, nuki_web=web, config=cfg,
+        )
+        assert result["name"] == "Nico"
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=None, limit=20)
 
     @pytest.mark.asyncio
     async def test_web_api_named_entry_without_trigger_omits_trigger_key(self):
@@ -397,9 +427,10 @@ class TestCorrelateOpenerOpen:
 
     @pytest.mark.asyncio
     async def test_hit_on_first_poll_returns_context(self):
+        """#190: without a web_id mapping, the global log (smartlock_id=None) is used."""
         web = AsyncMock()
         web.get_recent_log.return_value = [
-            {"smartlockId": 100, "name": "Nico", "trigger": 5, "source": 1,
+            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
              "date": _FIXED_NOW.isoformat()},
         ]
         cfg = AppConfig()
@@ -408,7 +439,25 @@ class TestCorrelateOpenerOpen:
             sleep=AsyncMock(), time_func=_Clock([0, 0]), now_func=lambda: _FIXED_NOW,
         )
         assert result == {"name": "Nico", "trigger": 5, "name_source": "web_api"}
-        web.get_recent_log.assert_awaited_once_with(smartlock_id=100, limit=20)
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=None, limit=20)
+
+    @pytest.mark.asyncio
+    async def test_correlate_uses_opener_web_id_not_bridge_id(self):
+        """#190: correlate_opener_open uses opener_web_id when set, not Bridge nukiId."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
+             "date": _FIXED_NOW.isoformat()},
+        ]
+        cfg = AppConfig()
+        cfg.nuki.opener_web_id = 9129696002
+        result = await correlate_opener_open(
+            {"nukiId": 100, "deviceType": 2}, cfg, self._clients(web),
+            sleep=AsyncMock(), time_func=_Clock([0, 0]), now_func=lambda: _FIXED_NOW,
+        )
+        assert result is not None
+        assert result["name"] == "Nico"
+        web.get_recent_log.assert_awaited_once_with(smartlock_id=9129696002, limit=20)
 
     @pytest.mark.asyncio
     async def test_no_web_client_returns_none(self):

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **#190 — Nuki Web device ID mismatch**: the Nuki Bridge `nukiId` and the Nuki Web API `smartlockId` are different namespaces. Previously `resolve_person()` and `correlate_opener_open()` passed the Bridge `nukiId` as the Web API `smartlockId`, causing all scoped log queries to return no results and name resolution to silently fall back every time. Fix: new `nuki.opener_web_id` / `nuki.lock_web_id` config fields hold the correct Nuki Web `smartlockId`; when set, those values are used for Web API log queries; when not set (default), the global log endpoint is queried instead (works for single-device accounts). New `GET /api/nuki/web-devices` endpoint and `NukiWebClient.list_smartlocks()` fetch the Web device list so the UI can display the mapping for the user to configure.
+
 ## [0.1.0] - 2026-06-18
 
 ### Added

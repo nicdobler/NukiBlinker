@@ -28,6 +28,11 @@ class NukiConfig(BaseModel):
     # `name`, so these let the Event Log label events by name instead of nukiId.
     opener_name: str = ""
     lock_name: str = ""
+    # Nuki Web API smartlockId for each device (#190). The Bridge nukiId and the
+    # Web API smartlockId are different namespaces; without this mapping, Web API
+    # log queries fall back to the global (unscoped) log endpoint.
+    opener_web_id: int | None = None
+    lock_web_id: int | None = None
     web_api_token: str = ""  # optional Nuki Web API token for name/trigger resolution
 
 

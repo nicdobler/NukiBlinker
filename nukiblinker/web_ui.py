@@ -249,6 +249,27 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             body, status = _bridge_error(e, "Nuki Bridge")
             return JSONResponse(body, status_code=status)
 
+    @router.get("/nuki/web-devices")
+    async def nuki_web_devices(request: Request) -> JSONResponse:
+        """List smartlocks from the Nuki Web API (#190).
+
+        Returns each device's ``smartlockId``, ``name``, and ``type`` so the
+        UI can show the Bridge nukiId → Web smartlockId mapping and let the
+        user configure ``opener_web_id`` / ``lock_web_id``.
+        """
+        config = request.app.state.config
+        if not config.nuki.web_api_token:
+            return JSONResponse({"error": "Nuki Web API token not configured"}, status_code=400)
+        try:
+            from nukiblinker.nuki_web_client import NukiWebClient
+
+            client = NukiWebClient(config.nuki.web_api_token)
+            devices = await client.list_smartlocks()
+            return JSONResponse(devices)
+        except Exception as e:
+            logger.error("Nuki Web device list failed: %s", e, exc_info=True)
+            return JSONResponse({"error": str(e)}, status_code=500)
+
     # ------------------------------------------------------------------
     # Hue pairing & device discovery
     # ------------------------------------------------------------------

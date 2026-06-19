@@ -5,10 +5,12 @@
 nuki:
   bridge_ip: "192.168.1.100"
   bridge_port: 8080
-  # opener_id: 12345              # optional: filter to a specific Opener
+  # opener_id: 12345              # optional: filter to a specific Opener (Bridge nukiId)
   # opener_name: "Front Door"     # optional: friendly name shown in the Event Log
-  # lock_id: 67890                # optional: filter to a specific Smart Lock
+  # opener_web_id: 9129696002     # optional: Nuki Web API smartlockId for the Opener (#190)
+  # lock_id: 67890                # optional: filter to a specific Smart Lock (Bridge nukiId)
   # lock_name: "Flat Door"        # optional: friendly name shown in the Event Log
+  # lock_web_id: 1234567890       # optional: Nuki Web API smartlockId for the Smart Lock (#190)
 
 hue:
   bridge_ip: "192.168.1.101"

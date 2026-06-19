@@ -97,8 +97,30 @@ def classify(payload: dict, config: AppConfig) -> str | None:
     return None
 
 
+def _resolve_web_id(payload: dict, config) -> int | None:
+    """Return the Nuki Web API ``smartlockId`` for the device in *payload*.
+
+    The Nuki Bridge ``nukiId`` and the Nuki Web API ``smartlockId`` are
+    different namespaces (#190).  When the user has configured the mapping via
+    ``nuki.opener_web_id`` / ``nuki.lock_web_id``, that value is used; otherwise
+    we return ``None`` so the caller queries the global (unscoped) log endpoint,
+    which still works but is slightly less efficient for multi-device accounts.
+    """
+    if config is None:
+        return None
+    nuki_cfg = getattr(config, "nuki", None)
+    if nuki_cfg is None:
+        return None
+    device_type = payload.get("deviceType")
+    if device_type == 2:  # Opener
+        return nuki_cfg.opener_web_id
+    if device_type == 0:  # Smart Lock
+        return nuki_cfg.lock_web_id
+    return None
+
+
 async def resolve_person(payload: dict, fallback_name: str = "Alguien",
-                         *, nuki_web=None) -> dict:
+                         *, nuki_web=None, config=None) -> dict:
     """Resolve the user name (and trigger) for the event via the Nuki Web API.
 
     Name resolution is done **exclusively** through the Nuki Web API (#175). The
@@ -134,7 +156,8 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     try:
         from nukiblinker.nuki_web_client import TRIGGER_NAMES, SOURCE_DOOR_SENSOR
 
-        entries = await nuki_web.get_recent_log(smartlock_id=nuki_id, limit=20)
+        web_id = _resolve_web_id(payload, config)
+        entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
         if not entries:
             logger.info("Nuki Web API log empty for nukiId=%s — using fallback", nuki_id)
             return _result(fallback_name, "fallback")
@@ -210,6 +233,7 @@ async def dispatch(
         fallback = rule.audio.fallback_name if rule.audio else "Alguien"
         context = await resolve_person(
             payload, fallback, nuki_web=getattr(clients, "nuki_web", None),
+            config=config,
         )
     else:
         context = {}
@@ -242,6 +266,7 @@ async def dispatch_with_actions(
         fallback = rule.audio.fallback_name if rule.audio else "Alguien"
         context = await resolve_person(
             payload, fallback, nuki_web=getattr(clients, "nuki_web", None),
+            config=config,
         )
     else:
         context = {}
@@ -354,7 +379,8 @@ async def correlate_opener_open(
     attempt = 0
     while True:
         attempt += 1
-        entries = await nuki_web.get_recent_log(smartlock_id=nuki_id, limit=20)
+        web_id = _resolve_web_id(payload, config)
+        entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
         match = _find_recent_user_open(
             entries, now=now_func(), recency_seconds=cfg.recency_seconds,
         )
