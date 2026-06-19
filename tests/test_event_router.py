@@ -280,6 +280,33 @@ class TestResolvePerson:
         assert "Nico" not in result.values()
 
     @pytest.mark.asyncio
+    async def test_entry_25s_old_retried_for_fresh_name(self):
+        """#197: an entry 25s before ring_ts was accepted by the old 30s threshold
+        but is now stale under the tighter 10s threshold — must retry and resolve
+        the correct name ('Ele') instead of immediately returning 'Nico'.
+        """
+        slept = []
+
+        async def fake_sleep(s):
+            slept.append(s)
+
+        ring_ts = "2026-06-19T15:25:00+00:00"
+        # First call: "Nico" from 25 seconds before ring — was accepted before, now stale.
+        nico_entry = [{"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1,
+                       "date": "2026-06-19T15:24:35+00:00"}]
+        # Second call: "Ele" right at the ring time — fresh.
+        ele_entry = [{"smartlockId": 9129696002, "name": "Ele", "trigger": 5, "source": 1,
+                      "date": "2026-06-19T15:25:00+00:00"}]
+        web = AsyncMock()
+        web.get_recent_log.side_effect = [nico_entry, ele_entry]
+        payload = {"nukiId": 539761410, "ringactionTimestamp": ring_ts}
+        result = await resolve_person(payload, nuki_web=web, sleep=fake_sleep)
+        assert result["name"] == "Ele"
+        assert result["name_source"] == "web_api"
+        assert web.get_recent_log.await_count == 2
+        assert len(slept) == 1
+
+    @pytest.mark.asyncio
     async def test_stale_candidate_retried_until_fresh_entry_arrives(self):
         """#193: when the Web API lags, resolve_person retries until a fresh entry appears.
 
@@ -573,6 +600,27 @@ class TestCorrelateOpenerOpen:
             sleep=AsyncMock(), time_func=_Clock([0, 6, 12]), now_func=lambda: _FIXED_NOW,
         )
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_mark_ring_to_open_blocks_correlation(self):
+        """#197: a direct ring_to_open dispatch sets the cooldown so a trailing
+        opener_status callback is blocked and no second announcement fires."""
+        from nukiblinker.event_router import mark_ring_to_open_dispatched
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Ele", "trigger": 5, "source": 1,
+             "date": _FIXED_NOW.isoformat()},
+        ]
+        cfg = AppConfig()
+        # Simulate: ring_to_open dispatch sets the cooldown at t=0.
+        mark_ring_to_open_dispatched(100, recency_seconds=60, time_func=_Clock([0]))
+        # Trailing opener_status correlation at t=1 — within cooldown — must return None.
+        result = await correlate_opener_open(
+            {"nukiId": 100}, cfg, self._clients(web),
+            sleep=AsyncMock(), time_func=_Clock([1, 1]), now_func=lambda: _FIXED_NOW,
+        )
+        assert result is None
+        web.get_recent_log.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cooldown_guard_skips_overlapping_run(self):

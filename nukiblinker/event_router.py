@@ -36,14 +36,35 @@ OPENER_STATUS = "opener_status"
 
 # Per-device cooldown guard for opener correlation (#180): prevents overlapping
 # poll runs and re-firing from the burst of status callbacks one open emits.
+# Also set by mark_ring_to_open_dispatched() when a direct ring_to_open (state=7)
+# is dispatched, preventing a trailing opener_status from firing a second event.
 _correlation_block_until: dict = {}
 
 # Retry parameters for resolve_person() (#193): the Nuki Web API can lag a few
 # seconds behind the bridge callback, so we retry when the best candidate is
 # older than _RESOLVE_RECENCY_S relative to the ringactionTimestamp.
-_RESOLVE_MAX_RETRIES = 3      # max number of extra attempts
+_RESOLVE_MAX_RETRIES = 7      # max number of extra attempts (~14s total at 2s each)
 _RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
-_RESOLVE_RECENCY_S = 30       # candidate must be within this many seconds of the ring
+_RESOLVE_RECENCY_S = 10       # candidate must be within this many seconds of the ring
+
+
+def mark_ring_to_open_dispatched(nuki_id: int | None, recency_seconds: int = 60,
+                                  *, time_func=None) -> None:
+    """Set the correlation cooldown for *nuki_id* after a direct ring_to_open.
+
+    When the Nuki Bridge fires a genuine ring_to_open (state=7) callback, a
+    burst of trailing opener_status callbacks often follows. Without this guard
+    the correlation path would poll Nuki Web, find the same user entry, and
+    dispatch a second ring_to_open announcement (#197).  Call this immediately
+    after dispatching the direct ring_to_open so the cooldown is in place before
+    the status callbacks arrive.
+    """
+    _mono = time_func or _time.monotonic
+    _correlation_block_until[nuki_id] = _mono() + recency_seconds
+    logger.debug(
+        "Correlation cooldown set for nukiId=%s (%ds) after direct ring_to_open",
+        nuki_id, recency_seconds,
+    )
 
 
 def classify(payload: dict, config: AppConfig) -> str | None:

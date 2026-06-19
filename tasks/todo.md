@@ -2,6 +2,26 @@
 
 ---
 
+## #197 — Wrong name announced / double event on ring_to_open
+
+**Branch**: fix/197-wrong-name-double-event | **PR**: (pending)
+
+**Bug 1 (wrong name)**: `resolve_person()` used a 30 s recency threshold. A previous visitor's Web API entry 25 s old was accepted as "fresh"; "Ele"'s entry hadn't propagated yet so "Nico" was announced.
+**Bug 2 (double event)**: a genuine `ring_to_open` (state=7) dispatches; then trailing `opener_status` callbacks trigger `correlate_opener_open()` which finds the same Web entry and fires a second announcement.
+
+**Fixes**:
+1. Tighten `_RESOLVE_RECENCY_S` 30→10 s, `_RESOLVE_MAX_RETRIES` 3→7 (14 s budget).
+2. New `mark_ring_to_open_dispatched()` sets `_correlation_block_until` cooldown in `server.py` after dispatching a direct ring_to_open, blocking trailing opener_status callbacks.
+
+- [x] Update `_RESOLVE_RECENCY_S` and `_RESOLVE_MAX_RETRIES` in `event_router.py`
+- [x] Add `mark_ring_to_open_dispatched()` to `event_router.py`
+- [x] Call `mark_ring_to_open_dispatched()` in `server.py` before background dispatch
+- [x] Regression tests: 25s-old entry retried (#197 Bug1), cooldown blocks trailing status (#197 Bug2)
+- [x] `CHANGELOG.md` [Unreleased] + `tasks/todo.md`
+- [ ] CI green → wrap-up (Approval mode)
+
+---
+
 ## #193 — Stale name resolved when Nuki Web API lags
 
 **Branch**: fix/193-stale-name-resolution | **PR**: (pending)

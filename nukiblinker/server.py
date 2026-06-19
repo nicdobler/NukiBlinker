@@ -105,6 +105,14 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
             )
             return JSONResponse({"status": "ok", "event": event_type})
 
+        # When a direct ring_to_open (state=7) fires, set the correlation cooldown
+        # immediately so any trailing opener_status callbacks are blocked and don't
+        # produce a second announcement (#197).
+        if event_type == "ring_to_open":
+            nuki_id = payload.get("nukiId")
+            recency = app.state.config.opener_correlation.recency_seconds
+            event_router.mark_ring_to_open_dispatched(nuki_id, recency)
+
         # Dispatch in background so we return 200 immediately
         background_tasks.add_task(
             _dispatch_with_logging,
