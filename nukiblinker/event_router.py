@@ -209,15 +209,23 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
                 candidate_ts = _parse_iso(candidate.get("date"))
                 if candidate_ts is not None:
                     age = (ring_ts - candidate_ts).total_seconds()
-                    if age > _RESOLVE_RECENCY_S and attempt < _RESOLVE_MAX_RETRIES:
+                    if age > _RESOLVE_RECENCY_S:
+                        if attempt < _RESOLVE_MAX_RETRIES:
+                            logger.info(
+                                "Web API candidate for nukiId=%s is stale (age=%.0fs > %ds) "
+                                "— retry %d/%d in %ds",
+                                nuki_id, age, _RESOLVE_RECENCY_S,
+                                attempt + 1, _RESOLVE_MAX_RETRIES, _RESOLVE_RETRY_DELAY_S,
+                            )
+                            await _sleep(_RESOLVE_RETRY_DELAY_S)
+                            continue
+                        # Last attempt — still stale; fall back.
                         logger.info(
-                            "Web API candidate for nukiId=%s is stale (age=%.0fs > %ds) "
-                            "— retry %d/%d in %ds",
-                            nuki_id, age, _RESOLVE_RECENCY_S,
-                            attempt + 1, _RESOLVE_MAX_RETRIES, _RESOLVE_RETRY_DELAY_S,
+                            "Web API: candidate for nukiId=%s still stale after %d "
+                            "retries — using fallback",
+                            nuki_id, _RESOLVE_MAX_RETRIES,
                         )
-                        await _sleep(_RESOLVE_RETRY_DELAY_S)
-                        continue
+                        return _result(fallback_name, "fallback")
 
             name = candidate.get("name")
             if name:
@@ -246,13 +254,6 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
             )
             return _result(fallback_name, "fallback")
 
-        # Exhausted retries — best candidate was still stale; use it anyway.
-        logger.info(
-            "Web API: candidate for nukiId=%s still stale after %d retries — "
-            "using fallback",
-            nuki_id, _RESOLVE_MAX_RETRIES,
-        )
-        return _result(fallback_name, "fallback")
     except Exception:
         logger.warning(
             "Nuki Web API resolution failed for nukiId=%s — using fallback",
