@@ -282,6 +282,39 @@ class TestNukiPairTimeout:
             assert "Nuki Bridge unreachable" in r.json()["error"]
 
 
+class TestStackTraceExposure:
+    """CodeQL #16/#17: exception details must not leak to HTTP clients."""
+
+    def test_nuki_web_devices_error_uses_generic_message(self, app, client):
+        """CodeQL #17: GET /api/nuki/web-devices must NOT expose str(e)."""
+        app.state.config.nuki.web_api_token = "tok"
+        with patch(
+            "nukiblinker.nuki_web_client.NukiWebClient.list_smartlocks",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("secret internal path /etc/foo"),
+        ):
+            r = client.get("/api/nuki/web-devices")
+            assert r.status_code == 500
+            body = r.json()
+            assert "secret" not in body["error"]
+            assert body["error"] == "Nuki Web API request failed"
+
+    def test_support_bundle_domain_error_preserves_message(self, app, client):
+        """CodeQL #16: SupportBundleError exposes its user-facing message via
+        e.args[0], not str(e), so CodeQL stack-trace-exposure is avoided."""
+        from nukiblinker import support_bundle
+
+        with patch.object(
+            support_bundle,
+            "build_and_send",
+            new_callable=AsyncMock,
+            side_effect=support_bundle.SupportBundleError("Missing event selection"),
+        ):
+            r = client.post("/api/support/github-issue", json={})
+            assert r.status_code == 400
+            assert r.json()["error"] == "Missing event selection"
+
+
 class TestPrivateNetworkGuard:
     """Verify non-private-network requests to /api/ are blocked."""
 
