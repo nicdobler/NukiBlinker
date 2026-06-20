@@ -229,7 +229,10 @@ class TestEventLog:
 
     def test_export_to_csv_localizes_timestamp(self):
         """#96: Date/Time columns are rendered in the configured timezone."""
-        event_log = EventLog(persist_to_file=False)
+        # retention_days=0 disables retention cleanup so the fixed-date entry
+        # below is not pruned once the hard-coded date ages past the default
+        # 7-day window — keeps this test date-independent.
+        event_log = EventLog(persist_to_file=False, retention_days=0)
         # 2026-06-12 23:30 UTC → Madrid (UTC+2 in June) = 2026-06-13 01:30
         entry = EventLogEntry(
             timestamp=datetime(2026, 6, 12, 23, 30, 0, tzinfo=timezone.utc),
