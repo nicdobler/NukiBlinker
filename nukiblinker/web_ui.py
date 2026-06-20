@@ -590,6 +590,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
                 window_minutes=body.get("window_minutes"),
                 start=body.get("start"),
                 end=body.get("end"),
+                event_timestamps=body.get("event_timestamps"),
+                message=body.get("message"),
             )
             logger.info("Support bundle delivered: %s", result.get("issue_url"))
             return JSONResponse(result)

@@ -349,6 +349,41 @@ class EventLog:
             ).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
+    @staticmethod
+    def _utc_iso(dt: datetime) -> str:
+        """Normalise a (possibly naive) datetime to a UTC ISO string."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    def get_previous_event(self, before: datetime) -> Optional[EventLogEntry]:
+        """Return the most recent event strictly *before* ``before`` (#224).
+
+        Used to bound a support bundle's window at the end of the preceding
+        event. Returns ``None`` when the given time is at/before the first
+        recorded event.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM events WHERE timestamp < ? ORDER BY timestamp DESC LIMIT 1",
+                (self._utc_iso(before),),
+            ).fetchone()
+        return self._row_to_entry(row) if row else None
+
+    def get_next_event(self, after: datetime) -> Optional[EventLogEntry]:
+        """Return the earliest event strictly *after* ``after`` (#224).
+
+        Used to bound a support bundle's window at the start of the following
+        event. Returns ``None`` when the given time is at/after the last
+        recorded event.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM events WHERE timestamp > ? ORDER BY timestamp ASC LIMIT 1",
+                (self._utc_iso(after),),
+            ).fetchone()
+        return self._row_to_entry(row) if row else None
+
     def get_event_count(self, device_id: Optional[int] = None,
                         actions_only: bool = False) -> int:
         """Get total number of events in log (optionally filtered).
