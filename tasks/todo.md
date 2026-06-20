@@ -758,7 +758,7 @@ Pure frontend change — no backend modifications.
 
 ## #204 — "Strange hours" in the Event Log (log the real event time)
 
-**Branch**: `fix/204-event-log-event-time` | **PR**: _pending_ | **Wrap-up**: Approval
+**Branch**: `fix/204-event-log-event-time` | **PR**: #205 | **Wrap-up**: Approval
 
 Root cause: the Event Log stored the callback *receive* time (`datetime.now()`)
 instead of the real event time. An Opener `ring_to_open` carries the *previous*
