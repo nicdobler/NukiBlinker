@@ -86,6 +86,17 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                     validation_result=validation_result,
                     event_time=event_router.event_time_for_log(payload),
                 )
+            # #219/#220 discovery probe (log-only, no dispatch/notify): on an
+            # Opener `state=1 online` callback, capture the Nuki Web signal that
+            # accompanies an app-triggered open ("Abierta") so the real codes can
+            # be confirmed before wiring the classification.
+            if event_router.is_opener_status_probe_candidate(payload, app.state.config):
+                background_tasks.add_task(
+                    event_router.discovery_probe_app_open,
+                    payload,
+                    app.state.config,
+                    app.state.clients,
+                )
             return JSONResponse({"status": "ignored"})
 
         # Deduplicate: one real interaction emits several callbacks (#97).

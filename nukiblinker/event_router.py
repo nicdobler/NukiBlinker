@@ -36,6 +36,15 @@ _RESOLVE_MAX_RETRIES = 7      # max number of extra attempts (~14s total at 2s e
 _RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
 _RESOLVE_RECENCY_S = 10       # candidate must be within this many seconds of the ring
 
+# Opener "online" status state (deviceType=2). Discovery probe target (#219).
+_OPENER_STATE_ONLINE = 1
+
+# Discovery probe parameters (#219/#220): an app-triggered open ("Abierta")
+# surfaces on the Nuki Web log a few seconds *after* the bridge fires the
+# Opener `state=1 online` callback, so the probe polls a handful of times.
+_PROBE_MAX_ATTEMPTS = 5
+_PROBE_DELAY_S = 3
+
 
 def classify(payload: dict, config: AppConfig) -> str | None:
     """Return event type string or None if the payload should be ignored.
@@ -260,6 +269,70 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
             nuki_id, exc_info=True,
         )
         return _result(fallback_name, "fallback")
+
+
+def is_opener_status_probe_candidate(payload: dict, config) -> bool:
+    """True for an Opener ``state=1 online`` status callback (not a ring).
+
+    This is the bridge signal that *accompanies* an app-triggered open
+    ("Abierta") — see #219. It is deliberately distinct from a ring
+    (``ringactionState=true``) and from ``state=7`` (RTO / opener button).
+    Honours the ``nuki.opener_id`` filter when configured.
+    """
+    if payload.get("deviceType") != 2:
+        return False
+    if payload.get("state") != _OPENER_STATE_ONLINE:
+        return False
+    if payload.get("ringactionState") is True:
+        return False
+    opener_id = getattr(getattr(config, "nuki", None), "opener_id", None)
+    if opener_id is not None and payload.get("nukiId") != opener_id:
+        return False
+    return True
+
+
+async def discovery_probe_app_open(payload: dict, config, clients, *, sleep=None) -> None:
+    """LOG-ONLY discovery probe for #219/#220 — never dispatches or notifies.
+
+    On an Opener ``state=1 online`` callback, poll the Nuki Web log a few times
+    and log the most-recent entry's distinguishing fields (``action`` /
+    ``openerLog.activeRto`` / ``name`` / ``trigger`` / ``source``). An
+    app-triggered open ("Abierta") surfaces a few seconds after the callback, so
+    polling captures it. The purpose is to confirm the real codes that separate
+    an app open from a Ring-to-Open / opener-button open before wiring the
+    actual classification (#219/#220). This function changes no behaviour.
+    """
+    _sleep = sleep if sleep is not None else asyncio.sleep
+    nuki_web = getattr(clients, "nuki_web", None)
+    if nuki_web is None:
+        return
+    nuki_id = payload.get("nukiId")
+    web_id = _resolve_web_id(payload, config)
+    for attempt in range(_PROBE_MAX_ATTEMPTS):
+        try:
+            entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
+        except Exception:
+            logger.warning("[#219 discovery] Nuki Web query failed", exc_info=True)
+            return
+        top = entries[0] if entries else None
+        if top is not None:
+            opener_log = top.get("openerLog") or {}
+            logger.info(
+                "[#219 discovery] Opener %s online — Nuki Web top entry "
+                "(attempt %d/%d): name=%r action=%s state=%s trigger=%s source=%s "
+                "activeRto=%s date=%s",
+                nuki_id, attempt + 1, _PROBE_MAX_ATTEMPTS,
+                top.get("name"), top.get("action"), top.get("state"),
+                top.get("trigger"), top.get("source"),
+                opener_log.get("activeRto"), top.get("date"),
+            )
+        else:
+            logger.info(
+                "[#219 discovery] Opener %s online — Nuki Web log empty (attempt %d/%d)",
+                nuki_id, attempt + 1, _PROBE_MAX_ATTEMPTS,
+            )
+        if attempt < _PROBE_MAX_ATTEMPTS - 1:
+            await _sleep(_PROBE_DELAY_S)
 
 
 async def dispatch(

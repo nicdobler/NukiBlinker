@@ -9,8 +9,10 @@ from nukiblinker.config import AppConfig
 from nukiblinker.event_router import (
     RINGACTION_STALE_THRESHOLD_S,
     classify,
+    discovery_probe_app_open,
     dispatch_with_actions,
     event_time_for_log,
+    is_opener_status_probe_candidate,
     resolve_person,
     ringaction_staleness,
 )
@@ -139,6 +141,71 @@ class TestClassifyOther:
     def test_missing_device_type(self):
         payload = {"nukiId": 1, "state": 1}
         assert classify(payload, AppConfig()) is None
+
+
+class TestOpenerStatusProbeCandidate:
+    """#219 discovery probe gate — Opener state=1 online (not a ring/state=7)."""
+
+    def test_online_status_is_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": False}
+        assert is_opener_status_probe_candidate(payload, AppConfig()) is True
+
+    def test_ring_is_not_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": True}
+        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+
+    def test_state_7_is_not_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+
+    def test_lock_is_not_candidate(self):
+        payload = {"deviceType": 0, "nukiId": 200, "state": 1}
+        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+
+    def test_opener_id_filter_mismatch(self):
+        cfg = AppConfig()
+        cfg.nuki.opener_id = 200
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        assert is_opener_status_probe_candidate(payload, cfg) is False
+
+
+class TestDiscoveryProbeAppOpen:
+    """#219/#220 log-only probe: polls Nuki Web, never dispatches."""
+
+    @pytest.mark.asyncio
+    async def test_polls_and_logs_top_entry(self, caplog):
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 9129696002, "name": "Nico", "action": 3, "state": 0,
+             "trigger": 0, "source": 0, "openerLog": {"activeRto": False},
+             "date": "2026-06-20T16:24:42.000Z"},
+        ]
+        clients = type("C", (), {"nuki_web": web})()
+        cfg = AppConfig()
+        cfg.nuki.opener_web_id = 9129696002
+        sleep = AsyncMock()
+        with caplog.at_level("INFO", logger="nukiblinker.event_router"):
+            await discovery_probe_app_open(
+                {"nukiId": 100, "deviceType": 2, "state": 1}, cfg, clients, sleep=sleep,
+            )
+        # Polled the configured number of times (one query per attempt).
+        assert web.get_recent_log.await_count == 5
+        # Sleeps between attempts (one fewer than the number of attempts).
+        assert sleep.await_count == 4
+        joined = " ".join(r.getMessage() for r in caplog.records)
+        assert "[#219 discovery]" in joined
+        assert "action=3" in joined
+        assert "activeRto=False" in joined
+
+    @pytest.mark.asyncio
+    async def test_no_web_client_is_noop(self):
+        clients = type("C", (), {"nuki_web": None})()
+        # Must not raise and must not sleep/poll.
+        sleep = AsyncMock()
+        await discovery_probe_app_open(
+            {"nukiId": 100, "deviceType": 2, "state": 1}, AppConfig(), clients, sleep=sleep,
+        )
+        sleep.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
