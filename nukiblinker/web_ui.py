@@ -268,7 +268,7 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse(devices)
         except Exception as e:
             logger.error("Nuki Web device list failed: %s", e, exc_info=True)
-            return JSONResponse({"error": str(e)}, status_code=500)
+            return JSONResponse({"error": "Nuki Web API request failed"}, status_code=500)
 
     # ------------------------------------------------------------------
     # Hue pairing & device discovery
@@ -597,7 +597,8 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             return JSONResponse(result)
         except support_bundle.SupportBundleError as e:
             logger.warning("Support bundle rejected (400): %s", e)
-            return JSONResponse({"error": str(e)}, status_code=400)
+            msg = e.args[0] if e.args else "Support bundle request rejected"
+            return JSONResponse({"error": msg}, status_code=400)
         except Exception as e:
             logger.error("Support bundle failed: %s", e, exc_info=True)
             return JSONResponse(
