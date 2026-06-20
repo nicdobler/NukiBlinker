@@ -146,9 +146,25 @@ A single real interaction makes the Nuki Bridge emit several callbacks (status t
 For **Opener** events (**ring** and **ring to open**) NukiBlinker resolves which user triggered the action and exposes it as a `{name}` template variable in the TTS message. **Door opened** (Smart Lock) events deliberately do **not** resolve a name — their only actions are a chime/blink and the opener identity is irrelevant (#176).
 
 - **Nuki Web API only** (#175): names are resolved **exclusively** through the Nuki Web API activity log, which reliably returns `name`, `trigger`, and `source`. This also tells *how* the door was opened (e.g. physical button vs Ring to Open). The local Bridge `/log` endpoint is **no longer** used for name resolution.
-- The Nuki Web API can lag a few seconds behind the Bridge callback (#193). NukiBlinker retries the log query up to **7 times** (2 s apart, ~14 s total) when the most recent candidate entry is older than 10 s relative to the `ringactionTimestamp`. This ensures the correct visitor name is returned even if the Web API hasn't propagated the event yet.
-- When the Web API is not configured, or no named entry arrives within the retry window (e.g. an anonymous Ring-to-Open), NukiBlinker falls back to `fallback_name` ("Alguien").
+- **UTC time correlation (#193/#204)**: NukiBlinker compares the Bridge ring time (`ringactionTimestamp`) with the Web entry `date`. Both are **UTC** (the 2-hour offset against local CEST is only a *display* concern). When the best candidate is **older than a 10 s tolerance** relative to the ring time, the Web log is treated as lagging.
+- The Nuki Web API can lag a few seconds behind the Bridge callback (#193). When the candidate is stale, NukiBlinker retries the log query up to **8 attempts** (7 retries + the initial query, 2 s apart, ~14 s total). This ensures the correct visitor name is returned even if the Web API hasn't propagated the event yet.
+- When the Web API is not configured, or no matching entry arrives within the retry window (e.g. an anonymous Ring-to-Open), NukiBlinker falls back to `fallback_name` ("Alguien").
 - Every Nuki Web request and response is logged at **INFO** so name resolution can be troubleshot from the standard logs.
+
+#### Event time recorded in the log (#204)
+
+The Event Log stores the **real time the action happened**, not the moment NukiBlinker received the callback. Times are stored in **UTC** and displayed in local time:
+
+| Event | Logged time source |
+|---|---|
+| **ring** | `ringactionTimestamp` (the fresh ring time from the Bridge) |
+| **ring to open** | the matched **Nuki Web entry `date`**; falls back to receive-time if unresolved |
+| **door opened** | receive-time (Smart Lock; never queries the Web API) |
+| rejected / ignored / duplicate | `ringactionTimestamp` when it is a fresh ring, else receive-time |
+
+> The Bridge `ringactionTimestamp` is the *last* ring action and is **stale** for a `ring to open` that wasn't preceded by a ring (it can point to a previous day — the original "strange hours" report, #204). It is therefore only used as the logged time for a **fresh ring** (`ringactionState: true`).
+
+**Bridge staleness warning (#204)**: as a diagnostic, NukiBlinker logs a **WARNING** when a *fresh ring* (`ringactionState: true`) arrives with a `ringactionTimestamp` more than **120 s** old. Because the Bridge resets `ringactionState` ~30 s after a ring, a genuine fresh ring should always carry a near-instant timestamp; a much older one is the only legitimate sign that callbacks are being **buffered/delayed** or the **Bridge clock has drifted**. A stale timestamp on a *non-fresh* callback (`ringactionState: false`, e.g. an `rto active` / `opening` status update) is normal and never warns.
 
 Examples:
 - Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
@@ -368,7 +384,7 @@ Key settings:
 **Features**:
 - Web UI "Event Log" tab showing chronological list of events
 - Each log entry includes:
-  - Timestamp (when event was received)
+  - Timestamp (the real **event time** — see "Event time recorded in the log", #204)
   - Event type (Ring, Ring to Open, Door Opened)
   - Full Nuki callback payload
   - Processing result (actions taken or skipped with reason)

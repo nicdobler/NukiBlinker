@@ -155,7 +155,8 @@ class EventLog:
 
     def log_event(self, payload: Dict[str, Any], event_type: Optional[str],
                   actions: List[str], validation_result: ValidationResult,
-                  processing_time_ms: Optional[float] = None):
+                  processing_time_ms: Optional[float] = None,
+                  event_time: Optional[datetime] = None):
         """Add event to log with full context.
 
         Args:
@@ -164,9 +165,17 @@ class EventLog:
             actions: List of actions taken
             validation_result: Result of event validation
             processing_time_ms: Time taken to process the event
+            event_time: The real time the action happened (#204). When None,
+                defaults to ``datetime.now(UTC)`` (the callback receive time) so
+                existing callers keep working. Naive values are treated as UTC.
+                Callers derive it via ``event_router.event_time_for_log``.
         """
+        if event_time is None:
+            event_time = datetime.now(timezone.utc)
+        elif event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
         entry = EventLogEntry(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=event_time,
             event_type=event_type,
             payload=payload,
             actions=actions,

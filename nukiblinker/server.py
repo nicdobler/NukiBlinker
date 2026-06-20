@@ -41,6 +41,17 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         logger.info("Callback received: %s", payload)
 
+        # Staleness guard: a fresh ring (ringactionState true) should carry a
+        # near-instant ringactionTimestamp. A much older one is the only real
+        # "strange hours" signal and hints at bridge buffering or clock drift.
+        staleness = event_router.ringaction_staleness(payload)
+        if staleness is not None and staleness > event_router.RINGACTION_STALE_THRESHOLD_S:
+            logger.warning(
+                "Fresh ring carries a stale ringactionTimestamp (%.0fs old, "
+                "threshold %ds) — possible Bridge buffering or clock drift",
+                staleness, event_router.RINGACTION_STALE_THRESHOLD_S,
+            )
+
         # Event validation. Compute the result once and reuse it everywhere
         # (logging branches, dispatch) instead of recomputing per branch.
         if app.state.config.event_validation.enabled:
@@ -53,7 +64,8 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                         payload=payload,
                         event_type=None,
                         actions=[f"Rejected: {validation_result.reason}"],
-                        validation_result=validation_result
+                        validation_result=validation_result,
+                        event_time=event_router.event_time_for_log(payload),
                     )
                 return JSONResponse({"status": "rejected", "reason": validation_result.reason})
         else:
@@ -71,7 +83,8 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                     payload=payload,
                     event_type=None,
                     actions=["Ignored: no matching rule"],
-                    validation_result=validation_result
+                    validation_result=validation_result,
+                    event_time=event_router.event_time_for_log(payload),
                 )
             return JSONResponse({"status": "ignored"})
 
@@ -86,6 +99,7 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
                     event_type=event_type,
                     actions=[f"Suppressed: duplicate within {window}s"],
                     validation_result=validation_result,
+                    event_time=event_router.event_time_for_log(payload),
                 )
             return JSONResponse({"status": "duplicate", "event": event_type})
 
@@ -129,21 +143,34 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
         if config.night_mode.enabled:
             rule = clients.night_mode.apply_night_mode(rule)
 
+        # Resolve the person here (Opener events only) so the matched Nuki Web
+        # entry date is available both for dispatch and for logging the real
+        # event time (#204). Passing it as context_override avoids a second
+        # Web API round-trip inside dispatch_with_actions.
+        context = None
+        if event_type in ("ring", "ring_to_open"):
+            fallback = rule.audio.fallback_name if rule.audio else "Alguien"
+            context = await event_router.resolve_person(
+                payload, fallback,
+                nuki_web=getattr(clients, "nuki_web", None), config=config,
+            )
+
         # Dispatch the event
         actions = await event_router.dispatch_with_actions(
-            event_type, payload, config, clients, rule
+            event_type, payload, config, clients, rule, context_override=context
         )
 
         processing_time_ms = (time.time() - start_time) * 1000
 
-        # Log the successful event
+        # Log the successful event with its real event time (#204)
         if config.event_log.enabled:
             clients.event_log.log_event(
                 payload=payload,
                 event_type=event_type,
                 actions=actions,
                 validation_result=validation_result,
-                processing_time_ms=processing_time_ms
+                processing_time_ms=processing_time_ms,
+                event_time=event_router.event_time_for_log(payload, context),
             )
 
         logger.info("Event processed: %s -> %s (%.1fms)", event_type, actions, processing_time_ms)
@@ -158,7 +185,8 @@ async def _dispatch_with_logging(event_type: str, payload: dict, config, clients
                 event_type=event_type,
                 actions=[f"Error: {str(e)}"],
                 validation_result=validation_result,
-                processing_time_ms=processing_time_ms
+                processing_time_ms=processing_time_ms,
+                event_time=event_router.event_time_for_log(payload),
             )
 
         logger.error("Event processing failed: %s", e)

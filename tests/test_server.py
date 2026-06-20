@@ -159,3 +159,51 @@ class TestNukiCallback:
         r = client.post("/nuki/callback", json=_ring_payload())
         assert r.status_code == 200
         assert r.json()["event"] == "ring"
+
+    def test_stale_fresh_ring_logs_warning(self, client, caplog):
+        """A fresh ring (ringactionState true) whose ringactionTimestamp is far
+        in the past hints at Bridge buffering / clock drift — log a WARNING."""
+        import logging
+        # _ring_payload() is a fresh ring with a long-past ringactionTimestamp.
+        with caplog.at_level(logging.WARNING, logger="nukiblinker.server"):
+            client.post("/nuki/callback", json=_ring_payload())
+        assert any(
+            "stale ringactionTimestamp" in rec.message
+            for rec in caplog.records
+            if rec.name == "nukiblinker.server"
+        )
+
+    def test_fresh_ring_recent_timestamp_no_warning(self, client, caplog):
+        """A fresh ring with a just-now timestamp must not warn."""
+        import logging
+        from datetime import datetime, timezone
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 1,
+            "ringactionState": True,
+            "ringactionTimestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        with caplog.at_level(logging.WARNING, logger="nukiblinker.server"):
+            client.post("/nuki/callback", json=payload)
+        assert not any(
+            "stale ringactionTimestamp" in rec.message
+            for rec in caplog.records
+            if rec.name == "nukiblinker.server"
+        )
+
+    def test_non_fresh_callback_with_old_timestamp_no_warning(self, client, caplog):
+        """#204: the exact issue scenario — a NON-fresh opener status callback
+        (ringactionState false) carrying yesterday's last-ring timestamp is
+        normal and must NOT trigger the staleness warning."""
+        import logging
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 7, "stateName": "opening",
+            "ringactionState": False,
+            "ringactionTimestamp": "2026-06-19T20:11:22+00:00",
+        }
+        with caplog.at_level(logging.WARNING, logger="nukiblinker.server"):
+            client.post("/nuki/callback", json=payload)
+        assert not any(
+            "stale ringactionTimestamp" in rec.message
+            for rec in caplog.records
+            if rec.name == "nukiblinker.server"
+        )

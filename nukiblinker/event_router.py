@@ -145,11 +145,17 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     # Trigger code (how the action was performed). Captured for observability so
     # the user can confirm the real code before any suppression is wired (#97).
     resolved_trigger: int | None = None
+    # Matched Web entry `date` (#204): exposed so the caller can log the *real*
+    # event time (the open time) rather than the callback receive time. Only set
+    # when the matched entry actually carries a date.
+    resolved_event_time: str | None = None
 
     def _result(name: str, source: str) -> dict:
         out: dict = {"name": name, "name_source": source}
         if resolved_trigger is not None:
             out["trigger"] = resolved_trigger
+        if resolved_event_time is not None:
+            out["event_time"] = resolved_event_time
         return out
 
     if nuki_web is None:
@@ -219,12 +225,16 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
 
             name = candidate.get("name")
             if name:
+                # Surface the matched entry's date so the caller logs the real
+                # event time (the open time), not the callback receive time (#204).
+                resolved_event_time = candidate.get("date")
                 logger.info(
                     "Resolved person via Web API: name=%s trigger=%s(%s) source=%s "
-                    "(sensor_entries_skipped=%d, attempt=%d)",
+                    "date=%s (sensor_entries_skipped=%d, attempt=%d)",
                     name, resolved_trigger,
                     TRIGGER_NAMES.get(resolved_trigger, "unknown"),
                     candidate.get("source"),
+                    resolved_event_time,
                     entries.index(candidate),
                     attempt,
                 )
@@ -338,3 +348,61 @@ def _parse_iso(value) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def event_time_for_log(payload: dict, context: dict | None = None) -> datetime:
+    """Return the *real* event time (UTC) to record in the Event Log (#204).
+
+    The Bridge callback's receive time is NOT the event time: a buffered or
+    delayed callback would otherwise log "strange hours" (#204). Precedence:
+
+    1. A **fresh ring** (``ringactionState`` true) carries the real ring time in
+       ``ringactionTimestamp`` — use it.
+    2. For a ``ring_to_open`` the Bridge gives no fresh timestamp
+       (``ringactionTimestamp`` is the *last* ring and is frequently stale), so
+       use the matched Nuki Web entry ``date`` surfaced by ``resolve_person`` in
+       ``context["event_time"]``.
+    3. Otherwise (``door_opened``, anonymous opens, no Web match) fall back to
+       the callback receive time, ``datetime.now(UTC)``.
+
+    All returned values are timezone-aware UTC; the UI/CSV convert to local.
+    """
+    if payload.get("ringactionState") is True:
+        dt = _parse_iso(payload.get("ringactionTimestamp"))
+        if dt is not None:
+            return dt
+    if context:
+        dt = _parse_iso(context.get("event_time"))
+        if dt is not None:
+            return dt
+    return datetime.now(timezone.utc)
+
+
+# A genuine fresh ring should carry a ringactionTimestamp only a few seconds
+# old: the Bridge resets ringactionState after ~30 s, so a fresh-ring callback
+# always arrives right after the ring. A much older timestamp on a fresh ring
+# is the only legitimate "strange hours" signal — it hints the callback was
+# buffered/delayed or the Bridge clock has drifted. (A stale timestamp on a
+# NON-fresh callback, ringactionState false, is normal: it is just the *last*
+# ring and is expected to be old, so it must NOT warn.)
+RINGACTION_STALE_THRESHOLD_S = 120
+
+
+def ringaction_staleness(payload: dict, *, now: datetime | None = None) -> float | None:
+    """Age in seconds of ``ringactionTimestamp`` for a **fresh ring**.
+
+    Returns the positive age (now - ringactionTimestamp) only when
+    ``ringactionState`` is true and ``ringactionTimestamp`` parses; otherwise
+    ``None`` (not a fresh ring, or no/invalid timestamp — nothing to warn about).
+
+    Callers compare the result against :data:`RINGACTION_STALE_THRESHOLD_S` to
+    decide whether to emit a staleness WARNING. A future-dated timestamp yields
+    a negative value (never stale).
+    """
+    if payload.get("ringactionState") is not True:
+        return None
+    dt = _parse_iso(payload.get("ringactionTimestamp"))
+    if dt is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return (now - dt).total_seconds()

@@ -141,6 +141,7 @@ Prevents stale events from triggering notifications by checking event timestamps
 Comprehensive event history for monitoring and troubleshooting:
 - Embedded **SQLite** storage (`logs/event_log.db`) with configurable retention — fast to load and **persists across application/container updates** (when `./logs` is mounted as a volume)
 - Detailed action tracking with processing times
+- Each entry is timestamped with the **real event time** (#204), not the callback receive time: a ring uses the Bridge `ringactionTimestamp`, a ring-to-open uses the matched Nuki Web entry date, everything else uses the receive time. Stored in UTC, shown in local time.
 - CSV export for analysis (includes a `Payload (JSON)` column with the full raw payload)
 - Web UI viewer with Previous/Next pagination, device filtering by **name + type (Opener / Smart Lock) + ID**, an **only-events-with-actions** checkbox, and a per-entry device-type badge (the Nuki Device Filter remembers the Opener/Lock names; real callbacks carry no name)
 - A legacy `event_log.json` is migrated into the database automatically on first start

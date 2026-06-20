@@ -563,17 +563,21 @@ def classify(payload: dict, config) -> str | None:
         ...
     return None              # unknown device type
 
-# Retry constants for resolve_person() (#193/#197):
-_RESOLVE_MAX_RETRIES = 7    # up to 7 retries (~14 s total at 2 s each)
+# Retry constants for resolve_person() (#193/#197/#204):
+_RESOLVE_MAX_RETRIES = 7    # 7 retries + 1 initial = 8 attempts (~14 s at 2 s each)
 _RESOLVE_RETRY_DELAY_S = 2  # seconds between retries
-_RESOLVE_RECENCY_S = 10     # candidate must be within 10 s of ringactionTimestamp
+_RESOLVE_RECENCY_S = 10     # candidate must be within 10 s of ring time (else retry)
 
 async def resolve_person(payload: dict, fallback_name="Alguien", *, nuki_web=None, config=None) -> dict:
     """Resolve the user name (and trigger) via the Nuki Web API ONLY (#175/#197).
-    Retries up to _RESOLVE_MAX_RETRIES times when the best candidate is older
-    than _RESOLVE_RECENCY_S (Web API lag — #193). Falls back to fallback_name
-    when the Web API is unconfigured, unavailable, or returns no fresh entry.
-    Returns {"name", "name_source": "web_api"|"fallback", "trigger"?}."""
+
+    Matching: take the most-recent non-sensor entry; if it is older than
+    _RESOLVE_RECENCY_S relative to the Bridge ring time (`ringactionTimestamp`),
+    treat the Web log as lagging and retry up to _RESOLVE_MAX_RETRIES times
+    (#193), else fall back. Comparisons are done in **UTC** (the 2 h offset vs
+    local CEST is display-only). Also returns the matched entry's `date` as
+    `event_time` (when present) so the caller can log the real event time (#204).
+    Returns {"name", "name_source": "web_api"|"fallback", "trigger"?, "event_time"?}."""
     ...
 
 async def dispatch(event_type, payload, config, clients):
@@ -583,7 +587,24 @@ async def dispatch(event_type, payload, config, clients):
     if event_type in ("ring", "ring_to_open"):      # Opener events only (#176/#177)
         context = await resolve_person(payload, ..., nuki_web=clients.nuki_web)
     await notifier.notify(rule, config, clients, context)
+
+# Bridge staleness diagnostic (#204)
+RINGACTION_STALE_THRESHOLD_S = 120  # a fresh ring older than this hints at buffering/clock drift
+
+def ringaction_staleness(payload: dict, *, now=None) -> float | None:
+    """Age (s) of `ringactionTimestamp` for a FRESH ring (ringactionState true).
+
+    Returns now - ringactionTimestamp only when ringactionState is true and the
+    timestamp parses; otherwise None (a stale timestamp on a non-fresh callback
+    is normal and must not warn). The caller (`server.nuki_callback`) logs a
+    WARNING when the result exceeds RINGACTION_STALE_THRESHOLD_S. A future-dated
+    timestamp returns a negative value (never stale). Comparisons in UTC."""
+    ...
 ```
+
+The callback handler `server.nuki_callback` calls `ringaction_staleness(payload)`
+immediately after receiving the payload (before validation) and logs the WARNING
+when the age exceeds the threshold — purely diagnostic, it never changes routing.
 
 ### Notifier (`notifier.py`)
 
@@ -911,9 +932,15 @@ class EventLog:
         ...
 
     def log_event(self, payload, event_type, actions, validation_result,
-                  processing_time_ms=None):
+                  processing_time_ms=None, event_time=None):
         """Build an EventLogEntry and append it as one INSERT, then enforce
-        retention/max_entries with bounded DELETEs (no full-file rewrite)."""
+        retention/max_entries with bounded DELETEs (no full-file rewrite).
+
+        event_time (#204): the real time the action happened, stored UTC. When
+        None, defaults to datetime.now(UTC) (receive-time) for back-compat.
+        Callers derive it via event_router.event_time_for_log(payload, context)
+        — `ringactionTimestamp` for a fresh ring, the matched Nuki Web `date`
+        for ring_to_open, else receive-time."""
 
     def get_recent_events(self, limit=100, offset=0, device_id=None, actions_only=False):
         """SELECT ... [WHERE nuki_id=? AND actions!='[]'] ORDER BY id DESC LIMIT ? OFFSET ?."""

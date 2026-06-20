@@ -229,7 +229,10 @@ class TestEventLog:
 
     def test_export_to_csv_localizes_timestamp(self):
         """#96: Date/Time columns are rendered in the configured timezone."""
-        event_log = EventLog(persist_to_file=False)
+        # retention_days=0 disables retention cleanup so the fixed-date entry
+        # below is not pruned once the hard-coded date ages past the default
+        # 7-day window — keeps this test date-independent.
+        event_log = EventLog(persist_to_file=False, retention_days=0)
         # 2026-06-12 23:30 UTC → Madrid (UTC+2 in June) = 2026-06-13 01:30
         entry = EventLogEntry(
             timestamp=datetime(2026, 6, 12, 23, 30, 0, tzinfo=timezone.utc),
@@ -559,3 +562,53 @@ class TestEventLog:
             assert entry.event_type == "ring"
             assert isinstance(entry.payload, dict)
             assert len(entry.actions) == 1
+
+
+class TestLogEventEventTime:
+    """log_event(event_time=...) records the real event time (#204)."""
+
+    def _log(self):
+        return EventLog(persist_to_file=False)
+
+    def _vr(self):
+        return ValidationResult(valid=True, delay_seconds=0.0, reason=None)
+
+    def test_explicit_event_time_is_stored(self):
+        """The provided event_time, not now(), is recorded."""
+        log = self._log()
+        event_time = datetime(2026, 6, 19, 20, 11, 22, tzinfo=timezone.utc)
+        log.log_event(
+            payload={"deviceType": 2, "nukiId": 100},
+            event_type="ring",
+            actions=["Hue lights blinked"],
+            validation_result=self._vr(),
+            event_time=event_time,
+        )
+        assert log.entries[0].timestamp == event_time
+
+    def test_event_time_none_defaults_to_now(self):
+        """Back-compat: omitting event_time records ~now (receive time)."""
+        log = self._log()
+        before = datetime.now(timezone.utc)
+        log.log_event(
+            payload={"deviceType": 2, "nukiId": 100},
+            event_type="ring",
+            actions=["Hue lights blinked"],
+            validation_result=self._vr(),
+        )
+        after = datetime.now(timezone.utc)
+        assert before <= log.entries[0].timestamp <= after
+
+    def test_naive_event_time_treated_as_utc(self):
+        """A naive event_time is normalised to UTC so comparisons stay correct."""
+        log = self._log()
+        log.log_event(
+            payload={"deviceType": 2, "nukiId": 100},
+            event_type="ring",
+            actions=[],
+            validation_result=self._vr(),
+            event_time=datetime(2026, 6, 19, 20, 11, 22),  # naive
+        )
+        stored = log.entries[0].timestamp
+        assert stored.tzinfo is not None
+        assert stored == datetime(2026, 6, 19, 20, 11, 22, tzinfo=timezone.utc)
