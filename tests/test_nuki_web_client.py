@@ -36,6 +36,40 @@ class TestGetRecentLog:
             assert kwargs["headers"]["Authorization"] == "Bearer web-token"
 
     @pytest.mark.asyncio
+    async def test_logs_only_two_entries_with_opener_fields(self, client, caplog):
+        """#223: only the latest 2 entries are logged, and the log line surfaces
+        action/state/openerLog.activeRto used to classify Opener events."""
+        entries = [
+            {"smartlockId": 9129696002, "name": "Nico", "action": 3, "state": 0,
+             "trigger": 0, "source": 0, "openerLog": {"activeRto": False},
+             "date": "2026-06-20T16:24:42.000Z"},
+            {"smartlockId": 9129696002, "name": "", "action": 1, "state": 1,
+             "trigger": 0, "source": 0, "date": "2026-06-20T15:28:15.000Z"},
+            {"smartlockId": 9129696002, "name": "Celi", "action": 3, "state": 0,
+             "trigger": 0, "source": 0, "date": "2026-06-20T11:35:51.000Z"},
+        ]
+        resp = _mock_response(entries)
+        mock_http = MagicMock(get=AsyncMock(return_value=resp))
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            with caplog.at_level("INFO", logger="nukiblinker.nuki_web_client"):
+                result = await client.get_recent_log(smartlock_id=9129696002)
+
+        # The full list is still returned (only the *logging* is trimmed).
+        assert result == entries
+        entry_logs = [
+            r.getMessage() for r in caplog.records if "Web API entry[" in r.getMessage()
+        ]
+        assert len(entry_logs) == 2  # not 5, not 3
+        joined = " ".join(entry_logs)
+        assert "action=3" in joined
+        assert "state=0" in joined
+        assert "activeRto=False" in joined
+        # A non-opener entry (no openerLog) logs activeRto=None without crashing.
+        assert "activeRto=None" in joined
+
+    @pytest.mark.asyncio
     async def test_non_list_response_returns_empty(self, client):
         resp = _mock_response({"error": "nope"})
         mock_http = MagicMock(get=AsyncMock(return_value=resp))

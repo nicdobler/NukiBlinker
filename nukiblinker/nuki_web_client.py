@@ -77,16 +77,26 @@ class NukiWebClient:
                 data = r.json()
                 entries = data if isinstance(data, list) else []
                 logger.info("Nuki Web API returned %d entries for smartlock_id=%s", len(entries), smartlock_id)
-                # Log each entry so name/trigger resolution can be debugged from
-                # the standard INFO logs without raising the global level (#161, #176).
-                for i, entry in enumerate(entries[:5]):  # Log first 5 entries
+                # Log the most recent entries so name/trigger resolution can be
+                # debugged from the standard INFO logs without raising the global
+                # level (#161, #176). Only the latest 2 are logged — the older
+                # ones added noise without adding signal (#223). The line also
+                # surfaces `action`, `state` and `openerLog.activeRto`, which are
+                # the fields that distinguish an Opener RTO from an app-triggered
+                # open ("Abierta") or a manual opener-button open (#219, #220).
+                for i, entry in enumerate(entries[:2]):  # Log first 2 entries (#223)
+                    opener_log = entry.get("openerLog") or {}
                     logger.info(
-                        "Web API entry[%d]: smartlockId=%s name=%r trigger=%s source=%s date=%s",
+                        "Web API entry[%d]: smartlockId=%s name=%r action=%s state=%s "
+                        "trigger=%s source=%s activeRto=%s date=%s",
                         i,
                         entry.get("smartlockId"),
                         entry.get("name"),
+                        entry.get("action"),
+                        entry.get("state"),
                         entry.get("trigger"),
                         entry.get("source"),
+                        opener_log.get("activeRto"),
                         entry.get("date"),
                     )
                 return entries
