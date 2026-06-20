@@ -474,21 +474,11 @@
         </div>
 
         <div class="card">
-            <h2>Send support bundle to GitHub</h2>
-            <p class="help" style="margin-bottom:0.75rem">Collect the application log + event-log entries around a point in time into a ZIP and open a GitHub issue with it attached, to make troubleshooting easy. Requires a GitHub token (General tab).</p>
-            <div class="grid">
-                <div>
-                    <label>Reference time <span class="opt">(blank = now)</span></label>
-                    <input id="supportReference" type="datetime-local">
-                    <p class="help">The bundle covers a window centred on this point.</p>
-                </div>
-                <div>
-                    <label>Window (± minutes)</label>
-                    <input id="supportWindow" type="number" min="1" max="1440" value="15">
-                    <p class="help">e.g. 15 = from 15 min before to 15 min after.</p>
-                </div>
-            </div>
-            <div class="btn-row" style="margin-top:0.5rem"><button class="btn-primary btn-sm" onclick="sendSupportBundle()">Send to GitHub issue</button></div>
+            <h2>Send selected events to GitHub</h2>
+            <p class="help" style="margin-bottom:0.75rem">Tick one or more events in the Event Log table below, write what you want to report, and open a GitHub issue. The bundle collects the application log + event-log entries bounded by the events <strong>adjacent</strong> to your selection (from the end of the previous event to the start of the next). Requires a GitHub token (General tab).</p>
+            <label>Message <span class="opt">(what you want to report — becomes the issue title)</span></label>
+            <textarea id="supportMessage" rows="3" placeholder="e.g. Ring-to-open announced the wrong name" style="width:100%;"></textarea>
+            <div class="btn-row" style="margin-top:0.5rem;align-items:center;gap:0.6rem;"><button class="btn-primary btn-sm" onclick="sendSupportBundle()">Send selected to GitHub issue</button><span id="supportSelCount" style="color:#64748b;font-size:0.78rem;">0 event(s) selected</span></div>
             <div id="supportResult" class="discover-results"></div>
         </div>
 
@@ -523,6 +513,7 @@
                 <table id="eventLogTable" style="width:100%; border-collapse:collapse; font-size:0.8rem;">
                     <thead>
                         <tr>
+                            <th style="width:28px; text-align:center; padding:0.4rem 0.4rem; border-bottom:1px solid #334155;" title="Select for support bundle"></th>
                             <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Date</th>
                             <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Time</th>
                             <th style="text-align:left; padding:0.4rem 0.55rem; color:#64748b; font-size:0.7rem; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #334155; white-space:nowrap;">Device</th>
@@ -533,7 +524,7 @@
                         </tr>
                     </thead>
                     <tbody id="eventLogBody">
-                        <tr><td colspan="7" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">Loading event log...</td></tr>
+                        <tr><td colspan="8" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">Loading event log...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1090,6 +1081,13 @@ async function saveEventLogConfig() {
 // Event Log Viewer
 let eventLogOffset = 0;
 const EVENT_LOG_LIMIT = 50;
+// #224: timestamps (ISO) of events ticked for a support bundle. Persists across
+// pagination so a selection can span pages; cleared after a successful send.
+const selectedEventTs = new Set();
+function _updateSelCount() {
+    const el = document.getElementById('supportSelCount');
+    if (el) el.textContent = selectedEventTs.size + ' event(s) selected';
+}
 
 function getEventLogDeviceId() {
     const el = document.getElementById('eventLogDeviceFilter');
@@ -1200,7 +1198,7 @@ async function loadEventLog() {
         const total = data.total_count || 0;
 
         if (total === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">No events logged yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#64748b; padding:2rem; font-size:0.85rem;">No events logged yet</td></tr>';
             infoEl.textContent = '';
         } else {
             _renderEventLogTable(tbody, data.events);
@@ -1217,7 +1215,7 @@ async function loadEventLog() {
     } catch (e) {
         console.error('Failed to load event log:', e);
         statusEl.innerHTML = `<span style="color:#ef4444;font-size:0.8rem;">Error: ${e.message}</span>`;
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#ef4444; padding:2rem;">Failed to load events</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#ef4444; padding:2rem;">Failed to load events</td></tr>';
     }
 }
 
@@ -1248,6 +1246,7 @@ function _renderEventLogTable(tbody, events) {
         const tr = document.createElement('tr');
         tr.style.cssText = 'border-bottom:1px solid #1e293b;cursor:pointer;transition:background 0.12s;' + (!vr.valid ? 'border-left:3px solid #7f1d1d;' : '');
         tr.innerHTML = `
+            <td style="padding:0.48rem 0.4rem;text-align:center;"><input type="checkbox" class="_elSel" title="Select for support bundle" style="width:auto;margin:0;cursor:pointer;"></td>
             <td style="padding:0.48rem 0.55rem;color:#94a3b8;white-space:nowrap;font-variant-numeric:tabular-nums;">${dateStr}</td>
             <td style="padding:0.48rem 0.55rem;white-space:nowrap;font-variant-numeric:tabular-nums;">${timeStr}</td>
             <td style="padding:0.48rem 0.55rem;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${deviceName}</td>
@@ -1261,13 +1260,24 @@ function _renderEventLogTable(tbody, events) {
         tr.addEventListener('mouseenter', () => { if (!tr._elExpanded) tr.style.background = '#253047'; });
         tr.addEventListener('mouseleave', () => { if (!tr._elExpanded) tr.style.background = ''; });
         tr.addEventListener('click', () => _toggleDetailRow(tr, detailTr, ev));
+        // #224: row-selection checkbox (does not toggle the detail panel).
+        const cb = tr.querySelector('._elSel');
+        if (cb) {
+            cb.checked = selectedEventTs.has(ev.timestamp);
+            cb.addEventListener('click', e => e.stopPropagation());
+            cb.addEventListener('change', () => {
+                if (cb.checked) selectedEventTs.add(ev.timestamp);
+                else selectedEventTs.delete(ev.timestamp);
+                _updateSelCount();
+            });
+        }
         tbody.appendChild(tr);
 
         // Detail row (hidden)
         const detailTr = document.createElement('tr');
         detailTr.style.display = 'none';
         const detailTd = document.createElement('td');
-        detailTd.colSpan = 7;
+        detailTd.colSpan = 8;
         detailTd.style.padding = '0';
         detailTr.appendChild(detailTd);
         tbody.appendChild(detailTr);
@@ -1384,7 +1394,7 @@ async function prevEvents() {
 
 // renderEventLogEntry kept for any external callers but no longer used by the viewer.
 function renderEventLogEntry(entry) {
-    return `<tr><td colspan="7" style="padding:0.5rem;color:#94a3b8;font-size:0.8rem;">${entry.event_type || 'Unknown'} — ${new Date(entry.timestamp).toLocaleString()}</td></tr>`;
+    return `<tr><td colspan="8" style="padding:0.5rem;color:#94a3b8;font-size:0.8rem;">${entry.event_type || 'Unknown'} — ${new Date(entry.timestamp).toLocaleString()}</td></tr>`;
 }
 
 async function exportEventLog() {
@@ -1473,19 +1483,27 @@ async function loadConfig() {
 // Support bundle → GitHub issue (#117)
 async function sendSupportBundle() {
     const el = document.getElementById('supportResult');
-    const reference = val('supportReference');  // datetime-local; '' = now
-    const windowMinutes = parseInt(val('supportWindow')) || 15;
+    const message = (val('supportMessage') || '').trim();
+    const eventTimestamps = Array.from(selectedEventTs);
+    if (eventTimestamps.length === 0) {
+        el.innerHTML = '<span class="badge badge-err">No events</span> Tick one or more events in the table below first.';
+        return;
+    }
     el.innerHTML = '<p style="font-size:0.8rem;color:#94a3b8">Building bundle and creating issue…</p>';
     try {
-        const body = { window_minutes: windowMinutes };
-        if (reference) body.reference = reference;
+        const body = { event_timestamps: eventTimestamps };
+        if (message) body.message = message;
         const r = await fetch(`${API}/support/github-issue`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         const d = await r.json();
         if (!r.ok) { el.innerHTML = `<span class="badge badge-err">Failed</span> ${d.error || 'unknown error'}`; return; }
         const link = d.issue_url ? `<a href="${d.issue_url}" target="_blank" rel="noopener">${d.issue_url}</a>` : 'issue created';
-        el.innerHTML = `<span class="badge badge-ok">Sent</span> ${d.events} event(s) in window · ${link}`;
+        el.innerHTML = `<span class="badge badge-ok">Sent</span> ${d.selected || eventTimestamps.length} selected, ${d.events} in range · ${link}`;
+        // Clear the selection after a successful send.
+        selectedEventTs.clear();
+        _updateSelCount();
+        document.querySelectorAll('._elSel').forEach(c => { c.checked = false; });
     } catch (e) {
         el.innerHTML = `<span class="badge badge-err">Failed</span> ${e.message}`;
     }

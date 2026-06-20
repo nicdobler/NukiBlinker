@@ -100,6 +100,59 @@ def resolve_window(
     return s, e
 
 
+def resolve_window_from_events(
+    timestamps: list[str],
+    event_log,
+    *,
+    now: datetime | None = None,
+) -> tuple[datetime, datetime, dict]:
+    """Resolve the bundle window from a set of selected Event-Log entries (#224).
+
+    The window is bounded by the **adjacent** events: it starts at the end of
+    the event immediately *before* the earliest selected event, and ends at the
+    start of the event immediately *after* the latest selected one. Edge cases:
+
+    - **First event selected** (no previous event): the lower bound is the
+      earliest selected event's own timestamp.
+    - **Last event selected** (no next event): the upper bound is *now*.
+
+    Returns ``(start, end, selection)`` where ``selection`` carries metadata for
+    the issue body (selected timestamps + whether the bounds were clamped).
+    """
+    parsed: list[datetime] = []
+    for raw in timestamps:
+        try:
+            dt = _parse_dt(raw, timezone.utc)
+        except ValueError as exc:
+            raise SupportBundleError(f"invalid event timestamp: {raw!r}") from exc
+        parsed.append(dt.astimezone(timezone.utc))
+    if not parsed:
+        raise SupportBundleError("no events selected")
+
+    parsed.sort()
+    earliest, latest = parsed[0], parsed[-1]
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+
+    prev_ev = event_log.get_previous_event(earliest) if event_log is not None else None
+    next_ev = event_log.get_next_event(latest) if event_log is not None else None
+
+    start = prev_ev.timestamp if prev_ev is not None else earliest
+    end = next_ev.timestamp if next_ev is not None else now_utc
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if end < start:
+        end = start
+
+    selection = {
+        "selected": [t.isoformat() for t in parsed],
+        "has_prev": prev_ev is not None,
+        "has_next": next_ev is not None,
+    }
+    return start, end, selection
+
+
 # ---------------------------------------------------------------------------
 # App-log slicing (local naive timestamps)
 # ---------------------------------------------------------------------------
@@ -288,17 +341,61 @@ class GitHubClient:
             return r.json()
 
 
-def _issue_body(start: datetime, end: datetime, config, n_events: int, bundle_url: str | None) -> str:
+def _issue_title(message: str | None, stamp: str) -> str:
+    """Build the issue title: the user's message (first line, trimmed) or a
+    timestamped fallback when no message was given (#224)."""
+    if message and message.strip():
+        first_line = message.strip().splitlines()[0].strip()
+        if first_line:
+            return first_line[:100]
+    return f"Support bundle {stamp}"
+
+
+def _issue_body(
+    start: datetime,
+    end: datetime,
+    config,
+    n_events: int,
+    bundle_url: str | None,
+    *,
+    message: str | None = None,
+    selection: dict | None = None,
+) -> str:
     link = f"[`{bundle_url}`]({bundle_url})" if bundle_url else "(commit succeeded; URL unavailable)"
-    return (
-        f"Automated support bundle from NukiBlinker `{app_version()}`.\n\n"
-        f"- **Window**: `{start.isoformat()}` → `{end.isoformat()}`\n"
-        f"- **Event-log entries**: {n_events}\n"
-        f"- **Integrations**: {summarize_config(config)}\n"
-        f"- **Bundle (ZIP)**: {link}\n\n"
-        f"<details><summary>Redacted config</summary>\n\n```yaml\n"
-        f"{redacted_config_yaml(config)}```\n</details>\n"
-    )
+    parts: list[str] = []
+    if message and message.strip():
+        parts.append(message.strip())
+        parts.append("")  # blank line before the metadata block
+    parts.append(f"Automated support bundle from NukiBlinker `{app_version()}`.")
+    parts.append("")
+    parts.append(f"- **Window**: `{start.isoformat()}` → `{end.isoformat()}`")
+    parts.append(f"- **Event-log entries**: {n_events}")
+    if selection is not None:
+        n_selected = len(selection.get("selected", []))
+        parts.append(f"- **Selected events**: {n_selected}")
+        if not selection.get("has_prev", True):
+            parts.append(
+                "  - ⚠ The first selected event is the earliest in the log — "
+                "lower bound is the event's own time."
+            )
+        if not selection.get("has_next", True):
+            parts.append(
+                "  - ⚠ The last selected event is the most recent in the log — "
+                "upper bound is *now*."
+            )
+        extra = n_events - n_selected
+        if extra > 0:
+            parts.append(
+                f"  - ⚠ The range includes {extra} non-selected event(s) "
+                "(possible overlap of context)."
+            )
+    parts.append(f"- **Integrations**: {summarize_config(config)}")
+    parts.append(f"- **Bundle (ZIP)**: {link}")
+    parts.append("")
+    parts.append("<details><summary>Redacted config</summary>\n")
+    parts.append(f"```yaml\n{redacted_config_yaml(config)}```")
+    parts.append("</details>")
+    return "\n".join(parts) + "\n"
 
 
 def _github_error_detail(response: httpx.Response) -> str:
@@ -336,22 +433,41 @@ async def build_and_send(
     window_minutes: int | None = None,
     start: str | None = None,
     end: str | None = None,
+    event_timestamps: list[str] | None = None,
+    message: str | None = None,
     now: datetime | None = None,
     github_client: GitHubClient | None = None,
 ) -> dict:
     """Build the bundle for the window and deliver it as a GitHub issue.
 
+    Two ways to define the window:
+
+    - **Event selection (#224)**: pass ``event_timestamps`` (ISO strings of the
+      Event-Log rows the user ticked). The window is bounded by the events
+      adjacent to that selection (see ``resolve_window_from_events``). An
+      optional ``message`` describes what the user is reporting and becomes the
+      issue title + a lead paragraph in the body.
+    - **Time window (legacy)**: ``reference`` ± ``window_minutes`` or explicit
+      ``start``/``end``.
+
     Returns a dict with ``status``, ``issue_url``, ``bundle_url``, ``events``
     and the resolved ``window``. Raises ``SupportBundleError`` on bad input or
     GitHub failures.
     """
-    wm = window_minutes if window_minutes else config.github.default_window_minutes
-    s_aware, e_aware = resolve_window(
-        reference=reference, window_minutes=wm, start=start, end=end, now=now
-    )
+    event_log = getattr(clients, "event_log", None)
+
+    selection: dict | None = None
+    if event_timestamps:
+        s_aware, e_aware, selection = resolve_window_from_events(
+            event_timestamps, event_log, now=now
+        )
+    else:
+        wm = window_minutes if window_minutes else config.github.default_window_minutes
+        s_aware, e_aware = resolve_window(
+            reference=reference, window_minutes=wm, start=start, end=end, now=now
+        )
 
     # Event log (UTC-stored): query the range directly.
-    event_log = getattr(clients, "event_log", None)
     entries = event_log.get_events_in_range(s_aware, e_aware) if event_log is not None else []
     events_json = events_to_json(entries)
     events_csv = events_to_csv(entries)
@@ -387,9 +503,13 @@ async def build_and_send(
         )
         content = commit.get("content", {}) if isinstance(commit, dict) else {}
         bundle_url = content.get("html_url") or content.get("download_url")
+        title = _issue_title(message, stamp)
         issue = await client.create_issue(
-            f"Support bundle {stamp}",
-            _issue_body(s_aware, e_aware, config, len(entries), bundle_url),
+            title,
+            _issue_body(
+                s_aware, e_aware, config, len(entries), bundle_url,
+                message=message, selection=selection,
+            ),
         )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
@@ -424,5 +544,6 @@ async def build_and_send(
         "issue_url": issue.get("html_url") if isinstance(issue, dict) else None,
         "bundle_url": bundle_url,
         "events": len(entries),
+        "selected": len(selection["selected"]) if selection else None,
         "window": {"start": s_aware.isoformat(), "end": e_aware.isoformat()},
     }

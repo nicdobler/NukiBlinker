@@ -167,6 +167,106 @@ async def test_build_and_send(tmp_path):
     assert "SUPER_SECRET_TOKEN" not in body
 
 
+class TestResolveWindowFromEvents:
+    """#224: window derived from selected events, bounded by adjacent events."""
+
+    def _log_with(self, *times):
+        log = EventLog(persist_to_file=False)
+        for t in times:
+            log.store_entry(_entry(t))
+        return log
+
+    def test_bounded_by_adjacent_events(self):
+        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13, 14)]
+        log = self._log_with(*t)
+        start, end, sel = sb.resolve_window_from_events(
+            [t[1].isoformat(), t[2].isoformat()], log
+        )
+        assert start == t[0]   # end of the event before the first selected
+        assert end == t[3]     # start of the event after the last selected
+        assert sel["has_prev"] and sel["has_next"]
+        assert len(sel["selected"]) == 2
+
+    def test_first_event_has_no_previous(self):
+        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13)]
+        log = self._log_with(*t)
+        start, end, sel = sb.resolve_window_from_events([t[0].isoformat()], log)
+        assert start == t[0]   # lower bound clamps to the event's own time
+        assert end == t[1]
+        assert sel["has_prev"] is False
+
+    def test_last_event_has_no_next_uses_now(self):
+        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13)]
+        log = self._log_with(*t)
+        now = datetime(2026, 6, 14, 15, 0, 0, tzinfo=timezone.utc)
+        start, end, sel = sb.resolve_window_from_events([t[2].isoformat()], log, now=now)
+        assert start == t[1]
+        assert end == now
+        assert sel["has_next"] is False
+
+    def test_no_event_log_falls_back_to_now(self):
+        earliest = datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 6, 14, 13, 0, 0, tzinfo=timezone.utc)
+        start, end, sel = sb.resolve_window_from_events([earliest.isoformat()], None, now=now)
+        assert start == earliest and end == now
+        assert sel["has_prev"] is False and sel["has_next"] is False
+
+    def test_empty_selection_raises(self):
+        with pytest.raises(sb.SupportBundleError):
+            sb.resolve_window_from_events([], EventLog(persist_to_file=False))
+
+    def test_invalid_timestamp_raises(self):
+        with pytest.raises(sb.SupportBundleError):
+            sb.resolve_window_from_events(["not-a-date"], None)
+
+
+class TestIssueTitleAndBody:
+    def test_title_from_message_first_line(self):
+        assert sb._issue_title("Wrong name announced\nmore", "20260101T000000Z") == "Wrong name announced"
+
+    def test_title_fallback_when_no_message(self):
+        assert sb._issue_title("", "20260101T000000Z") == "Support bundle 20260101T000000Z"
+
+    def test_body_includes_message_and_selection_notes(self):
+        s = datetime(2026, 6, 14, 11, 0, 0, tzinfo=timezone.utc)
+        e = datetime(2026, 6, 14, 14, 0, 0, tzinfo=timezone.utc)
+        sel = {"selected": ["a", "b"], "has_prev": False, "has_next": True}
+        body = sb._issue_body(s, e, AppConfig(), 5, "http://x", message="Bug here", selection=sel)
+        assert "Bug here" in body
+        assert "Selected events**: 2" in body
+        assert "earliest in the log" in body          # has_prev=False note
+        assert "3 non-selected" in body               # 5 in range - 2 selected
+
+
+@pytest.mark.asyncio
+async def test_build_and_send_from_events(tmp_path):
+    """#224: selecting events drives the window; message becomes the title."""
+    t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13, 14)]
+    log = EventLog(persist_to_file=False)
+    for x in t:
+        log.store_entry(_entry(x))
+    clients = MagicMock()
+    clients.event_log = log
+    cfg = AppConfig()
+    cfg.github.token = "tok"
+
+    fake = _FakeGitHub()
+    result = await sb.build_and_send(
+        cfg, clients, token="tok", repo="x/y",
+        event_timestamps=[t[1].isoformat(), t[2].isoformat()],
+        message="Ring announced wrong name",
+        github_client=fake,
+    )
+
+    assert result["status"] == "created"
+    assert result["selected"] == 2
+    assert result["events"] == 4  # range [t0, t3] inclusive includes all 4
+    title, body = fake.issue
+    assert title == "Ring announced wrong name"
+    assert "Selected events**: 2" in body
+    assert "non-selected" in body  # 4 in range - 2 selected => overlap note
+
+
 @pytest.mark.asyncio
 async def test_build_and_send_github_auth_error(tmp_path):
     import httpx
