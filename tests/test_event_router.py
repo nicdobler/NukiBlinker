@@ -1,5 +1,6 @@
 """Tests for nukiblinker.event_router — classification, person resolution, dispatch."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,6 +9,7 @@ from nukiblinker.config import AppConfig
 from nukiblinker.event_router import (
     classify,
     dispatch_with_actions,
+    event_time_for_log,
     resolve_person,
 )
 
@@ -485,3 +487,96 @@ class TestDispatchResolutionSet:
         resolver.assert_not_called()
         # Context passed to the notifier is empty (no name).
         assert notify.await_args.args[3] == {}
+
+
+# ---------------------------------------------------------------------------
+# resolve_person() — matched Web entry date exposed for logging (#204)
+# ---------------------------------------------------------------------------
+
+
+class TestResolvePersonExposesEventTime:
+    @pytest.mark.asyncio
+    async def test_matched_entry_date_exposed_as_event_time(self):
+        """#204: the matched Web entry `date` is returned so the caller can log
+        the real event time, not the callback receive time."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1,
+             "date": "2026-06-19T20:11:22.000Z"},
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki_web=web)
+        assert result["name"] == "Nico"
+        assert result["event_time"] == "2026-06-19T20:11:22.000Z"
+
+    @pytest.mark.asyncio
+    async def test_no_date_means_no_event_time_key(self):
+        """An entry without a `date` must not add an `event_time` key — keeps
+        the result dict back-compatible with existing exact-match assertions."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+        ]
+        result = await resolve_person({"nukiId": 100}, nuki_web=web)
+        assert result == {"name": "Nico", "trigger": 2, "name_source": "web_api"}
+        assert "event_time" not in result
+
+
+# ---------------------------------------------------------------------------
+# event_time_for_log() — real event time recorded in the Event Log (#204)
+# ---------------------------------------------------------------------------
+
+
+class TestEventTimeForLog:
+    def test_fresh_ring_uses_ringaction_timestamp(self):
+        """A fresh ring (ringactionState true) logs the real ring time."""
+        payload = {
+            "ringactionState": True,
+            "ringactionTimestamp": "2026-06-20T08:35:00+00:00",
+        }
+        result = event_time_for_log(payload)
+        assert result == datetime(2026, 6, 20, 8, 35, 0, tzinfo=timezone.utc)
+
+    def test_stale_ringaction_timestamp_not_used_for_non_ring(self):
+        """#204 regression: a ring_to_open carries yesterday's stale
+        ringactionTimestamp with ringactionState false — it must NOT be logged
+        as the event time (that was the "strange hours" bug). Without a Web
+        match, fall back to receive-time (~now)."""
+        payload = {
+            "deviceType": 2, "nukiId": 100, "state": 7,
+            "ringactionState": False,
+            "ringactionTimestamp": "2026-06-19T20:11:22+00:00",  # yesterday
+        }
+        before = datetime.now(timezone.utc)
+        result = event_time_for_log(payload)
+        after = datetime.now(timezone.utc)
+        assert before <= result <= after  # receive-time, not the stale ts
+
+    def test_ring_to_open_uses_matched_web_date(self):
+        """ring_to_open logs the matched Nuki Web entry date from the context."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7, "ringactionState": False}
+        context = {"name": "Nico", "name_source": "web_api",
+                   "event_time": "2026-06-20T10:47:00.000Z"}
+        result = event_time_for_log(payload, context)
+        assert result == datetime(2026, 6, 20, 10, 47, 0, tzinfo=timezone.utc)
+
+    def test_fresh_ring_takes_priority_over_context(self):
+        """A fresh ring's ringactionTimestamp wins over a context web date."""
+        payload = {
+            "ringactionState": True,
+            "ringactionTimestamp": "2026-06-20T08:35:00+00:00",
+        }
+        context = {"event_time": "2026-06-20T10:47:00.000Z"}
+        result = event_time_for_log(payload, context)
+        assert result == datetime(2026, 6, 20, 8, 35, 0, tzinfo=timezone.utc)
+
+    def test_door_opened_uses_receive_time(self):
+        """door_opened (Smart Lock, no Web lookup) logs receive-time (~now)."""
+        payload = {"deviceType": 0, "nukiId": 200, "state": 5}
+        before = datetime.now(timezone.utc)
+        result = event_time_for_log(payload)
+        after = datetime.now(timezone.utc)
+        assert before <= result <= after
+
+    def test_result_is_timezone_aware_utc(self):
+        """All returned times are tz-aware UTC so storage/display stay correct."""
+        assert event_time_for_log({}).tzinfo is timezone.utc

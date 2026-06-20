@@ -753,3 +753,33 @@ Pure frontend change — no backend modifications.
 - [x] Update `CHANGELOG.md` and `tasks/todo.md`
 - [ ] Push branch, open PR, wait for CI green
 - [ ] Auto wrap-up once CI green
+
+---
+
+## #204 — "Strange hours" in the Event Log (log the real event time)
+
+**Branch**: `fix/204-event-log-event-time` | **PR**: _pending_ | **Wrap-up**: Approval
+
+Root cause: the Event Log stored the callback *receive* time (`datetime.now()`)
+instead of the real event time. An Opener `ring_to_open` carries the *previous*
+ring's stale `ringactionTimestamp` (can be yesterday) → "strange hours". User
+clarified: log the real event time; compare Bridge/Web times in **UTC** (the 2 h
+offset vs local CEST is display-only); only Opener events query Nuki Web, Smart
+Lock fires immediately; `door_opened` logs receive-time.
+
+Decision: fixed the **log timestamp** (the actual symptom) and **descoped** the
+`resolve_person` matching rewrite (symmetric ±10 s window) — the existing
+one-sided tolerance + 8-attempt retry already resolves the correct name, and a
+rewrite would regress documented #193/#197 behavior + tests.
+
+- [x] Specs first: `product-spec.md` (event-time table + UTC note), `tech-spec.md`
+- [x] `event_router.event_time_for_log(payload, context)` — fresh ring →
+      `ringactionTimestamp`; ring_to_open → matched Web `date`; else `now()` (UTC)
+- [x] `resolve_person()` returns matched entry `date` as `event_time` (only when present)
+- [x] `EventLog.log_event(event_time=None)` — stores it; defaults to `now()`; naive→UTC
+- [x] `server.py`: 3 callback-stage logs + `_dispatch_with_logging` (resolve context
+      once, pass `context_override` to avoid a 2nd Web round-trip)
+- [x] Regression tests: `test_event_router`, `test_event_log`, `test_integration_event_pipeline`
+- [x] `CHANGELOG.md` `[Unreleased]` → Fixed
+- [ ] Push branch, drive CI to green
+- [ ] PR review + wrap-up (Approval)

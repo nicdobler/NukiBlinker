@@ -145,11 +145,17 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     # Trigger code (how the action was performed). Captured for observability so
     # the user can confirm the real code before any suppression is wired (#97).
     resolved_trigger: int | None = None
+    # Matched Web entry `date` (#204): exposed so the caller can log the *real*
+    # event time (the open time) rather than the callback receive time. Only set
+    # when the matched entry actually carries a date.
+    resolved_event_time: str | None = None
 
     def _result(name: str, source: str) -> dict:
         out: dict = {"name": name, "name_source": source}
         if resolved_trigger is not None:
             out["trigger"] = resolved_trigger
+        if resolved_event_time is not None:
+            out["event_time"] = resolved_event_time
         return out
 
     if nuki_web is None:
@@ -219,12 +225,16 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
 
             name = candidate.get("name")
             if name:
+                # Surface the matched entry's date so the caller logs the real
+                # event time (the open time), not the callback receive time (#204).
+                resolved_event_time = candidate.get("date")
                 logger.info(
                     "Resolved person via Web API: name=%s trigger=%s(%s) source=%s "
-                    "(sensor_entries_skipped=%d, attempt=%d)",
+                    "date=%s (sensor_entries_skipped=%d, attempt=%d)",
                     name, resolved_trigger,
                     TRIGGER_NAMES.get(resolved_trigger, "unknown"),
                     candidate.get("source"),
+                    resolved_event_time,
                     entries.index(candidate),
                     attempt,
                 )
@@ -338,3 +348,31 @@ def _parse_iso(value) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def event_time_for_log(payload: dict, context: dict | None = None) -> datetime:
+    """Return the *real* event time (UTC) to record in the Event Log (#204).
+
+    The Bridge callback's receive time is NOT the event time: a buffered or
+    delayed callback would otherwise log "strange hours" (#204). Precedence:
+
+    1. A **fresh ring** (``ringactionState`` true) carries the real ring time in
+       ``ringactionTimestamp`` — use it.
+    2. For a ``ring_to_open`` the Bridge gives no fresh timestamp
+       (``ringactionTimestamp`` is the *last* ring and is frequently stale), so
+       use the matched Nuki Web entry ``date`` surfaced by ``resolve_person`` in
+       ``context["event_time"]``.
+    3. Otherwise (``door_opened``, anonymous opens, no Web match) fall back to
+       the callback receive time, ``datetime.now(UTC)``.
+
+    All returned values are timezone-aware UTC; the UI/CSV convert to local.
+    """
+    if payload.get("ringactionState") is True:
+        dt = _parse_iso(payload.get("ringactionTimestamp"))
+        if dt is not None:
+            return dt
+    if context:
+        dt = _parse_iso(context.get("event_time"))
+        if dt is not None:
+            return dt
+    return datetime.now(timezone.utc)

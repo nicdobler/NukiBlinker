@@ -205,6 +205,52 @@ class TestEventPipelineIntegration:
         mock_clients.hue.trigger_alert.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_ring_logs_ringaction_timestamp(self, mock_config, mock_clients):
+        """#204: a fresh ring is logged at its real ring time (ringactionTimestamp),
+        not the callback receive time."""
+        ring_ts = (datetime.now(timezone.utc) - timedelta(seconds=5)).replace(microsecond=0)
+        payload = {
+            "deviceType": 2, "nukiId": 12345, "state": 1,
+            "ringactionState": True,
+            "ringactionTimestamp": ring_ts.isoformat(),
+        }
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(10, 0))
+            validation_result = mock_clients.event_validator.validate_event(payload)
+            assert validation_result.valid is True
+            await _dispatch_with_logging(
+                "ring", payload, mock_config, mock_clients, validation_result
+            )
+
+        logged = mock_clients.event_log.entries[0]
+        assert logged.timestamp == ring_ts  # the real ring time, not now()
+
+    @pytest.mark.asyncio
+    async def test_ring_to_open_logs_matched_web_date(self, mock_config, mock_clients):
+        """#204: a ring_to_open whose Bridge ringactionTimestamp is stale logs the
+        matched Nuki Web entry date (the real open time), not the stale ts."""
+        web_date = (datetime.now(timezone.utc) - timedelta(seconds=2)).replace(microsecond=0)
+        mock_clients.nuki_web = AsyncMock()
+        mock_clients.nuki_web.get_recent_log.return_value = [
+            {"smartlockId": 12345, "name": "Nico", "trigger": 2, "source": 1,
+             "date": web_date.isoformat()},
+        ]
+        payload = {
+            "deviceType": 2, "nukiId": 12345, "state": 7,
+            "ringactionState": False,
+            "ringactionTimestamp": "2026-06-19T20:11:22+00:00",  # stale (yesterday)
+        }
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(10, 0))
+            validation_result = mock_clients.event_validator.validate_event(payload)
+            await _dispatch_with_logging(
+                "ring_to_open", payload, mock_config, mock_clients, validation_result
+            )
+
+        logged = mock_clients.event_log.entries[0]
+        assert logged.timestamp == web_date  # matched Web date, not the stale ts
+
+    @pytest.mark.asyncio
     async def test_event_log_persistence_and_cleanup(self, mock_config, mock_clients):
         """Test event log persistence and cleanup functionality."""
         # Create multiple events
