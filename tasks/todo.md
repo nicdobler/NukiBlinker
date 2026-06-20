@@ -796,3 +796,42 @@ optional staleness warning.
 - [x] Unit tests (`TestRingactionStaleness`) + server caplog tests incl. exact issue scenario (no false warning)
 - [x] Specs (`product-spec` staleness note, `tech-spec` helper) + CHANGELOG `Added`
 - [ ] Push, drive CI green
+
+---
+
+## Session handoff — Opener events compendium (#213/#214 → #219–#224)
+
+**Branch**: `chore/219-220-handoff` | **PR**: (this)
+
+### What was done this session
+- Split the #213/#214 compendium into focused issues and worked them end-to-end (Auto wrap-up).
+- **#221** — closed: a Smart Lock door open didn't fire `door_opened` because the **Nuki Bridge never delivered the `doorsensorState=3` callback** (Nuki cloud recorded it; bridge dropped it). `classify()` is correct (proven at 13:38:28). Not a code bug.
+- **#222** — closed: `door_opened` empty context + "No notification channels active" is **expected** — night mode disables audio and that event had `blink=none`/`homekit=false`. Decision: `door_opened` does NOT resolve a name (keeps #176).
+- **#223** — PR #225 merged: `nuki_web_client.get_recent_log()` logs the latest **2** entries enriched with `action`/`state`/`openerLog.activeRto`.
+- **#224** — PR #226 merged: support bundle now driven by **selecting events** in the Event Log table (multi-select + single message → issue title), window **bounded by adjacent events** (end of previous → start of next), edge cases first/last event, overlap highlighted. Backend `resolve_window_from_events()`, `EventLog.get_previous_event/get_next_event`, endpoint accepts `event_timestamps`+`message`.
+- **Discovery probe** — PR #227 merged: log-only probe (`event_router.discovery_probe_app_open`) on Opener `state=1 online`; polls Nuki Web 5×3s and logs `[#219 discovery]` lines with `action`/`activeRto`/etc. No dispatch, no notification.
+- Cleanup: closed #213/#214; removed ALL ZIPs + discovery files from the `support-bundles` branch.
+
+### Discovery findings (bridge ↔ Nuki Web correlation)
+| Nuki Web (Portal/Opener) | Bridge callback | Today | Should be |
+|---|---|---|---|
+| `Auto Unlock (Ring to Open)` | `state=7 opening` | ring_to_open ✓ | ring_to_open |
+| `Abierta · <name>` (`action=3`, `activeRto=false`) | `state=1 online` (stale ts) | ignored | **apertura_con_app (#219)** |
+| `Puerta abierta · Manualmente (botón)` | `state=7 opening` | ring_to_open ❌ | **apertura_opener (#220)** |
+| `ha llamado a la puerta` (Desconocido) | `ringactionState=true` | ring ✓ | ring |
+
+- Opener `state=1 online` rate ≈ **0.8/h** (90 over 112 h) → polling-on-`state=1` is viable; dedup by last-seen entry id/date.
+- `state=7` is shared by RTO **and** opener-button → must be disambiguated via the Web entry.
+
+### NEXT STEPS — implement #219 + #220 (BLOCKED on data)
+1. **User will drop, next to this note, the full app log + the Nuki Web log** covering test opens: from the app **with RTO** and **without RTO**, and from the **opener button**.
+2. Cascade correlates the `[#219 discovery]` lines + Web entries to **confirm the exact `action` / `openerLog.activeRto` / `trigger` codes** for: app open ("Abierta") vs RTO vs opener-button.
+3. Implement on one branch `feat/219-220-opener-classify` (web-driven Opener classification):
+   - New event types `apertura_con_app` (#219) and `apertura_opener` (#220) in `config.EventRulesConfig` + Events UI tab + `config.example.yaml`.
+   - `#219`: on Opener `state=1 online`, poll Web; dispatch `apertura_con_app` only when a NEW `Abierta` entry (dedup by id/date) appears. Works with/without RTO.
+   - `#220`: disambiguate `state=7` via Web entry → `ring_to_open` (RTO) vs `apertura_opener` (manual button).
+   - **Precedence (decided)**: an executed **app open wins over `ring_to_open`** (RTO was only an intention). Avoid double-notify.
+   - Do NOT touch the unknown-user `ring` logic.
+4. Tests + specs + README + CHANGELOG; CI green; Auto wrap-up.
+
+Open issues remaining: **#219**, **#220** (both depend on step 1 data).
