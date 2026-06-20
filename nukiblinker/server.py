@@ -41,6 +41,17 @@ def create_app(config, clients, lifespan=None) -> FastAPI:
 
         logger.info("Callback received: %s", payload)
 
+        # Staleness guard: a fresh ring (ringactionState true) should carry a
+        # near-instant ringactionTimestamp. A much older one is the only real
+        # "strange hours" signal and hints at bridge buffering or clock drift.
+        staleness = event_router.ringaction_staleness(payload)
+        if staleness is not None and staleness > event_router.RINGACTION_STALE_THRESHOLD_S:
+            logger.warning(
+                "Fresh ring carries a stale ringactionTimestamp (%.0fs old, "
+                "threshold %ds) — possible Bridge buffering or clock drift",
+                staleness, event_router.RINGACTION_STALE_THRESHOLD_S,
+            )
+
         # Event validation. Compute the result once and reuse it everywhere
         # (logging branches, dispatch) instead of recomputing per branch.
         if app.state.config.event_validation.enabled:

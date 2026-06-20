@@ -587,7 +587,24 @@ async def dispatch(event_type, payload, config, clients):
     if event_type in ("ring", "ring_to_open"):      # Opener events only (#176/#177)
         context = await resolve_person(payload, ..., nuki_web=clients.nuki_web)
     await notifier.notify(rule, config, clients, context)
+
+# Bridge staleness diagnostic (#204)
+RINGACTION_STALE_THRESHOLD_S = 120  # a fresh ring older than this hints at buffering/clock drift
+
+def ringaction_staleness(payload: dict, *, now=None) -> float | None:
+    """Age (s) of `ringactionTimestamp` for a FRESH ring (ringactionState true).
+
+    Returns now - ringactionTimestamp only when ringactionState is true and the
+    timestamp parses; otherwise None (a stale timestamp on a non-fresh callback
+    is normal and must not warn). The caller (`server.nuki_callback`) logs a
+    WARNING when the result exceeds RINGACTION_STALE_THRESHOLD_S. A future-dated
+    timestamp returns a negative value (never stale). Comparisons in UTC."""
+    ...
 ```
+
+The callback handler `server.nuki_callback` calls `ringaction_staleness(payload)`
+immediately after receiving the payload (before validation) and logs the WARNING
+when the age exceeds the threshold — purely diagnostic, it never changes routing.
 
 ### Notifier (`notifier.py`)
 

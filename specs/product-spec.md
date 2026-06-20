@@ -164,6 +164,8 @@ The Event Log stores the **real time the action happened**, not the moment NukiB
 
 > The Bridge `ringactionTimestamp` is the *last* ring action and is **stale** for a `ring to open` that wasn't preceded by a ring (it can point to a previous day — the original "strange hours" report, #204). It is therefore only used as the logged time for a **fresh ring** (`ringactionState: true`).
 
+**Bridge staleness warning (#204)**: as a diagnostic, NukiBlinker logs a **WARNING** when a *fresh ring* (`ringactionState: true`) arrives with a `ringactionTimestamp` more than **120 s** old. Because the Bridge resets `ringactionState` ~30 s after a ring, a genuine fresh ring should always carry a near-instant timestamp; a much older one is the only legitimate sign that callbacks are being **buffered/delayed** or the **Bridge clock has drifted**. A stale timestamp on a *non-fresh* callback (`ringactionState: false`, e.g. an `rto active` / `opening` status update) is normal and never warns.
+
 Examples:
 - Template: `"{name} llegó a casa"` → Announcement: "Nico llegó a casa"
 - Template: `"{name} ha abierto la puerta"` → Announcement: "Ele ha abierto la puerta"

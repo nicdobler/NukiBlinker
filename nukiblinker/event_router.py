@@ -376,3 +376,33 @@ def event_time_for_log(payload: dict, context: dict | None = None) -> datetime:
         if dt is not None:
             return dt
     return datetime.now(timezone.utc)
+
+
+# A genuine fresh ring should carry a ringactionTimestamp only a few seconds
+# old: the Bridge resets ringactionState after ~30 s, so a fresh-ring callback
+# always arrives right after the ring. A much older timestamp on a fresh ring
+# is the only legitimate "strange hours" signal — it hints the callback was
+# buffered/delayed or the Bridge clock has drifted. (A stale timestamp on a
+# NON-fresh callback, ringactionState false, is normal: it is just the *last*
+# ring and is expected to be old, so it must NOT warn.)
+RINGACTION_STALE_THRESHOLD_S = 120
+
+
+def ringaction_staleness(payload: dict, *, now: datetime | None = None) -> float | None:
+    """Age in seconds of ``ringactionTimestamp`` for a **fresh ring**.
+
+    Returns the positive age (now - ringactionTimestamp) only when
+    ``ringactionState`` is true and ``ringactionTimestamp`` parses; otherwise
+    ``None`` (not a fresh ring, or no/invalid timestamp — nothing to warn about).
+
+    Callers compare the result against :data:`RINGACTION_STALE_THRESHOLD_S` to
+    decide whether to emit a staleness WARNING. A future-dated timestamp yields
+    a negative value (never stale).
+    """
+    if payload.get("ringactionState") is not True:
+        return None
+    dt = _parse_iso(payload.get("ringactionTimestamp"))
+    if dt is None:
+        return None
+    now = now or datetime.now(timezone.utc)
+    return (now - dt).total_seconds()

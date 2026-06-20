@@ -781,5 +781,18 @@ rewrite would regress documented #193/#197 behavior + tests.
       once, pass `context_override` to avoid a 2nd Web round-trip)
 - [x] Regression tests: `test_event_router`, `test_event_log`, `test_integration_event_pipeline`
 - [x] `CHANGELOG.md` `[Unreleased]` → Fixed
-- [ ] Push branch, drive CI to green
+- [x] Push branch, drive CI to green (1 pre-existing time-bomb test fixed)
 - [ ] PR review + wrap-up (Approval)
+
+### Follow-up (same branch/PR): Bridge staleness WARNING
+
+User reflection: suspected buffering / bridge fault. Diagnosed the issue log as
+**correct** — the yesterday timestamp is the Bridge's *last-ring* field
+(`ringactionTimestamp`), normal on non-fresh callbacks. User then asked for the
+optional staleness warning.
+
+- [x] `event_router.ringaction_staleness(payload, *, now=None)` + `RINGACTION_STALE_THRESHOLD_S=120`
+- [x] `server.nuki_callback`: WARNING when a *fresh ring* carries a >120s-old timestamp (diagnostic only)
+- [x] Unit tests (`TestRingactionStaleness`) + server caplog tests incl. exact issue scenario (no false warning)
+- [x] Specs (`product-spec` staleness note, `tech-spec` helper) + CHANGELOG `Added`
+- [ ] Push, drive CI green

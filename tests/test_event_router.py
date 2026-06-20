@@ -7,10 +7,12 @@ import pytest
 
 from nukiblinker.config import AppConfig
 from nukiblinker.event_router import (
+    RINGACTION_STALE_THRESHOLD_S,
     classify,
     dispatch_with_actions,
     event_time_for_log,
     resolve_person,
+    ringaction_staleness,
 )
 
 
@@ -580,3 +582,59 @@ class TestEventTimeForLog:
     def test_result_is_timezone_aware_utc(self):
         """All returned times are tz-aware UTC so storage/display stay correct."""
         assert event_time_for_log({}).tzinfo is timezone.utc
+
+
+# ---------------------------------------------------------------------------
+# ringaction_staleness() — bridge buffering / clock-drift signal
+# ---------------------------------------------------------------------------
+
+
+class TestRingactionStaleness:
+    NOW = datetime(2026, 6, 20, 10, 0, 0, tzinfo=timezone.utc)
+
+    def test_fresh_ring_recent_timestamp_small_age(self):
+        """A fresh ring with a near-instant timestamp has a tiny age."""
+        payload = {"ringactionState": True,
+                   "ringactionTimestamp": "2026-06-20T09:59:55+00:00"}
+        age = ringaction_staleness(payload, now=self.NOW)
+        assert age == 5.0
+        assert age <= RINGACTION_STALE_THRESHOLD_S
+
+    def test_fresh_ring_old_timestamp_is_stale(self):
+        """A fresh ring carrying yesterday's timestamp is flagged stale."""
+        payload = {"ringactionState": True,
+                   "ringactionTimestamp": "2026-06-19T20:11:22+00:00"}
+        age = ringaction_staleness(payload, now=self.NOW)
+        assert age > RINGACTION_STALE_THRESHOLD_S
+
+    def test_non_fresh_callback_never_stale(self):
+        """#204: a NON-fresh callback (ringactionState false) carrying an old
+        last-ring timestamp is normal and must NOT be flagged (returns None)."""
+        payload = {"deviceType": 2, "state": 7, "ringactionState": False,
+                   "ringactionTimestamp": "2026-06-19T20:11:22+00:00"}
+        assert ringaction_staleness(payload, now=self.NOW) is None
+
+    def test_missing_ringaction_state_returns_none(self):
+        payload = {"ringactionTimestamp": "2026-06-19T20:11:22+00:00"}
+        assert ringaction_staleness(payload, now=self.NOW) is None
+
+    def test_missing_or_invalid_timestamp_returns_none(self):
+        assert ringaction_staleness({"ringactionState": True}, now=self.NOW) is None
+        assert ringaction_staleness(
+            {"ringactionState": True, "ringactionTimestamp": "not-a-date"},
+            now=self.NOW,
+        ) is None
+
+    def test_future_timestamp_is_negative_not_stale(self):
+        """A future-dated timestamp yields a negative age (never stale)."""
+        payload = {"ringactionState": True,
+                   "ringactionTimestamp": "2026-06-20T10:01:00+00:00"}
+        age = ringaction_staleness(payload, now=self.NOW)
+        assert age == -60.0
+
+    def test_defaults_now_to_current_time(self):
+        """Without an explicit now, a just-now fresh ring is not stale."""
+        ts = datetime.now(timezone.utc).isoformat()
+        age = ringaction_staleness({"ringactionState": True, "ringactionTimestamp": ts})
+        assert age is not None
+        assert age < RINGACTION_STALE_THRESHOLD_S
