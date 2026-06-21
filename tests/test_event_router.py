@@ -200,7 +200,13 @@ class TestIsOpenerState7Candidate:
 class TestClassifyState7WithWeb:
     """#220: web-driven disambiguation of state=7 (RTO vs opener button)."""
 
-    _FRESH = "2026-06-21T08:39:35.000Z"
+    @property
+    def _FRESH(self):
+        """A timestamp just 5 seconds ago — always within the freshness window."""
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
 
     def _web(self, action, trigger=0):
         web = AsyncMock()
@@ -212,9 +218,6 @@ class TestClassifyState7WithWeb:
     @pytest.mark.asyncio
     async def test_action224_rto(self):
         """action=224 (Auto Unlock / RTO) → ring_to_open."""
-        from datetime import datetime, timezone
-        import nukiblinker.event_router as er
-        # Patch _parse_iso so age is always fresh
         payload = {"deviceType": 2, "nukiId": 100, "state": 7}
         web = self._web(action=224)
         result = await classify_state7_with_web(payload, AppConfig(), web, sleep=AsyncMock())
@@ -255,7 +258,13 @@ class TestClassifyState7WithWeb:
 class TestClassifyAppOpenWithWeb:
     """#219: web-driven app-open detection on state=1/state=3."""
 
-    _FRESH = "2026-06-21T08:39:35.000Z"
+    @property
+    def _FRESH(self):
+        """A timestamp just 5 seconds ago — always within the freshness window."""
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
 
     @pytest.mark.asyncio
     async def test_fresh_named_action3_dispatches_apertura_con_app(self):

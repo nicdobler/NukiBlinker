@@ -124,18 +124,22 @@ class _FakeGitHub:
 
 @pytest.mark.asyncio
 async def test_build_and_send(tmp_path):
+    # Use recent timestamps so they are within the 7-day retention window.
+    base = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    in_window = base.replace(hour=12) if base.hour != 12 else base.replace(hour=11)
+    out_window = in_window - timedelta(hours=3)
     log = EventLog(persist_to_file=False)
-    in_window = datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
-    out_window = datetime(2026, 6, 14, 9, 0, 0, tzinfo=timezone.utc)
     log.store_entry(_entry(in_window))
     log.store_entry(_entry(out_window))
 
     clients = MagicMock()
     clients.event_log = log
 
+    in_window_local = in_window.strftime("%Y-%m-%d %H:%M:%S")
+    out_window_local = out_window.strftime("%Y-%m-%d %H:%M:%S")
     log_file = tmp_path / "nukiblinker.log"
     log_file.write_text(
-        "2026-06-14 12:00:00 [INFO] x: hello\n2026-06-14 09:00:00 [INFO] x: old\n",
+        f"{in_window_local} [INFO] x: hello\n{out_window_local} [INFO] x: old\n",
         encoding="utf-8",
     )
     cfg = AppConfig()
@@ -146,7 +150,7 @@ async def test_build_and_send(tmp_path):
     fake = _FakeGitHub()
     result = await sb.build_and_send(
         cfg, clients, token="tok", repo="x/y",
-        reference="2026-06-14T12:00:00+00:00", window_minutes=15,
+        reference=in_window.isoformat(), window_minutes=15,
         github_client=fake,
     )
 
@@ -176,8 +180,14 @@ class TestResolveWindowFromEvents:
             log.store_entry(_entry(t))
         return log
 
+    @staticmethod
+    def _t(hours_ago_offset):
+        """Return a datetime N hours before a recent base, well within retention."""
+        base = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        return base - timedelta(hours=hours_ago_offset)
+
     def test_bounded_by_adjacent_events(self):
-        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13, 14)]
+        t = [self._t(h) for h in (50, 49, 48, 47)]  # 4 recent, ordered oldest-first
         log = self._log_with(*t)
         start, end, sel = sb.resolve_window_from_events(
             [t[1].isoformat(), t[2].isoformat()], log
@@ -188,7 +198,7 @@ class TestResolveWindowFromEvents:
         assert len(sel["selected"]) == 2
 
     def test_first_event_has_no_previous(self):
-        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13)]
+        t = [self._t(h) for h in (14, 13, 12)]  # oldest first
         log = self._log_with(*t)
         start, end, sel = sb.resolve_window_from_events([t[0].isoformat()], log)
         assert start == t[0]   # lower bound clamps to the event's own time
@@ -196,17 +206,17 @@ class TestResolveWindowFromEvents:
         assert sel["has_prev"] is False
 
     def test_last_event_has_no_next_uses_now(self):
-        t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13)]
+        t = [self._t(h) for h in (14, 13, 12)]  # oldest first
         log = self._log_with(*t)
-        now = datetime(2026, 6, 14, 15, 0, 0, tzinfo=timezone.utc)
+        now = self._t(10)  # a "now" slightly after the last stored event
         start, end, sel = sb.resolve_window_from_events([t[2].isoformat()], log, now=now)
         assert start == t[1]
         assert end == now
         assert sel["has_next"] is False
 
     def test_no_event_log_falls_back_to_now(self):
-        earliest = datetime(2026, 6, 14, 12, 0, 0, tzinfo=timezone.utc)
-        now = datetime(2026, 6, 14, 13, 0, 0, tzinfo=timezone.utc)
+        earliest = self._t(2)
+        now = self._t(1)
         start, end, sel = sb.resolve_window_from_events([earliest.isoformat()], None, now=now)
         assert start == earliest and end == now
         assert sel["has_prev"] is False and sel["has_next"] is False
@@ -241,7 +251,8 @@ class TestIssueTitleAndBody:
 @pytest.mark.asyncio
 async def test_build_and_send_from_events(tmp_path):
     """#224: selecting events drives the window; message becomes the title."""
-    t = [datetime(2026, 6, 14, h, 0, 0, tzinfo=timezone.utc) for h in (11, 12, 13, 14)]
+    base = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    t = [base - timedelta(hours=h) for h in (50, 49, 48, 47)]  # oldest → newest
     log = EventLog(persist_to_file=False)
     for x in t:
         log.store_entry(_entry(x))

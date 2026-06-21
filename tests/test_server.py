@@ -137,7 +137,8 @@ class TestNukiCallback:
         )
 
     def test_opener_status_callback_ignored_at_debug_level(self, client, caplog):
-        """#197: opener state=1 callbacks are now ignored (not surfaced for correlation)."""
+        """#219: opener state=1 with no web client is ignored; classify() logs
+        'deferred to web lookup' at DEBUG and server logs 'Event ignored' at INFO."""
         import logging
         payload = {
             "deviceType": 2, "nukiId": 100, "state": 1,
@@ -147,7 +148,7 @@ class TestNukiCallback:
             r = client.post("/nuki/callback", json=payload)
         assert r.json()["status"] == "ignored"
         assert any(
-            "ignored" in rec.message.lower()
+            "deferred" in rec.message.lower() or "ignored" in rec.message.lower()
             for rec in caplog.records
             if rec.name == "nukiblinker.event_router"
         )

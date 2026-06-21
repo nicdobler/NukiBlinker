@@ -82,12 +82,6 @@ def classify(payload: dict, config: AppConfig) -> str | None:
         if config.nuki.opener_id is not None and nuki_id != config.nuki.opener_id:
             logger.debug("Ignoring Opener %s (filter: %s)", nuki_id, config.nuki.opener_id)
             return None
-        if payload.get("ringactionState") is True:
-            logger.info(
-                "Event classified: ring (Opener %s, ringactionTimestamp=%s)",
-                nuki_id, payload.get("ringactionTimestamp"),
-            )
-            return "ring"
         if state == _OPENER_STATE_RING_TO_OPEN:
             # Preliminary: could be ring_to_open or apertura_opener (#220).
             # The server will call classify_state7_with_web() to disambiguate.
@@ -97,6 +91,12 @@ def classify(payload: dict, config: AppConfig) -> str | None:
                 nuki_id, state,
             )
             return "ring_to_open"
+        if payload.get("ringactionState") is True:
+            logger.info(
+                "Event classified: ring (Opener %s, ringactionTimestamp=%s)",
+                nuki_id, payload.get("ringactionTimestamp"),
+            )
+            return "ring"
         if state in (_OPENER_STATE_ONLINE, _OPENER_STATE_RTO_ACTIVE):
             # May carry an app-triggered open ("Abierta") — server will call
             # classify_app_open_with_web() to check (#219).
