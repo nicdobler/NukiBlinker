@@ -144,6 +144,7 @@ Comprehensive event history for monitoring and troubleshooting:
 - Each entry is timestamped with the **real event time** (#204), not the callback receive time: a ring uses the Bridge `ringactionTimestamp`, a ring-to-open uses the matched Nuki Web entry date, everything else uses the receive time. Stored in UTC, shown in local time.
 - CSV export for analysis (includes a `Payload (JSON)` column with the full raw payload)
 - Web UI viewer with Previous/Next pagination, device filtering by **name + type (Opener / Smart Lock) + ID**, an **only-events-with-actions** checkbox, and a per-entry device-type badge (the Nuki Device Filter remembers the Opener/Lock names; real callbacks carry no name)
+- Expandable detail panel shows the **raw Nuki Web API response** (`nuki_web_response`) for Opener `ring`/`ring_to_open` events when the Web API is configured; otherwise it shows "none" (#232)
 - A legacy `event_log.json` is migrated into the database automatically on first start
 
 #### Night Mode
@@ -265,7 +266,7 @@ Name resolution for **Opener** events (ring / ring to open) is done **exclusivel
 | `/api/pause` | POST | Pause service |
 | `/api/resume` | POST | Resume service |
 | `/api/test/event/{type}` | POST | Fire test event |
-| `/api/events/log` | GET | Get paginated event log (`?device_id=` and/or `?actions_only=1` to filter) |
+| `/api/events/log` | GET | Get paginated event log (`?device_id=` and/or `?actions_only=1` to filter); each event includes `nuki_web_response` when a Web API call was made |
 | `/api/events/devices` | GET | List distinct devices seen in the event log |
 | `/api/events/export` | GET | Export event log as CSV (`?device_id=` to filter) |
 | `/api/events/clear` | POST | Clear all event log entries |

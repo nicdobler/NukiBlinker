@@ -157,7 +157,7 @@ classDiagram
         +validate_event(payload) ValidationResult
     }
     class EventLog {
-        +log_event(payload, type, actions, result)
+        +log_event(payload, type, actions, result, nuki_web_response)
         +get_recent_events(limit, offset)
         +export_to_csv(device_id, tz)
         +get_devices()
@@ -932,11 +932,16 @@ class EventLog:
         ...
 
     def log_event(self, payload, event_type, actions, validation_result,
-                  processing_time_ms=None, event_time=None):
+                  processing_time_ms=None, event_time=None,
+                  nuki_web_response=None):
         """Build an EventLogEntry and append it as one INSERT, then enforce
         retention/max_entries with bounded DELETEs (no full-file rewrite).
 
-        event_time (#204): the real time the action happened, stored UTC. When
+        nuki_web_response (#232): the raw Nuki Web API response (recent log
+        entries) used for name/trigger resolution, stored as JSON. When None,
+        no Web API call was made for this event.
+
+        `event_time` (#204): the real time the action happened, stored UTC. When
         None, defaults to datetime.now(UTC) (receive-time) for back-compat.
         Callers derive it via event_router.event_time_for_log(payload, context)
         — `ringactionTimestamp` for a fresh ring, the matched Nuki Web `date`
@@ -1240,6 +1245,7 @@ suite).
 | `delay_seconds` | REAL | `validation_result.delay_seconds` |
 | `reason` | TEXT | `validation_result.reason` |
 | `processing_time_ms` | REAL | nullable |
+| `nuki_web_response` | TEXT | raw Nuki Web API response (recent log entries) as JSON; nullable (#232) |
 
 Indexes: `idx_events_nuki_id (nuki_id)`, `idx_events_timestamp (timestamp)`.
 
@@ -1261,7 +1267,10 @@ path is exposed as `self.db_path`.
 **Back-compat**: a read-only `entries` property returns all rows in chronological
 (`id ASC`) order, and `store_entry(entry)` inserts a pre-built `EventLogEntry`
 (used by `log_event`, the migration, and tests that need a custom timestamp).
-`EventLogEntry` / `to_dict()` are unchanged.
+`EventLogEntry` gained an optional `nuki_web_response` field and `to_dict()`
+includes it; existing rows without the column are read back as `null`.
+`EventLog` runs a light `ALTER TABLE ADD COLUMN` migration on startup so
+pre-existing DB files pick up the new column automatically.
 
 ## Logging
 

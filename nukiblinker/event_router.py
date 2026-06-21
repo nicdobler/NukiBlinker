@@ -441,6 +441,11 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     when known). ``name_source`` is one of "web_api" or "fallback" — the latter
     meaning no identity was resolved (e.g. an anonymous Ring-to-Open, or no Web
     API token), which is expected, not a failure (#155).
+
+    When a Nuki Web API call was made, the result also includes
+    ``nuki_web_response`` — the raw list of recent log entries returned by the
+    final query — so callers can store it in the Event Log for troubleshooting
+    (#232).
     """
     _sleep = sleep if sleep is not None else asyncio.sleep
     nuki_id = payload.get("nukiId")
@@ -451,6 +456,9 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
     # event time (the open time) rather than the callback receive time. Only set
     # when the matched entry actually carries a date.
     resolved_event_time: str | None = None
+    # Raw Web API response entries from the last query (#232). Kept so callers can
+    # persist the full response in the Event Log for troubleshooting.
+    last_entries: list[dict] | None = None
 
     def _result(name: str, source: str) -> dict:
         out: dict = {"name": name, "name_source": source}
@@ -458,6 +466,8 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
             out["trigger"] = resolved_trigger
         if resolved_event_time is not None:
             out["event_time"] = resolved_event_time
+        if last_entries is not None:
+            out["nuki_web_response"] = last_entries
         return out
 
     if nuki_web is None:
@@ -478,6 +488,7 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
 
         for attempt in range(_RESOLVE_MAX_RETRIES + 1):
             entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
+            last_entries = entries
             if not entries:
                 logger.info("Nuki Web API log empty for nukiId=%s — using fallback", nuki_id)
                 return _result(fallback_name, "fallback")

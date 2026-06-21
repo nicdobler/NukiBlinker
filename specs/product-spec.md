@@ -512,8 +512,22 @@ complete after a Ring to Open.
 
 **Preserved**: existing pagination (Prev/Next), device filter dropdown
 (name + type + ID), actions-only checkbox, Export CSV, Clear — all moved to a
-compact toolbar above the table. Backend `GET /api/events/log` contract is
-unchanged.
+compact toolbar above the table. Backend `GET /api/events/log` contract gains
+a `nuki_web_response` field (see #232).
+
+### Event Log Nuki Web response visibility (#232)
+
+**Problem**: The Event Log detail panel always showed "None (no Web API call
+for this event)" because the Nuki Web API response used for name/trigger
+resolution was never persisted.
+
+**Solution**: Store the raw Nuki Web API response (the recent activity-log
+entries returned by the final query) in the event-log row and expose it as
+`nuki_web_response` in `GET /api/events/log`. The UI detail panel already
+renders this field; when it is `null` it shows "none". The response is stored
+only when a Web API call was actually made (Opener `ring` / `ring_to_open`
+with a configured Web API token); `door_opened` and events without a token
+keep `nuki_web_response: null`.
 
 ### Event Log viewer device filter & actions-only view (#181)
 

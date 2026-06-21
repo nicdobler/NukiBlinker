@@ -461,6 +461,36 @@ class TestEventPipelineIntegration:
             assert len(entry.actions) == 1
 
 
+    @pytest.mark.asyncio
+    async def test_nuki_web_response_stored_in_event_log(self, mock_config, mock_clients):
+        """#232: a Nuki Web response used to resolve a ring is stored in the event log."""
+        web_response = [
+            {"smartlockId": 12345, "name": "Nico", "trigger": 2, "source": 1,
+             "date": "2026-06-19T20:11:22.000Z"},
+        ]
+        mock_clients.nuki_web = AsyncMock()
+        mock_clients.nuki_web.get_recent_log.return_value = web_response
+
+        payload = {
+            "deviceType": 2,
+            "nukiId": 12345,
+            "state": 1,
+            "ringactionState": True,
+            "ringactionTimestamp": "2026-06-19T20:11:22+00:00",
+        }
+        with pytest.MonkeyPatch().context() as m:
+            m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(10, 0))
+            validation_result = mock_clients.event_validator.validate_event(payload)
+            await _dispatch_with_logging(
+                "ring", payload, mock_config, mock_clients, validation_result
+            )
+
+        logged = mock_clients.event_log.entries[0]
+        assert logged.event_type == "ring"
+        assert logged.nuki_web_response == web_response
+        assert logged.to_dict()["nuki_web_response"] == web_response
+
+
 # Helper function for time mocking
 def time(hour, minute):
     """Create a time object for testing."""
