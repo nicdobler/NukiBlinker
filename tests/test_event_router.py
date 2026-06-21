@@ -368,7 +368,15 @@ class TestResolvePerson:
             {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Nico", "trigger": 2, "name_source": "web_api"}
+        expected_entries = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+        ]
+        assert result == {
+            "name": "Nico",
+            "trigger": 2,
+            "name_source": "web_api",
+            "nuki_web_response": expected_entries,
+        }
         web.get_recent_log.assert_awaited_once_with(smartlock_id=None, limit=20)
 
     @pytest.mark.asyncio
@@ -383,7 +391,15 @@ class TestResolvePerson:
         result = await resolve_person(
             {"nukiId": 100, "deviceType": 2}, nuki_web=web, config=cfg,
         )
-        assert result == {"name": "Nico", "trigger": 5, "name_source": "web_api"}
+        expected_entries = [
+            {"smartlockId": 9129696002, "name": "Nico", "trigger": 5, "source": 1},
+        ]
+        assert result == {
+            "name": "Nico",
+            "trigger": 5,
+            "name_source": "web_api",
+            "nuki_web_response": expected_entries,
+        }
         web.get_recent_log.assert_awaited_once_with(smartlock_id=9129696002, limit=20)
 
     @pytest.mark.asyncio
@@ -408,7 +424,14 @@ class TestResolvePerson:
             {"smartlockId": 100, "name": "Nico", "trigger": None, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Nico", "name_source": "web_api"}
+        expected_entries = [
+            {"smartlockId": 100, "name": "Nico", "trigger": None, "source": 1},
+        ]
+        assert result == {
+            "name": "Nico",
+            "name_source": "web_api",
+            "nuki_web_response": expected_entries,
+        }
         assert "trigger" not in result
 
     @pytest.mark.asyncio
@@ -417,7 +440,11 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.return_value = []
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Alguien", "name_source": "fallback"}
+        assert result == {
+            "name": "Alguien",
+            "name_source": "fallback",
+            "nuki_web_response": [],
+        }
 
     @pytest.mark.asyncio
     async def test_web_api_exception_uses_fallback(self):
@@ -433,7 +460,13 @@ class TestResolvePerson:
         web = AsyncMock()
         web.get_recent_log.return_value = [{"smartlockId": 100, "trigger": 2, "source": 1}]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Alguien", "trigger": 2, "name_source": "fallback"}
+        expected_entries = [{"smartlockId": 100, "trigger": 2, "source": 1}]
+        assert result == {
+            "name": "Alguien",
+            "trigger": 2,
+            "name_source": "fallback",
+            "nuki_web_response": expected_entries,
+        }
 
     @pytest.mark.asyncio
     async def test_web_api_skips_door_sensor_entries_to_find_name(self):
@@ -476,7 +509,16 @@ class TestResolvePerson:
             {"smartlockId": 100, "name": "Nico", "trigger": 2},       # older: stale named open
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Alguien", "trigger": 6, "name_source": "fallback"}
+        expected_entries = [
+            {"smartlockId": 100, "trigger": 6, "source": 1},          # most recent: anonymous RTO
+            {"smartlockId": 100, "name": "Nico", "trigger": 2},       # older: stale named open
+        ]
+        assert result == {
+            "name": "Alguien",
+            "trigger": 6,
+            "name_source": "fallback",
+            "nuki_web_response": expected_entries,
+        }
         assert "Nico" not in result.values()
 
     @pytest.mark.asyncio
@@ -571,8 +613,17 @@ class TestResolvePerson:
         ]
         # Payload has no ringactionTimestamp — recency check must be skipped
         result = await resolve_person({"nukiId": 100}, nuki_web=web, sleep=fake_sleep)
-        assert result["name"] == "Celi"
-        assert result["name_source"] == "web_api"
+        expected_entries = [
+            {"smartlockId": 100, "name": "Celi", "trigger": 0, "source": 0,
+             "date": "2026-06-19T08:19:55.000Z"},
+        ]
+        assert result == {
+            "name": "Celi",
+            "trigger": 0,
+            "name_source": "web_api",
+            "event_time": "2026-06-19T08:19:55.000Z",
+            "nuki_web_response": expected_entries,
+        }
         assert len(slept) == 0  # no retries
         assert web.get_recent_log.await_count == 1
 
@@ -707,8 +758,13 @@ class TestResolvePersonExposesEventTime:
              "date": "2026-06-19T20:11:22.000Z"},
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
+        expected_entries = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1,
+             "date": "2026-06-19T20:11:22.000Z"},
+        ]
         assert result["name"] == "Nico"
         assert result["event_time"] == "2026-06-19T20:11:22.000Z"
+        assert result["nuki_web_response"] == expected_entries
 
     @pytest.mark.asyncio
     async def test_no_date_means_no_event_time_key(self):
@@ -719,7 +775,15 @@ class TestResolvePersonExposesEventTime:
             {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
         ]
         result = await resolve_person({"nukiId": 100}, nuki_web=web)
-        assert result == {"name": "Nico", "trigger": 2, "name_source": "web_api"}
+        expected_entries = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+        ]
+        assert result == {
+            "name": "Nico",
+            "trigger": 2,
+            "name_source": "web_api",
+            "nuki_web_response": expected_entries,
+        }
         assert "event_time" not in result
 
 

@@ -36,6 +36,7 @@ class EventLogEntry:
     actions: List[str]  # List of actions taken (e.g., ["Hue lights blinked", "TTS played"])
     validation_result: ValidationResult
     processing_time_ms: Optional[float] = None  # Time taken to process the event
+    nuki_web_response: Optional[List[Dict[str, Any]]] = None  # Raw Nuki Web API response (#232)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -49,7 +50,8 @@ class EventLogEntry:
                 "delay_seconds": self.validation_result.delay_seconds,
                 "reason": self.validation_result.reason
             },
-            "processing_time_ms": self.processing_time_ms
+            "processing_time_ms": self.processing_time_ms,
+            "nuki_web_response": self.nuki_web_response,
         }
 
 
@@ -66,7 +68,8 @@ CREATE TABLE IF NOT EXISTS events (
     valid INTEGER NOT NULL,
     delay_seconds REAL,
     reason TEXT,
-    processing_time_ms REAL
+    processing_time_ms REAL,
+    nuki_web_response TEXT
 );
 """
 
@@ -115,6 +118,7 @@ class EventLog:
         self._conn.executescript(_SCHEMA)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_nuki_id ON events(nuki_id)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
+        self._migrate_db()
         self._conn.commit()
 
         if self.persist_to_file and self._legacy_json_path is not None:
@@ -156,7 +160,8 @@ class EventLog:
     def log_event(self, payload: Dict[str, Any], event_type: Optional[str],
                   actions: List[str], validation_result: ValidationResult,
                   processing_time_ms: Optional[float] = None,
-                  event_time: Optional[datetime] = None):
+                  event_time: Optional[datetime] = None,
+                  nuki_web_response: Optional[List[Dict[str, Any]]] = None):
         """Add event to log with full context.
 
         Args:
@@ -169,6 +174,9 @@ class EventLog:
                 defaults to ``datetime.now(UTC)`` (the callback receive time) so
                 existing callers keep working. Naive values are treated as UTC.
                 Callers derive it via ``event_router.event_time_for_log``.
+            nuki_web_response: Raw Nuki Web API response (recent log entries) used
+                for name/trigger resolution (#232). When None, no Web API call was
+                made for this event.
         """
         if event_time is None:
             event_time = datetime.now(timezone.utc)
@@ -180,7 +188,8 @@ class EventLog:
             payload=payload,
             actions=actions,
             validation_result=validation_result,
-            processing_time_ms=processing_time_ms
+            processing_time_ms=processing_time_ms,
+            nuki_web_response=nuki_web_response,
         )
 
         self.store_entry(entry)
@@ -188,6 +197,23 @@ class EventLog:
         logger.debug(
                 "Event logged: type=%s, actions=%d, valid=%s",
                 event_type, len(actions), validation_result.valid
+            )
+
+    def _migrate_db(self):
+        """Add any missing columns to an existing SQLite DB.
+
+        New `EventLog` fields need to be present on pre-existing DB files without
+        requiring a manual rebuild. The table is created by ``_SCHEMA`` on fresh
+        files, so this only needs to add columns that are missing from older
+        deployments.
+        """
+        existing = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(events)")
+        }
+        if "nuki_web_response" not in existing:
+            self._conn.execute(
+                "ALTER TABLE events ADD COLUMN nuki_web_response TEXT"
             )
 
     def _insert_entry(self, entry: EventLogEntry):
@@ -199,7 +225,7 @@ class EventLog:
         self._conn.execute(
             "INSERT INTO events (timestamp, nuki_id, device_type, device_name, "
             "event_type, payload, actions, valid, delay_seconds, reason, "
-            "processing_time_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "processing_time_ms, nuki_web_response) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts.astimezone(timezone.utc).isoformat(),
                 payload.get("nukiId"),
@@ -212,6 +238,9 @@ class EventLog:
                 entry.validation_result.delay_seconds,
                 entry.validation_result.reason,
                 entry.processing_time_ms,
+                json.dumps(entry.nuki_web_response, ensure_ascii=False)
+                if entry.nuki_web_response is not None
+                else None,
             ),
         )
 
@@ -229,6 +258,11 @@ class EventLog:
             actions=json.loads(row["actions"]),
             validation_result=validation_result,
             processing_time_ms=row["processing_time_ms"],
+            nuki_web_response=(
+                json.loads(row["nuki_web_response"])
+                if row["nuki_web_response"] is not None
+                else None
+            ),
         )
 
     def _migrate_legacy_json(self):

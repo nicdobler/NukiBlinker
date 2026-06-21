@@ -2,6 +2,23 @@
 
 ---
 
+## #232 — La web no muestra los eventos recuperados de nuki web nunca
+
+**Branch**: feat/232-la-web-no-muestra-los-eventos-recuperado | **PR**: (pending)
+
+**Problem**: the Event Log detail panel always shows **"None (no Web API call for this event)"** under *Nuki Web response* because the backend never stores the Nuki Web API response that was used to resolve the visitor name/trigger.
+
+**Fix**: persist the raw Nuki Web API response (the recent log entries) inside each event-log entry and expose it via `GET /api/events/log` as `nuki_web_response`. The UI already renders the field when present.
+
+- [x] Update `specs/product-spec.md` + `specs/tech-spec.md` for #232
+- [x] Add `nuki_web_response` to `EventLogEntry`, SQLite schema, insert/retrieval, and `to_dict()`
+- [x] Capture the Web API response in `resolve_person()` and thread it through `dispatch_with_actions()` / `server.py`
+- [x] Regression tests for storage and API response
+- [x] Update `CHANGELOG.md` / `README.md`
+- [ ] Push branch, open PR, drive CI to green
+
+---
+
 ## #197 — Wrong name announced / double event on ring_to_open
 
 **Branch**: fix/197-wrong-name-double-event | **PR**: (pending)

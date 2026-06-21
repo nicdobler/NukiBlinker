@@ -612,3 +612,100 @@ class TestLogEventEventTime:
         stored = log.entries[0].timestamp
         assert stored.tzinfo is not None
         assert stored == datetime(2026, 6, 19, 20, 11, 22, tzinfo=timezone.utc)
+
+
+class TestLogEventNukiWebResponse:
+    """log_event(nuki_web_response=...) stores the Nuki Web API response (#232)."""
+
+    def _vr(self):
+        return ValidationResult(valid=True, delay_seconds=0.0, reason=None)
+
+    def test_nuki_web_response_stored_and_returned(self):
+        """A Web API response list is round-tripped via EventLogEntry."""
+        log = EventLog(persist_to_file=False)
+        web_response = [
+            {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+        ]
+        log.log_event(
+            payload={"deviceType": 2, "nukiId": 100},
+            event_type="ring",
+            actions=["Hue lights blinked"],
+            validation_result=self._vr(),
+            nuki_web_response=web_response,
+        )
+        entry = log.entries[0]
+        assert entry.nuki_web_response == web_response
+        assert entry.to_dict()["nuki_web_response"] == web_response
+
+    def test_nuki_web_response_none_stored_as_null(self):
+        """When no Web API call was made, the field is null/None."""
+        log = EventLog(persist_to_file=False)
+        log.log_event(
+            payload={"deviceType": 2, "nukiId": 100},
+            event_type="ring",
+            actions=["Hue lights blinked"],
+            validation_result=self._vr(),
+        )
+        entry = log.entries[0]
+        assert entry.nuki_web_response is None
+        assert entry.to_dict()["nuki_web_response"] is None
+
+    def test_nuki_web_response_persists_to_sqlite(self):
+        """The response survives a new EventLog instance reading the same DB file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "test_event_log.db"
+            web_response = [
+                {"smartlockId": 100, "name": "Nico", "trigger": 2, "source": 1},
+            ]
+
+            log1 = EventLog(persist_to_file=True, file_path=str(file_path))
+            log1.log_event(
+                payload={"deviceType": 2, "nukiId": 100},
+                event_type="ring",
+                actions=["Hue lights blinked"],
+                validation_result=self._vr(),
+                nuki_web_response=web_response,
+            )
+
+            log2 = EventLog(persist_to_file=True, file_path=str(file_path))
+            entry = log2.entries[0]
+            assert entry.nuki_web_response == web_response
+            assert entry.to_dict()["nuki_web_response"] == web_response
+
+    def test_legacy_db_without_column_migrates(self):
+        """An existing SQLite DB without the new column is upgraded automatically."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "event_log.db"
+            # Create the table with the pre-#232 schema directly.
+            import sqlite3
+
+            conn = sqlite3.connect(str(file_path))
+            conn.execute(
+                "CREATE TABLE events ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "timestamp TEXT NOT NULL, "
+                "nuki_id INTEGER, "
+                "device_type INTEGER, "
+                "device_name TEXT, "
+                "event_type TEXT, "
+                "payload TEXT NOT NULL, "
+                "actions TEXT NOT NULL, "
+                "valid INTEGER NOT NULL, "
+                "delay_seconds REAL, "
+                "reason TEXT, "
+                "processing_time_ms REAL"
+                ")"
+            )
+            conn.commit()
+            conn.close()
+
+            log = EventLog(persist_to_file=True, file_path=str(file_path))
+            # Opening should not raise; the column should be added.
+            log.log_event(
+                payload={"deviceType": 2, "nukiId": 100},
+                event_type="ring",
+                actions=["Hue lights blinked"],
+                validation_result=self._vr(),
+                nuki_web_response=[{"smartlockId": 100}],
+            )
+            assert log.entries[0].nuki_web_response == [{"smartlockId": 100}]
