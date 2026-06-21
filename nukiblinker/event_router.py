@@ -14,11 +14,13 @@ if TYPE_CHECKING:
 logger = get_logger("event_router")
 
 # Nuki Opener states (deviceType=2)
-_OPENER_STATE_RING_TO_OPEN = 7  # opening (door being opened)
+_OPENER_STATE_RING_TO_OPEN = 7  # opening (door being opened) — needs web disambiguation
 # Note: a doorbell ring is signalled by the callback's `ringactionState`/
 # `ringactionTimestamp` fields (Bridge API §4), NOT by `state`. Opener
 # `state == 1` is "online" (a routine status update) and must not be treated
 # as a ring (#97).
+_OPENER_STATE_ONLINE = 1    # post-open idle / RTO expired (#219)
+_OPENER_STATE_RTO_ACTIVE = 3  # Ring-to-Open mode active (#219 with RTO)
 
 # Nuki Smart Lock states (deviceType=0)
 # Note: state 3 (unlocked) is deliberately NOT treated as door_opened —
@@ -36,27 +38,41 @@ _RESOLVE_MAX_RETRIES = 7      # max number of extra attempts (~14s total at 2s e
 _RESOLVE_RETRY_DELAY_S = 2    # seconds between retries
 _RESOLVE_RECENCY_S = 10       # candidate must be within this many seconds of the ring
 
-# Opener "online" status state (deviceType=2). Discovery probe target (#219).
-_OPENER_STATE_ONLINE = 1
+# Web-lookup parameters for state=7 disambiguation (#220) and app-open
+# detection (#219/#220). The Nuki Web API can lag a few seconds after the
+# bridge callback, so we poll up to _WEB_MAX_ATTEMPTS times with _WEB_DELAY_S
+# gaps before giving up.
+_WEB_MAX_ATTEMPTS = 5
+_WEB_DELAY_S = 3
+# How far back (seconds) we consider a web entry "fresh" (i.e. this open, not
+# a stale prior one). Entries older than this threshold are skipped.
+_WEB_FRESH_WINDOW_S = 60
 
-# Discovery probe parameters (#219/#220): an app-triggered open ("Abierta")
-# surfaces on the Nuki Web log a few seconds *after* the bridge fires the
-# Opener `state=1 online` callback, so the probe polls a handful of times.
-_PROBE_MAX_ATTEMPTS = 5
-_PROBE_DELAY_S = 3
+# Nuki Web API action codes for Opener log entries.
+_WEB_ACTION_AUTO_UNLOCK = 224  # Ring-to-Open / Auto Unlock
+_WEB_ACTION_OPEN = 3           # Manual app / button open ("Abierta")
+
+# Nuki Web API trigger codes (see nuki_web_client.TRIGGER_NAMES).
+_WEB_TRIGGER_BUTTON = 2  # physical button on the opener device
 
 
 def classify(payload: dict, config: AppConfig) -> str | None:
     """Return event type string or None if the payload should be ignored.
 
-    Possible return values: 'ring', 'ring_to_open', 'door_opened'.
+    Possible synchronous return values: 'ring', 'ring_to_open', 'door_opened',
+    or None (ignored).
+
+    Opener state=7 and state=1/state=3 require async web lookup for full
+    classification — see ``classify_state7_with_web()`` and
+    ``classify_app_open_with_web()``. This function is the fast synchronous
+    gate; the server calls the async helpers for the ambiguous cases.
 
     Opener state machine (source of truth — official Nuki Bridge API):
-      state=1  "online"     — RTO expired / post-open idle.    Ignore.
-      state=3  "rto active" — Ring-to-Open mode activated.     Ignore.
-      state=5  "open"       — Post-open settled state.         Ignore.
-      state=7  "opening"    — Gate is opening NOW.             → ring_to_open
-      ringactionState=true  — Someone pressed the doorbell.    → ring
+      state=1  "online"     — may accompany an app open ("Abierta"). Needs web.
+      state=3  "rto active" — may accompany an app open with RTO active. Needs web.
+      state=5  "open"       — post-open settled state.          Ignore.
+      state=7  "opening"    — gate is opening NOW (RTO or button). Needs web.
+      ringactionState=true  — someone pressed the doorbell.      → ring
     """
     device_type = payload.get("deviceType")
     nuki_id = payload.get("nukiId")
@@ -67,7 +83,13 @@ def classify(payload: dict, config: AppConfig) -> str | None:
             logger.debug("Ignoring Opener %s (filter: %s)", nuki_id, config.nuki.opener_id)
             return None
         if state == _OPENER_STATE_RING_TO_OPEN:
-            logger.info("Event classified: ring_to_open (Opener %s, state=%s)", nuki_id, state)
+            # Preliminary: could be ring_to_open or apertura_opener (#220).
+            # The server will call classify_state7_with_web() to disambiguate.
+            logger.info(
+                "Event classified: ring_to_open (preliminary, Opener %s, state=%s) "
+                "— web lookup will disambiguate (#220)",
+                nuki_id, state,
+            )
             return "ring_to_open"
         if payload.get("ringactionState") is True:
             logger.info(
@@ -75,8 +97,15 @@ def classify(payload: dict, config: AppConfig) -> str | None:
                 nuki_id, payload.get("ringactionTimestamp"),
             )
             return "ring"
-        # All other Opener states (online/rto-active/open/boot-run/etc.) are
-        # routine status updates — ignore them (#197).
+        if state in (_OPENER_STATE_ONLINE, _OPENER_STATE_RTO_ACTIVE):
+            # May carry an app-triggered open ("Abierta") — server will call
+            # classify_app_open_with_web() to check (#219).
+            logger.debug(
+                "Opener state=%s callback — deferred to web lookup (#219): nukiId=%s",
+                state, nuki_id,
+            )
+            return None
+        # All other Opener states (open/boot-run/etc.) are routine.
         logger.debug(
             "Opener status callback ignored: state=%s nukiId=%s ringactionState=%s",
             state, nuki_id, payload.get("ringactionState"),
@@ -101,6 +130,270 @@ def classify(payload: dict, config: AppConfig) -> str | None:
 
     logger.debug("Ignoring unknown deviceType %s", device_type)
     return None
+
+
+def is_opener_app_open_candidate(payload: dict, config) -> bool:
+    """True for Opener ``state=1 online`` or ``state=3 rto active`` callbacks.
+
+    These are the two bridge signals that can accompany an app-triggered open
+    ("Abierta") — without RTO (state=1) and with RTO still active (state=3).
+    Honours the ``nuki.opener_id`` filter. (#219)
+    """
+    if payload.get("deviceType") != 2:
+        return False
+    if payload.get("ringactionState") is True:
+        return False
+    state = payload.get("state")
+    if state not in (_OPENER_STATE_ONLINE, _OPENER_STATE_RTO_ACTIVE):
+        return False
+    opener_id = getattr(getattr(config, "nuki", None), "opener_id", None)
+    if opener_id is not None and payload.get("nukiId") != opener_id:
+        return False
+    return True
+
+
+def is_opener_state7_candidate(payload: dict, config) -> bool:
+    """True for Opener ``state=7 opening`` callbacks (needs web disambiguation).
+
+    Used by the server to decide whether to call ``classify_state7_with_web()``.
+    Honours the ``nuki.opener_id`` filter. (#220)
+    """
+    if payload.get("deviceType") != 2:
+        return False
+    if payload.get("state") != _OPENER_STATE_RING_TO_OPEN:
+        return False
+    opener_id = getattr(getattr(config, "nuki", None), "opener_id", None)
+    if opener_id is not None and payload.get("nukiId") != opener_id:
+        return False
+    return True
+
+
+async def classify_state7_with_web(
+    payload: dict, config, nuki_web, *, sleep=None,
+) -> str:
+    """Disambiguate an Opener ``state=7 opening`` callback via the Nuki Web log.
+
+    Both a Ring-to-Open (RTO) and a physical opener-button press produce the
+    same ``state=7`` bridge callback (#220). The Web API activity log tells them
+    apart:
+
+    - ``action=224`` (Auto Unlock) → ``ring_to_open``  (geofence / RTO)
+    - ``action=3``, ``trigger=2``  → ``apertura_opener`` (physical button)
+    - ``action=3``, ``trigger≠2``  → ``apertura_opener`` (other manual open)
+
+    Precedence rule (#219): if the web log shows an app open (``action=3``,
+    ``trigger=0``, named user), that trumps ``ring_to_open``; however that case
+    is indistinguishable from an opener-button open in the ``state=7`` flow —
+    the app-open signal travels separately via ``state=1``/``state=3`` and is
+    handled by ``classify_app_open_with_web()``. So this function only resolves
+    RTO vs. opener-button.
+
+    Falls back to ``ring_to_open`` when the Web API is unavailable or the entry
+    cannot be classified.
+    """
+    _sleep = sleep if sleep is not None else asyncio.sleep
+    nuki_id = payload.get("nukiId")
+    web_id = _resolve_web_id(payload, config)
+    now = datetime.now(timezone.utc)
+
+    for attempt in range(_WEB_MAX_ATTEMPTS):
+        try:
+            entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
+        except Exception:
+            logger.warning(
+                "[#220] Web API query failed for state=7 (nukiId=%s) — falling back to ring_to_open",
+                nuki_id, exc_info=True,
+            )
+            return "ring_to_open"
+
+        from nukiblinker.nuki_web_client import SOURCE_DOOR_SENSOR
+        # Find the most recent non-sensor opener entry.
+        top = next(
+            (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
+            entries[0] if entries else None,
+        )
+        if top is None:
+            if attempt < _WEB_MAX_ATTEMPTS - 1:
+                await _sleep(_WEB_DELAY_S)
+                continue
+            logger.info(
+                "[#220] Web API empty after %d attempts (nukiId=%s) — falling back to ring_to_open",
+                _WEB_MAX_ATTEMPTS, nuki_id,
+            )
+            return "ring_to_open"
+
+        entry_ts = _parse_iso(top.get("date"))
+        age = (now - entry_ts).total_seconds() if entry_ts else None
+        action = top.get("action")
+        trigger = top.get("trigger")
+
+        logger.info(
+            "[#220] state=7 web entry (attempt %d/%d): action=%s trigger=%s age=%.0fs nukiId=%s",
+            attempt + 1, _WEB_MAX_ATTEMPTS, action, trigger,
+            age if age is not None else -1, nuki_id,
+        )
+
+        # Entry is too old — not from this open; poll again.
+        if age is not None and age > _WEB_FRESH_WINDOW_S:
+            if attempt < _WEB_MAX_ATTEMPTS - 1:
+                await _sleep(_WEB_DELAY_S)
+                continue
+            logger.info(
+                "[#220] Web entry still stale after %d attempts (age=%.0fs, nukiId=%s) "
+                "— falling back to ring_to_open",
+                _WEB_MAX_ATTEMPTS, age, nuki_id,
+            )
+            return "ring_to_open"
+
+        if action == _WEB_ACTION_AUTO_UNLOCK:
+            logger.info(
+                "[#220] action=%s (Auto Unlock / RTO) → ring_to_open (nukiId=%s)",
+                action, nuki_id,
+            )
+            return "ring_to_open"
+
+        if action == _WEB_ACTION_OPEN:
+            logger.info(
+                "[#220] action=%s trigger=%s → apertura_opener (nukiId=%s)",
+                action, trigger, nuki_id,
+            )
+            return "apertura_opener"
+
+        # Unknown action — fall back.
+        logger.info(
+            "[#220] Unknown action=%s (nukiId=%s) — falling back to ring_to_open",
+            action, nuki_id,
+        )
+        return "ring_to_open"
+
+    return "ring_to_open"
+
+
+async def classify_app_open_with_web(
+    payload: dict, config, nuki_web, *, sleep=None,
+) -> tuple[str | None, dict | None]:
+    """Detect an app-triggered Opener open ("Abierta") via the Nuki Web log.
+
+    Called when the bridge fires ``state=1 online`` (no RTO) or ``state=3 rto
+    active`` (RTO was on). Both are ambiguous — most are routine keepalives —
+    but an app open ("Abierta") surfaces a fresh Web log entry with
+    ``action=3``, ``trigger=0``, and a real user name within a few seconds.
+
+    Returns ``"apertura_con_app"`` with a ``context`` dict (name/source) when
+    confirmed, or ``None`` when no fresh app-open entry is found (routine
+    keepalive → ignore).
+
+    The returned tuple is ``(event_type_or_none, context_or_none)``.
+    """
+    _sleep = sleep if sleep is not None else asyncio.sleep
+    nuki_id = payload.get("nukiId")
+    web_id = _resolve_web_id(payload, config)
+    now = datetime.now(timezone.utc)
+
+    from nukiblinker.nuki_web_client import SOURCE_DOOR_SENSOR
+
+    for attempt in range(_WEB_MAX_ATTEMPTS):
+        try:
+            entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
+        except Exception:
+            logger.warning(
+                "[#219] Web API query failed (nukiId=%s, attempt %d/%d)",
+                nuki_id, attempt + 1, _WEB_MAX_ATTEMPTS, exc_info=True,
+            )
+            return None, None
+
+        top = next(
+            (e for e in entries if e.get("source") != SOURCE_DOOR_SENSOR),
+            entries[0] if entries else None,
+        )
+        if top is None:
+            if attempt < _WEB_MAX_ATTEMPTS - 1:
+                await _sleep(_WEB_DELAY_S)
+                continue
+            logger.debug(
+                "[#219] Web API empty after %d attempts (nukiId=%s) — ignoring",
+                _WEB_MAX_ATTEMPTS, nuki_id,
+            )
+            return None, None
+
+        entry_ts = _parse_iso(top.get("date"))
+        age = (now - entry_ts).total_seconds() if entry_ts else None
+        action = top.get("action")
+        trigger = top.get("trigger")
+        name = top.get("name") or ""
+        opener_log = top.get("openerLog") or {}
+        active_rto = opener_log.get("activeRto", False)
+
+        logger.info(
+            "[#219] web entry (attempt %d/%d): action=%s trigger=%s name=%r "
+            "activeRto=%s age=%.0fs nukiId=%s",
+            attempt + 1, _WEB_MAX_ATTEMPTS, action, trigger, name, active_rto,
+            age if age is not None else -1, nuki_id,
+        )
+
+        # Entry is too old → routine keepalive, not an app open.
+        if age is not None and age > _WEB_FRESH_WINDOW_S:
+            logger.debug(
+                "[#219] Web entry stale (age=%.0fs > %ds, nukiId=%s) — ignoring",
+                age, _WEB_FRESH_WINDOW_S, nuki_id,
+            )
+            return None, None
+
+        # Fresh action=3 (app open) with a named user → apertura_con_app.
+        if action == _WEB_ACTION_OPEN and name:
+            logger.info(
+                "[#219] action=%s name=%r activeRto=%s → apertura_con_app (nukiId=%s)",
+                action, name, active_rto, nuki_id,
+            )
+            context = {
+                "name": name,
+                "name_source": "web_api",
+                "trigger": trigger,
+                "event_time": top.get("date"),
+            }
+            return "apertura_con_app", context
+
+        # Fresh action=3 but no name (anonymous app open) — wait a bit for name
+        # to propagate, then dispatch with fallback if still absent.
+        if action == _WEB_ACTION_OPEN and not name:
+            if attempt < _WEB_MAX_ATTEMPTS - 1:
+                logger.debug(
+                    "[#219] action=3 but name empty (attempt %d/%d, nukiId=%s) — retrying",
+                    attempt + 1, _WEB_MAX_ATTEMPTS, nuki_id,
+                )
+                await _sleep(_WEB_DELAY_S)
+                continue
+            # All retries exhausted and name is still absent — dispatch with
+            # fallback so the event is not silently dropped.
+            fallback = "Alguien"
+            try:
+                rule = getattr(getattr(config, "events", None), "apertura_con_app", None)
+                if rule and rule.audio:
+                    fallback = rule.audio.fallback_name
+            except Exception:
+                pass
+            logger.info(
+                "[#219] action=3 anonymous after %d attempts (nukiId=%s) "
+                "— apertura_con_app with fallback name",
+                _WEB_MAX_ATTEMPTS, nuki_id,
+            )
+            context = {
+                "name": fallback,
+                "name_source": "fallback",
+                "trigger": trigger,
+                "event_time": top.get("date"),
+            }
+            return "apertura_con_app", context
+
+        # Not an app-open entry (e.g. action=224 Auto Unlock). The state=1/3
+        # after a real RTO that ring_to_open already handled — routine, ignore.
+        logger.debug(
+            "[#219] action=%s — not an app open (nukiId=%s) — ignoring",
+            action, nuki_id,
+        )
+        return None, None
+
+    return None, None
 
 
 def _resolve_web_id(payload: dict, config) -> int | None:
@@ -271,70 +564,6 @@ async def resolve_person(payload: dict, fallback_name: str = "Alguien",
         return _result(fallback_name, "fallback")
 
 
-def is_opener_status_probe_candidate(payload: dict, config) -> bool:
-    """True for an Opener ``state=1 online`` status callback (not a ring).
-
-    This is the bridge signal that *accompanies* an app-triggered open
-    ("Abierta") — see #219. It is deliberately distinct from a ring
-    (``ringactionState=true``) and from ``state=7`` (RTO / opener button).
-    Honours the ``nuki.opener_id`` filter when configured.
-    """
-    if payload.get("deviceType") != 2:
-        return False
-    if payload.get("state") != _OPENER_STATE_ONLINE:
-        return False
-    if payload.get("ringactionState") is True:
-        return False
-    opener_id = getattr(getattr(config, "nuki", None), "opener_id", None)
-    if opener_id is not None and payload.get("nukiId") != opener_id:
-        return False
-    return True
-
-
-async def discovery_probe_app_open(payload: dict, config, clients, *, sleep=None) -> None:
-    """LOG-ONLY discovery probe for #219/#220 — never dispatches or notifies.
-
-    On an Opener ``state=1 online`` callback, poll the Nuki Web log a few times
-    and log the most-recent entry's distinguishing fields (``action`` /
-    ``openerLog.activeRto`` / ``name`` / ``trigger`` / ``source``). An
-    app-triggered open ("Abierta") surfaces a few seconds after the callback, so
-    polling captures it. The purpose is to confirm the real codes that separate
-    an app open from a Ring-to-Open / opener-button open before wiring the
-    actual classification (#219/#220). This function changes no behaviour.
-    """
-    _sleep = sleep if sleep is not None else asyncio.sleep
-    nuki_web = getattr(clients, "nuki_web", None)
-    if nuki_web is None:
-        return
-    nuki_id = payload.get("nukiId")
-    web_id = _resolve_web_id(payload, config)
-    for attempt in range(_PROBE_MAX_ATTEMPTS):
-        try:
-            entries = await nuki_web.get_recent_log(smartlock_id=web_id, limit=20)
-        except Exception:
-            logger.warning("[#219 discovery] Nuki Web query failed", exc_info=True)
-            return
-        top = entries[0] if entries else None
-        if top is not None:
-            opener_log = top.get("openerLog") or {}
-            logger.info(
-                "[#219 discovery] Opener %s online — Nuki Web top entry "
-                "(attempt %d/%d): name=%r action=%s state=%s trigger=%s source=%s "
-                "activeRto=%s date=%s",
-                nuki_id, attempt + 1, _PROBE_MAX_ATTEMPTS,
-                top.get("name"), top.get("action"), top.get("state"),
-                top.get("trigger"), top.get("source"),
-                opener_log.get("activeRto"), top.get("date"),
-            )
-        else:
-            logger.info(
-                "[#219 discovery] Opener %s online — Nuki Web log empty (attempt %d/%d)",
-                nuki_id, attempt + 1, _PROBE_MAX_ATTEMPTS,
-            )
-        if attempt < _PROBE_MAX_ATTEMPTS - 1:
-            await _sleep(_PROBE_DELAY_S)
-
-
 async def dispatch(
     event_type: str, payload: dict, config: AppConfig, clients,
     *, context_override: dict | None = None,
@@ -358,6 +587,11 @@ async def dispatch(
             payload, fallback, nuki_web=getattr(clients, "nuki_web", None),
             config=config,
         )
+    elif event_type in ("apertura_con_app", "apertura_opener"):
+        # Context already resolved by classify_app_open_with_web() or
+        # classify_state7_with_web() before dispatch — context_override is
+        # always set for these event types; the else branch is a safety net.
+        context = {}
     else:
         context = {}
 
@@ -391,6 +625,10 @@ async def dispatch_with_actions(
             payload, fallback, nuki_web=getattr(clients, "nuki_web", None),
             config=config,
         )
+    elif event_type in ("apertura_con_app", "apertura_opener"):
+        # Context resolved upstream by classify_*_with_web() — always passed as
+        # context_override. Safety net: empty dict avoids KeyError.
+        context = {}
     else:
         context = {}
 

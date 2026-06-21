@@ -9,10 +9,12 @@ from nukiblinker.config import AppConfig
 from nukiblinker.event_router import (
     RINGACTION_STALE_THRESHOLD_S,
     classify,
-    discovery_probe_app_open,
+    classify_app_open_with_web,
+    classify_state7_with_web,
     dispatch_with_actions,
     event_time_for_log,
-    is_opener_status_probe_candidate,
+    is_opener_app_open_candidate,
+    is_opener_state7_candidate,
     resolve_person,
     ringaction_staleness,
 )
@@ -143,69 +145,200 @@ class TestClassifyOther:
         assert classify(payload, AppConfig()) is None
 
 
-class TestOpenerStatusProbeCandidate:
-    """#219 discovery probe gate — Opener state=1 online (not a ring/state=7)."""
+class TestIsOpenerAppOpenCandidate:
+    """#219 gate: state=1 online or state=3 rto-active (not a ring/state=7)."""
 
-    def test_online_status_is_candidate(self):
+    def test_state1_is_candidate(self):
         payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": False}
-        assert is_opener_status_probe_candidate(payload, AppConfig()) is True
+        assert is_opener_app_open_candidate(payload, AppConfig()) is True
+
+    def test_state3_is_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 3, "ringactionState": False}
+        assert is_opener_app_open_candidate(payload, AppConfig()) is True
 
     def test_ring_is_not_candidate(self):
         payload = {"deviceType": 2, "nukiId": 100, "state": 1, "ringactionState": True}
-        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+        assert is_opener_app_open_candidate(payload, AppConfig()) is False
 
-    def test_state_7_is_not_candidate(self):
+    def test_state7_is_not_candidate(self):
         payload = {"deviceType": 2, "nukiId": 100, "state": 7}
-        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+        assert is_opener_app_open_candidate(payload, AppConfig()) is False
 
     def test_lock_is_not_candidate(self):
         payload = {"deviceType": 0, "nukiId": 200, "state": 1}
-        assert is_opener_status_probe_candidate(payload, AppConfig()) is False
+        assert is_opener_app_open_candidate(payload, AppConfig()) is False
 
     def test_opener_id_filter_mismatch(self):
         cfg = AppConfig()
         cfg.nuki.opener_id = 200
         payload = {"deviceType": 2, "nukiId": 100, "state": 1}
-        assert is_opener_status_probe_candidate(payload, cfg) is False
+        assert is_opener_app_open_candidate(payload, cfg) is False
 
 
-class TestDiscoveryProbeAppOpen:
-    """#219/#220 log-only probe: polls Nuki Web, never dispatches."""
+class TestIsOpenerState7Candidate:
+    """#220 gate: state=7 opening requires web disambiguation."""
 
-    @pytest.mark.asyncio
-    async def test_polls_and_logs_top_entry(self, caplog):
+    def test_state7_is_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        assert is_opener_state7_candidate(payload, AppConfig()) is True
+
+    def test_state1_is_not_candidate(self):
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        assert is_opener_state7_candidate(payload, AppConfig()) is False
+
+    def test_lock_is_not_candidate(self):
+        payload = {"deviceType": 0, "nukiId": 200, "state": 7}
+        assert is_opener_state7_candidate(payload, AppConfig()) is False
+
+    def test_opener_id_filter_mismatch(self):
+        cfg = AppConfig()
+        cfg.nuki.opener_id = 200
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        assert is_opener_state7_candidate(payload, cfg) is False
+
+
+class TestClassifyState7WithWeb:
+    """#220: web-driven disambiguation of state=7 (RTO vs opener button)."""
+
+    @property
+    def _FRESH(self):
+        """A timestamp just 5 seconds ago — always within the freshness window."""
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
+        )
+
+    def _web(self, action, trigger=0):
         web = AsyncMock()
         web.get_recent_log.return_value = [
-            {"smartlockId": 9129696002, "name": "Nico", "action": 3, "state": 0,
-             "trigger": 0, "source": 0, "openerLog": {"activeRto": False},
-             "date": "2026-06-20T16:24:42.000Z"},
+            {"action": action, "trigger": trigger, "source": 0, "date": self._FRESH},
         ]
-        clients = type("C", (), {"nuki_web": web})()
-        cfg = AppConfig()
-        cfg.nuki.opener_web_id = 9129696002
-        sleep = AsyncMock()
-        with caplog.at_level("INFO", logger="nukiblinker.event_router"):
-            await discovery_probe_app_open(
-                {"nukiId": 100, "deviceType": 2, "state": 1}, cfg, clients, sleep=sleep,
-            )
-        # Polled the configured number of times (one query per attempt).
-        assert web.get_recent_log.await_count == 5
-        # Sleeps between attempts (one fewer than the number of attempts).
-        assert sleep.await_count == 4
-        joined = " ".join(r.getMessage() for r in caplog.records)
-        assert "[#219 discovery]" in joined
-        assert "action=3" in joined
-        assert "activeRto=False" in joined
+        return web
 
     @pytest.mark.asyncio
-    async def test_no_web_client_is_noop(self):
-        clients = type("C", (), {"nuki_web": None})()
-        # Must not raise and must not sleep/poll.
-        sleep = AsyncMock()
-        await discovery_probe_app_open(
-            {"nukiId": 100, "deviceType": 2, "state": 1}, AppConfig(), clients, sleep=sleep,
+    async def test_action224_rto(self):
+        """action=224 (Auto Unlock / RTO) → ring_to_open."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        web = self._web(action=224)
+        result = await classify_state7_with_web(payload, AppConfig(), web, sleep=AsyncMock())
+        assert result == "ring_to_open"
+
+    @pytest.mark.asyncio
+    async def test_action3_opener_button(self):
+        """action=3 (manual open) → apertura_opener regardless of trigger."""
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        web = self._web(action=3, trigger=2)
+        result = await classify_state7_with_web(payload, AppConfig(), web, sleep=AsyncMock())
+        assert result == "apertura_opener"
+
+    @pytest.mark.asyncio
+    async def test_web_exception_falls_back(self):
+        """Web API failure → fallback ring_to_open."""
+        web = AsyncMock()
+        web.get_recent_log.side_effect = Exception("network error")
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        result = await classify_state7_with_web(payload, AppConfig(), web, sleep=AsyncMock())
+        assert result == "ring_to_open"
+
+    @pytest.mark.asyncio
+    async def test_stale_entry_eventually_falls_back(self):
+        """If all entries are stale (age > _WEB_FRESH_WINDOW_S), fall back."""
+        import nukiblinker.event_router as er
+        old_date = "2020-01-01T00:00:00.000Z"
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"action": 224, "trigger": 0, "source": 0, "date": old_date},
+        ]
+        payload = {"deviceType": 2, "nukiId": 100, "state": 7}
+        result = await classify_state7_with_web(payload, AppConfig(), web, sleep=AsyncMock())
+        assert result == "ring_to_open"
+        assert web.get_recent_log.await_count == er._WEB_MAX_ATTEMPTS
+
+
+class TestClassifyAppOpenWithWeb:
+    """#219: web-driven app-open detection on state=1/state=3."""
+
+    @property
+    def _FRESH(self):
+        """A timestamp just 5 seconds ago — always within the freshness window."""
+        from datetime import datetime, timezone, timedelta
+        return (datetime.now(timezone.utc) - timedelta(seconds=5)).strftime(
+            "%Y-%m-%dT%H:%M:%S.000Z"
         )
-        sleep.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fresh_named_action3_dispatches_apertura_con_app(self):
+        """Fresh action=3 with user name → apertura_con_app with context."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"action": 3, "trigger": 0, "source": 0, "name": "Nico",
+             "openerLog": {"activeRto": False}, "date": self._FRESH},
+        ]
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        event_type, context = await classify_app_open_with_web(
+            payload, AppConfig(), web, sleep=AsyncMock()
+        )
+        assert event_type == "apertura_con_app"
+        assert context["name"] == "Nico"
+        assert context["name_source"] == "web_api"
+
+    @pytest.mark.asyncio
+    async def test_stale_entry_is_ignored(self):
+        """Entry older than _WEB_FRESH_WINDOW_S → routine keepalive, return None."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"action": 3, "trigger": 0, "source": 0, "name": "Nico",
+             "openerLog": {}, "date": "2020-01-01T00:00:00.000Z"},
+        ]
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        event_type, context = await classify_app_open_with_web(
+            payload, AppConfig(), web, sleep=AsyncMock()
+        )
+        assert event_type is None
+        assert context is None
+
+    @pytest.mark.asyncio
+    async def test_action224_after_rto_is_ignored(self):
+        """Fresh action=224 (RTO) on state=1 → not an app open, ignore."""
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"action": 224, "trigger": 0, "source": 0, "name": "Ele",
+             "openerLog": {"activeRto": True}, "date": self._FRESH},
+        ]
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        event_type, context = await classify_app_open_with_web(
+            payload, AppConfig(), web, sleep=AsyncMock()
+        )
+        assert event_type is None
+
+    @pytest.mark.asyncio
+    async def test_anonymous_action3_retried_then_fallback(self):
+        """action=3 with empty name → retried; after all attempts uses fallback name."""
+        import nukiblinker.event_router as er
+        web = AsyncMock()
+        web.get_recent_log.return_value = [
+            {"action": 3, "trigger": 0, "source": 0, "name": "",
+             "openerLog": {}, "date": self._FRESH},
+        ]
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        event_type, context = await classify_app_open_with_web(
+            payload, AppConfig(), web, sleep=AsyncMock()
+        )
+        assert event_type == "apertura_con_app"
+        assert context["name_source"] == "fallback"
+        assert web.get_recent_log.await_count == er._WEB_MAX_ATTEMPTS
+
+    @pytest.mark.asyncio
+    async def test_web_exception_returns_none(self):
+        """Web API failure → (None, None) — routine keepalive assumed."""
+        web = AsyncMock()
+        web.get_recent_log.side_effect = Exception("network error")
+        payload = {"deviceType": 2, "nukiId": 100, "state": 1}
+        event_type, context = await classify_app_open_with_web(
+            payload, AppConfig(), web, sleep=AsyncMock()
+        )
+        assert event_type is None
+        assert context is None
 
 
 # ---------------------------------------------------------------------------

@@ -112,6 +112,8 @@
                 <button class="btn-secondary" onclick="testEvent('ring_to_open')">RTO (unknown)</button>
                 <button class="btn-secondary" onclick="testEventNamed('ring_to_open')">RTO (known visitor)</button>
                 <button class="btn-secondary" onclick="testEvent('door_opened')">Door Opened</button>
+                <button class="btn-secondary" onclick="testEventNamed('apertura_con_app')">App Open</button>
+                <button class="btn-secondary" onclick="testEvent('apertura_opener')">Opener Button</button>
             </div>
             <div id="testResult" class="pair-status"></div>
         </div>
@@ -326,6 +328,50 @@
             </div>
             <div class="event-section"><h4>HomeKit</h4>
                 <div class="toggle"><input type="checkbox" id="doorHk"><label for="doorHk">Send doorbell notification</label></div>
+            </div>
+        </div>
+
+        <!-- APERTURA CON APP (#219) -->
+        <div class="card">
+            <h2>Apertura con App</h2>
+            <p class="help">Triggered when the opener is opened via the Nuki app (Nuki Web API required).</p>
+            <div class="event-section"><h4>Blink</h4>
+                <label>Mode</label>
+                <select id="appBlinkMode"><option value="none">None</option><option value="short">Short (1 blink)</option><option value="long">Long (15s)</option></select>
+                <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
+            </div>
+            <div class="event-section"><h4>Audio</h4>
+                <div class="toggle"><input type="checkbox" id="appAudioEnabled" checked onchange="toggleAudioFields('app')"><label for="appAudioEnabled">Enable audio</label></div>
+                <div id="appAudioFields">
+                    <label>Mode</label>
+                    <select id="appAudioMode" onchange="toggleAudioMode('app')"><option value="tts">TTS</option><option value="chime">Chime</option></select>
+                    <div id="appTtsFields"><label>TTS Message</label><input id="appTtsMsg" value="{name} llegó a casa"><p class="help">Use {name} for the person name resolved from the Nuki Web log.</p></div>
+                    <div id="appChimeFields" style="display:none"><p class="help">Plays the built-in doorbell chime.</p></div>
+                </div>
+            </div>
+            <div class="event-section"><h4>HomeKit</h4>
+                <div class="toggle"><input type="checkbox" id="appHk"><label for="appHk">Send doorbell notification</label></div>
+            </div>
+        </div>
+
+        <!-- APERTURA OPENER (#220) -->
+        <div class="card">
+            <h2>Apertura Opener (botón físico)</h2>
+            <p class="help">Triggered when the opener's physical button is pressed (Nuki Web API required).</p>
+            <div class="event-section"><h4>Blink</h4>
+                <label>Mode</label>
+                <select id="btnBlinkMode"><option value="none">None</option><option value="short">Short (1 blink)</option><option value="long">Long (15s)</option></select>
+                <p class="help">Built-in Hue alert. Lights return to their previous state automatically.</p>
+            </div>
+            <div class="event-section"><h4>Audio</h4>
+                <p class="help">Physical button press — only a chime is played.</p>
+                <div class="toggle"><input type="checkbox" id="btnAudioEnabled" checked onchange="toggleAudioFields('btn')"><label for="btnAudioEnabled">Enable chime</label></div>
+                <div id="btnAudioFields">
+                    <p class="help">Plays the built-in doorbell chime.</p>
+                </div>
+            </div>
+            <div class="event-section"><h4>HomeKit</h4>
+                <div class="toggle"><input type="checkbox" id="btnHk"><label for="btnHk">Send doorbell notification</label></div>
             </div>
         </div>
 
@@ -665,6 +711,8 @@ async function loadBaseConfig() {
         populateEventRule('ring', d.events?.ring);
         populateEventRule('rto', d.events?.ring_to_open);
         populateEventRule('door', d.events?.door_opened);
+        populateEventRule('app', d.events?.apertura_con_app);
+        populateEventRule('btn', d.events?.apertura_opener);
         setVal('loggingFilePath', d.logging?.file_path);
         setVal('loggingRotationWhen', d.logging?.rotation_when || 'W0');
         setVal('loggingBackupCount', d.logging?.backup_count ?? 4);
@@ -689,7 +737,7 @@ async function saveBaseConfig() {
             volume: parseInt(val('speakersVolume')) / 100 },
         homekit: { enabled: chk('hkEnabled'), setup_code: val('hkSetupCode'), persist_dir: val('hkPersistDir') },
         server: { host: '0.0.0.0', port: 8080, public_host: val('publicHost') },
-        events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door') },
+        events: { ring: collectEventRule('ring'), ring_to_open: collectEventRule('rto'), door_opened: collectEventRule('door'), apertura_con_app: collectEventRule('app'), apertura_opener: collectEventRule('btn') },
         logging: { file_path: val('loggingFilePath'), rotation_when: val('loggingRotationWhen') || 'W0',
             backup_count: parseInt(val('loggingBackupCount')) || 0 },
         github: { repo: val('githubRepo') || 'nicdobler/NukiBlinker', token: val('githubToken'),
