@@ -460,7 +460,6 @@ class TestEventPipelineIntegration:
             assert isinstance(entry.payload, dict)
             assert len(entry.actions) == 1
 
-
     @pytest.mark.asyncio
     async def test_nuki_web_response_stored_in_event_log(self, mock_config, mock_clients):
         """#232: a Nuki Web response used to resolve a ring is stored in the event log."""
