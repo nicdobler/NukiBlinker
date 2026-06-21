@@ -723,27 +723,165 @@ detect a user-driven open the bridge never reported as `state=7`.
 
 ### Event Classification Logic
 
+#### 1. Fast synchronous gate — `classify()`
+
+`classify()` in `event_router.py` runs synchronously before any async work.
+It returns an event type for clear-cut cases, `None` for ambiguous ones that
+need a Web API lookup (handled by the server as background tasks).
+
 ```mermaid
 flowchart TD
-    A[Callback received] --> B{deviceType?}
-    B -->|2 Opener| D{opener_id filter?}
-    B -->|0 Smart Lock| J{lock_id filter?}
-    B -->|Other| C[Ignore]
-    D -->|Mismatch| C
-    D -->|Match or no filter| E{state}
-    E -->|7 opening| F[Event: ring_to_open]
-    E -->|Ring detected| G[Event: ring]
-    E -->|Other| C
-    J -->|Mismatch| C
-    J -->|Match or no filter| K{state}
-    K -->|5 unlatched| L[Event: door_opened]
-    K -->|Other| C
-    F --> H[Dispatch ring_to_open rule]
-    G --> I[Dispatch ring rule]
-    L --> M[Dispatch door_opened rule]
+    A[Nuki callback payload] --> B{deviceType?}
+    B -->|0 Smart Lock| SL{lock_id filter?}
+    B -->|2 Opener| OP{opener_id filter?}
+    B -->|Other| IGN[None — ignore]
+
+    SL -->|mismatch| IGN
+    SL -->|match / no filter| SL2{state or doorsensorState}
+    SL2 -->|state=5 unlatched\nor state=7 unlatching\nor doorsensorState=3| DO[door_opened]
+    SL2 -->|other| IGN
+
+    OP -->|mismatch| IGN
+    OP -->|match / no filter| OP2{state}
+    OP2 -->|state=7 opening| S7["ring_to_open (preliminary)\n→ server calls classify_state7_with_web()"]
+    OP2 -->|ringactionState=true| RG[ring]
+    OP2 -->|state=1 online\nor state=3 rto_active| APP["None\n→ server calls classify_app_open_with_web()"]
+    OP2 -->|state=5 open\nor other| IGN
 ```
 
-Note: The exact state values will be confirmed during implementation against the Nuki Bridge HTTP API v1.13 documentation.
+> **state=7** and **state=1/3** are ambiguous — the bridge payload alone cannot
+> distinguish the event type. Both trigger async Web API lookups (see below).
+
+---
+
+#### 2. Opener state=7 disambiguation — `classify_state7_with_web()`
+
+Polls the Nuki Web API (up to 5 attempts, 3 s apart) to tell apart a
+Ring-to-Open from a physical opener-button press. The bridge always emits
+`state=7 opening` for both.
+
+```mermaid
+flowchart TD
+    A["Opener state=7 callback\n(ring_to_open preliminary)"] --> Q["Query Nuki Web API\n/smartlock/log"]
+    Q --> E{Top non-sensor entry?}
+    E -->|empty| RETRY1{attempts left?}
+    RETRY1 -->|yes| Q
+    RETRY1 -->|no| RTO[fallback: ring_to_open]
+
+    E -->|entry found| AGE{age > 60s?}
+    AGE -->|yes — stale| RETRY2{attempts left?}
+    RETRY2 -->|yes| Q
+    RETRY2 -->|no| RTO
+
+    AGE -->|no — fresh| ACT{action?}
+    ACT -->|224 Auto Unlock\nRTO / geofence| RTO2[ring_to_open]
+    ACT -->|3 Open| AOP[apertura_opener\n'physical button / app']
+    ACT -->|other unknown| RTO3[fallback: ring_to_open]
+```
+
+---
+
+#### 3. App-open detection — `classify_app_open_with_web()`
+
+Polls the Nuki Web API on an Opener `state=1`/`state=3` callback to detect an
+app-triggered open ("Abierta"). Most of these callbacks are routine keepalives
+and produce no event; the Web API disambiguates.
+
+```mermaid
+flowchart TD
+    A["Opener state=1 online\nor state=3 rto_active"] --> Q["Query Nuki Web API\n/smartlock/log"]
+    Q --> E{Top non-sensor entry?}
+    E -->|empty| RETRY1{attempts left?}
+    RETRY1 -->|yes| Q
+    RETRY1 -->|no| IGN[None — ignore keepalive]
+
+    E -->|entry found| AGE{age > 60s?}
+    AGE -->|yes — stale| RETRY2{attempts left?}
+    RETRY2 -->|yes| Q
+    RETRY2 -->|no| IGN
+
+    AGE -->|no — fresh| ACT{action=3 Open?}
+    ACT -->|no e.g. 224 RTO| IGN2[None — already handled\nby state=7 path]
+
+    ACT -->|yes| NAME{name present?}
+    NAME -->|yes| APP["apertura_con_app\ncontext: {name, trigger, event_time}"]
+    NAME -->|no — anonymous| RETRY3{attempts left?}
+    RETRY3 -->|yes| Q
+    RETRY3 -->|no — still empty| APPFB["apertura_con_app\ncontext: {fallback_name}"]
+```
+
+---
+
+#### 4. Person resolution — `resolve_person()`
+
+Called for `ring` and `ring_to_open` events to resolve the caller's name.
+Uses the Nuki Web API exclusively. Retries when the Web API lags behind the
+bridge callback.
+
+```mermaid
+flowchart TD
+    A["resolve_person(payload)\ncalled for ring / ring_to_open"] --> CFG{nuki_web configured?}
+    CFG -->|no| FB[fallback_name\nsource=fallback]
+
+    CFG -->|yes| Q["Query Nuki Web API\n/smartlock/log"]
+    Q --> EMPTY{entries?}
+    EMPTY -->|empty| FB
+
+    EMPTY -->|entries| SENSOR["Skip door-sensor entries\n(source=SOURCE_DOOR_SENSOR)"]
+    SENSOR --> CAND[candidate = first non-sensor entry]
+
+    CAND --> RECENCY{ring_ts known\nand candidate stale\nby > 10s?}
+    RECENCY -->|yes AND retries left| RETRY["wait 2s → retry\n(max 8 attempts)"]
+    RETRY --> Q
+    RECENCY -->|yes AND no retries| FB2[fallback_name\nsource=fallback]
+
+    RECENCY -->|no — fresh enough| HASNAME{name in candidate?}
+    HASNAME -->|yes| RESOLVED["return {name, source=web_api,\ntrigger, event_time,\nnuki_web_response}"]
+    HASNAME -->|no — anonymous open| FB3["fallback_name\nsource=fallback\nNO retry — anonymous is expected"]
+```
+
+> **`event_time`** is the matched Web entry's `date` field — the real moment
+> the door was opened, not the callback receive-time.  
+> **`nuki_web_response`** is the raw list of entries from the last query —
+> stored in the Event Log for troubleshooting (#232).
+
+---
+
+#### 5. Full callback pipeline — server.py
+
+End-to-end from bridge POST to notification dispatch.
+
+```mermaid
+flowchart TD
+    CB["POST /nuki/callback"] --> PAUSE{paused?}
+    PAUSE -->|yes| R_PAUSE[200 paused]
+    PAUSE -->|no| STALE["ringaction_staleness check\n(WARNING if fresh ring > 120s old)"]
+
+    STALE --> VAL{event_validation\nenabled?}
+    VAL -->|yes, invalid| LOG_REJ["log_event Rejected\n200 rejected"]
+    VAL -->|yes valid\nor disabled| CLF["classify(payload, config)"]
+
+    CLF -->|None + state=1/3 candidate\n+ nuki_web configured| BG_APP["BackgroundTask\n_classify_and_dispatch_app_open()"]
+    BG_APP --> R_PEND1[200 pending web_lookup_app_open]
+
+    CLF -->|None other| LOG_IGN["log_event Ignored\n200 ignored"]
+
+    CLF -->|ring_to_open + state=7\n+ nuki_web configured| BG_S7["BackgroundTask\n_classify_and_dispatch_state7()"]
+    BG_S7 --> R_PEND2[200 pending web_lookup_state7]
+
+    CLF -->|event_type| DEDUP{duplicate?}
+    DEDUP -->|yes| LOG_DUP["log_event Suppressed\n200 duplicate"]
+    DEDUP -->|no| BG_DISP["BackgroundTask\n_dispatch_with_logging()"]
+    BG_DISP --> R_OK[200 ok]
+
+    BG_DISP --> NM{night_mode?}
+    NM --> RPERS{ring / ring_to_open?}
+    RPERS -->|yes| RESP["resolve_person()\n→ name, event_time, nuki_web_response"]
+    RPERS -->|no| NOPERS[context = None]
+    RESP --> DACT["dispatch_with_actions()\n→ notifier.notify()"]
+    NOPERS --> DACT
+    DACT --> LOG_OK["log_event\n(actions, event_time, nuki_web_response)"]
+```
 
 ## External API Reference
 
