@@ -52,6 +52,24 @@ events:
       mode: "chime"               # plays the single fixed chime (sounds/chime.wav)
     homekit: false
 
+  apertura_con_app:               # Opener opened via Nuki app (#219)
+    blink:
+      mode: "short"
+    audio:
+      enabled: true
+      mode: "tts"
+      message: "{name} llegó a casa"
+      fallback_name: "Alguien"
+    homekit: false
+
+  apertura_opener:                # Opener opened via physical button on the device (#220)
+    blink:
+      mode: "short"
+    audio:
+      enabled: true
+      mode: "chime"
+    homekit: false
+
 server:
   host: "0.0.0.0"
   port: 8080

@@ -109,6 +109,20 @@ class EventRulesConfig(BaseModel):
             homekit=False,
         )
     )
+    apertura_con_app: EventRuleConfig = Field(
+        default_factory=lambda: EventRuleConfig(
+            blink=BlinkConfig(mode="short"),
+            audio=AudioConfig(enabled=True, mode="tts", message="{name} llegó a casa"),
+            homekit=False,
+        )
+    )
+    apertura_opener: EventRuleConfig = Field(
+        default_factory=lambda: EventRuleConfig(
+            blink=BlinkConfig(mode="short"),
+            audio=AudioConfig(enabled=True, mode="chime"),
+            homekit=False,
+        )
+    )
 
 
 class HomeKitConfig(BaseModel):
