@@ -621,6 +621,7 @@ class TestResolvePerson:
             "name": "Celi",
             "trigger": 0,
             "name_source": "web_api",
+            "event_time": "2026-06-19T08:19:55.000Z",
             "nuki_web_response": expected_entries,
         }
         assert len(slept) == 0  # no retries
