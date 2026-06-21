@@ -60,10 +60,12 @@ Nuki devices produce different events. NukiBlinker maps each to a configurable s
 | Event | Nuki device | Meaning | Default actions |
 |---|---|---|---|
 | **Ring (no open)** | Opener (deviceType=2) | Unknown visitor rang the doorbell | Hue lights blink (warning pattern) |
-| **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened | Different blink + personalized announcement |
+| **Ring to open** | Opener (deviceType=2) | Authorized person arrived, door opened automatically via RTO/geofence | Different blink + personalized announcement |
+| **Apertura con app** | Opener (deviceType=2) | Named user opened the door from the Nuki app (no doorbell ring) | Personalized announcement |
+| **Apertura opener** | Opener (deviceType=2) | Physical button on the opener device was pressed to open | Personalized announcement |
 | **Door opened** | Smart Lock (deviceType=0) | Flat door was unlocked/opened | Chime or personalized announcement |
 
-> **Ring detection (Opener)**: A doorbell ring is detected via the callback's `ringactionState`/`ringactionTimestamp` fields (per Bridge API §4 — the ring action flag, reset after 30 s), **not** via the lock `state`. The door being opened (Ring to Open / manual open) is signalled by `state == 7` ("opening"). All other Opener states (1 "online", 3 "rto active", 5 "open", 253 "boot run") are routine status updates and are **silently ignored** (#197).
+> **Ring detection (Opener)**: A doorbell ring is detected via the callback's `ringactionState`/`ringactionTimestamp` fields (per Bridge API §4 — the ring action flag, reset after 30 s), **not** via the lock `state`. `state=7 opening` signals the door is being opened but requires a Nuki Web API lookup to distinguish a Ring-to-Open (action=224) from a physical button press (action=3 → `apertura_opener`). `state=1 online` / `state=3 rto_active` are also checked via Web API to detect app-triggered opens (action=3 with a named user → `apertura_con_app`). `state=5 open` and other states are silently ignored (#197, #219, #220).
 
 ### Nuki device state machines
 
@@ -81,14 +83,22 @@ stateDiagram-v2
     open --> online : gate closes / RTO resets
 
     note right of online
-        state=1 · Ignored by NukiBlinker
+        state=1
+        Ignored (routine keepalive)
+        ⚡ If Web API shows action=3 + name
+        → apertura_con_app (#219)
     end note
     note right of rto_active
-        state=3 · Ignored by NukiBlinker
+        state=3
+        Ignored (routine keepalive)
+        ⚡ If Web API shows action=3 + name
+        → apertura_con_app (#219)
     end note
     note right of opening
-        state=7 · ✅ Triggers ring_to_open rule
-        Name resolved via Nuki Web API
+        state=7 · Web API lookup (#220):
+        · action=224 → ✅ ring_to_open (RTO/geofence)
+        · action=3   → ✅ apertura_opener (button/app)
+        · fallback   → ring_to_open
     end note
     note right of open
         state=5 · Ignored by NukiBlinker

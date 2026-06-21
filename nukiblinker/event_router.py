@@ -331,11 +331,19 @@ async def classify_app_open_with_web(
             age if age is not None else -1, nuki_id,
         )
 
-        # Entry is too old → routine keepalive, not an app open.
+        # Entry is too old → the Web API hasn't propagated the current event yet.
+        # Retry (same as the state=7 path) before giving up.
         if age is not None and age > _WEB_FRESH_WINDOW_S:
+            if attempt < _WEB_MAX_ATTEMPTS - 1:
+                logger.debug(
+                    "[#219] Web entry stale (age=%.0fs > %ds, nukiId=%s) — retrying",
+                    age, _WEB_FRESH_WINDOW_S, nuki_id,
+                )
+                await _sleep(_WEB_DELAY_S)
+                continue
             logger.debug(
-                "[#219] Web entry stale (age=%.0fs > %ds, nukiId=%s) — ignoring",
-                age, _WEB_FRESH_WINDOW_S, nuki_id,
+                "[#219] Web entry still stale after %d attempts (age=%.0fs, nukiId=%s) — ignoring",
+                _WEB_MAX_ATTEMPTS, age, nuki_id,
             )
             return None, None
 

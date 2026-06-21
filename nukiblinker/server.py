@@ -265,6 +265,7 @@ async def _classify_and_dispatch_state7(payload, config, clients, nuki_web, vali
             validation_result=validation_result,
             processing_time_ms=processing_time_ms,
             event_time=event_router.event_time_for_log(payload, context),
+            nuki_web_response=context.get("nuki_web_response") if context else None,
         )
     logger.info("Event processed: %s -> %s (%.1fms)", event_type, actions, processing_time_ms)
 
