@@ -124,6 +124,7 @@ classDiagram
 
     class NukiClient {
         +register_callback(url)
+        +reset_callbacks(url)
         +list_callbacks()
         +remove_callback(id)
         +list_devices()
@@ -448,6 +449,7 @@ Serves the configuration page and provides API endpoints for it.
 | POST | `/api/nuki/pair` | Register callback on Nuki Bridge |
 | GET | `/api/nuki/devices` | List Nuki devices (Openers + Smart Locks) |
 | GET | `/api/nuki/callbacks` | List registered callbacks on Bridge |
+| POST | `/api/nuki/callbacks/reset` | Hard reset: remove NukiBlinker callbacks (incl. stale IPs), re-register and verify |
 | GET | `/api/hue/status` | Check Hue Bridge connection and API key validity |
 | POST | `/api/hue/pair` | Pair with Hue Bridge (validates existing key first) |
 | GET | `/api/hue/lights` | List available Hue lights |
@@ -466,6 +468,18 @@ Manages the Nuki Bridge HTTP API:
 
 - **`register_callback(callback_url)`** — `GET /callback/add?url=<url>&token=<token>`.
   - Lists existing callbacks first to avoid duplicates.
+- **`_add_callback(callback_url)`** — the `/callback/add` half of `register_callback` (always
+  registers, not idempotent). Returns the new callback id, or `None` when the Bridge answers
+  `success: false`.
+- **`reset_callbacks(callback_url)`** — manual hard reset for the "events stopped arriving
+  after long downtime" failure mode: repeatedly lists callbacks and removes every NukiBlinker
+  callback — any whose URL path is `/nuki/callback`, any host/port, via module helper
+  `_is_own_callback(url)`, which also matches stale registrations pointing at old IPs —
+  then re-registers via `_add_callback` and re-lists to verify. The Bridge allows at most
+  3 callbacks and **ids may be positional**, so the list is re-fetched after every removal
+  (an id-shift edge case: after removing id 0, the next callback may become id 0); the
+  removal loop is bounded at 4 iterations to stay safe if a remove silently fails. Returns
+  `{removed, callback_id, callback_url, verified}`; HTTP errors propagate via `raise_for_status`.
 - **`list_callbacks()`** — Returns current registered callbacks.
 - **`remove_callback(callback_id)`** — Removes a callback by ID.
 - **`list_devices()`** — Returns paired devices (Openers + Smart Locks, for the web UI picker).
