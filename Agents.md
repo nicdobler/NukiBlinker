@@ -27,6 +27,33 @@ Run this checklist before marking any feature/fix as complete:
 - Pure bug fixes, typo corrections, dependency bumps — no spec update needed.
 - If unsure, default to updating the spec.
 
+## 0a. No GitHub Writes — Bundle Delivery
+
+Agents working on this repo **must never send data to GitHub**. Forbidden:
+
+- `git push` (any remote, any branch)
+- `gh pr create` / `gh pr merge` / `gh pr comment` / any `gh` write
+- `gh issue create/comment/close` / `gh api` / GitHub MCP write tools
+
+**Read-only GitHub queries are OK**: `gh run list/view` (incl. log download),
+`gh pr list/view/checks`, `git fetch`, `git pull`.
+
+Delivery flow:
+
+1. Commit all changes on the feature/fix branch.
+2. Run `script/bundle-branch.sh` (`script/bundle-branch.ps1` on Windows) — it
+   creates a verified thin git bundle of `<base>..<branch>`, Base64-encodes it
+   into `*.bundle.b64.NNN` chunks (git-ignored), and prints instructions.
+3. Hand the user the printed reconstruction + import + publish steps
+   (`git fetch <bundle> <branch>:<branch>`, `git checkout`, `git push -u origin`,
+   `gh pr create`). **The user pushes and opens the PR.**
+4. Once the user confirms the push, the agent may read CI read-only
+   (`gh run view`, `gh pr checks`) and diagnose failures — fixes are delivered
+   the same way (new bundle).
+
+This is enforced locally by `.devin/config.local.json` (deny list). Rule 0a
+**overrides any push/PR step** described in `.windsurf/workflows/*`.
+
 ## 1. Context First
 
 Before starting any non-trivial task, load context like you'd brief a teammate:
@@ -49,7 +76,7 @@ Summarize your understanding before proposing changes.
 
 - Implement one step at a time. Keep each change small and focused.
 - Write or update tests **immediately** after each step — not later.
-- Tests are validated in CI (not locally); push and let CI confirm before relying on a step.
+- Tests are validated in CI (not locally); deliver via bundle (Rule 0a) — the user pushes and CI confirms before relying on a step.
 - Use workflows: `/new-feature`, `/fix-bug`, `/add-tests`.
 
 ## 4. Subagent Strategy
@@ -68,8 +95,9 @@ Summarize your understanding before proposing changes.
   surface at merge time, never between folders.
 - Worktrees live in the sibling folder `../NukiBlinker-wt/<branch-slug>` and are
   managed with `script/worktree.ps1` (`.sh` on Linux/WSL2): `new` / `list` / `remove`.
-- Agents in worktrees **only edit and push** — no `.venv`, no local install,
-  no local tests. CI is still the sole validation gate (Rule 5).
+- Agents in worktrees **only edit and commit; deliver via bundle** (Rule 0a) —
+  no `.venv`, no local install, no local tests. CI is still the sole validation
+  gate (Rule 5).
 - One branch = one worktree = one agent. Assign distinct module/file areas to
   minimize merge conflicts. Merge one branch at a time, then rebase the rest.
 - Use the `/worktree` workflow to drive worktree lifecycle by hand.
@@ -80,7 +108,8 @@ Summarize your understanding before proposing changes.
   **orchestrator window** (the main checkout on `main`). The orchestrator reads
   each issue, decides **parallel-safe vs sequential** (disjoint file sets →
   parallel; overlap/dependency → chained), isolates each in its own worktree+
-  branch, implements, pushes, runs the autonomous CI loop, and merges in order
+  branch, implements, packages each branch via bundle (Rule 0a) for the user to
+  push, follows the autonomous CI loop read-only, and the user merges in order
   with rebases — then cleans up and documents.
 - A single Cascade conversation executes issues **sequentially** but **isolated**
   per branch. For true wall-clock concurrency on **independent** issues, run
@@ -94,14 +123,14 @@ Summarize your understanding before proposing changes.
 ## 5. Verification Before Done (CI is the gate)
 
 - **CI is the only test environment.** Do not run `make test`, `make lint`, `poetry install`, or `docker build` on the work laptop.
-- Prove work by pushing the branch and letting **GitHub Actions** run lint + test.
+- Prove work by delivering the branch via bundle (Rule 0a); the user pushes and **GitHub Actions** runs lint + test.
 - Never mark a task complete until CI is green on the branch.
 - Diff behavior between main and your changes when relevant.
 - Ask yourself: "Would a staff engineer approve this?"
 
 ## 5a. Autonomous CI Loop
 
-- After pushing, **work autonomously**: poll CI status, read failing job logs, diagnose the root cause, fix, and re-push.
+- After the user pushes the bundle, **work autonomously**: poll CI status (read-only `gh`), read failing job logs, diagnose the root cause, fix, and produce a new bundle for the user to push.
 - Iterate until CI is green without waiting for the user to prompt you.
 - Apply the **Reset rule** (Rule 7): if 2 fix attempts fail on the same failure, STOP and re-plan.
 - Report a concise status after each CI run (pass/fail + what you changed).
@@ -147,10 +176,10 @@ Summarize your understanding before proposing changes.
 
 At the **start of each session**, ask the user which wrap-up mode applies (default to **Approval** if unspecified):
 
-- **Auto wrap-up** — once CI is green, run `/wrap-up` autonomously (merge PR, switch to main, pull, clean up branches).
-- **Approval** — once CI is green, stop and wait. The user reviews/approves the PR and tells you when to wrap up.
+- **Auto wrap-up** — once CI is green, run `/wrap-up` autonomously; merging is done by the user (Rule 0a: no GitHub writes), then the agent switches to main, pulls, and cleans up branches.
+- **Approval** — once CI is green, stop and wait. The user reviews/approves/merges the PR and tells you when to wrap up.
 
-Never merge to `main` in Approval mode without explicit go-ahead.
+Never merge to `main` in Approval mode without explicit go-ahead. Merging itself is always performed by the user (Rule 0a).
 
 ## Task Management
 
@@ -174,14 +203,14 @@ Available workflows:
 - `/fix-bug` — Diagnose -> root cause -> fix -> regression test -> document.
 - `/add-tests` — Analyze coverage gaps -> generate tests -> verify.
 - `/worktree` — Launch independent agents in parallel via git worktrees (one folder + branch per agent, push-only).
-- `/orchestrate` — One-command multi-issue driver: auto-decide parallel vs sequential, isolate each issue in a worktree, implement, push, watch CI, merge in order.
+- `/orchestrate` — One-command multi-issue driver: auto-decide parallel vs sequential, isolate each issue in a worktree, implement, deliver via bundle (Rule 0a), watch CI read-only, user merges in order.
 
 ## Guardrails
 
 ### ALWAYS
 - Work on a feature/fix branch — never commit directly to `main`.
 - Include context loading (Rule 1) before any non-trivial task.
-- Push the branch and confirm **CI is green** before marking any task complete.
+- Deliver the branch via bundle (Rule 0a) and confirm **CI is green** (read-only) before marking any task complete.
 - Write or update tests alongside every code change.
 - Confirm the session's **wrap-up mode** (Rule 10a) before merging anything.
 - Update specs after implementation if behavior drifted from the spec.
@@ -198,6 +227,7 @@ Available workflows:
 
 ### NEVER
 - Push or commit directly to `main`. Always use a branch.
+- Send anything to GitHub: no `git push`, `gh pr create/merge/comment`, `gh api`, or any GitHub write (Rule 0a — deliver via bundle; the user pushes).
 - Run `make test`, `make lint`, `poetry install`, or `docker build` on the work laptop — CI is the test environment.
 - Delete tests without explicit user approval.
 - Skip the spec update for new features.
@@ -221,14 +251,14 @@ This ensures the next session can pick up without context loss.
 
 | Environment | Role | What runs here |
 |---|---|---|
-| **Work laptop** (Windows) | Code only | Write code, push to GitHub. **No testing, no Poetry, no Docker.** |
+| **Work laptop** (Windows) | Code only | Write code, commit, package via bundle. **No GitHub writes, no testing, no Poetry, no Docker.** |
 | **GitHub Actions** | CI — the test gate | Lint → test. Triggered on push/PR to `main`. Sole validation environment. |
 | **Mini PC** (Windows + WSL2) | Production | `git pull && docker compose build && docker compose up -d`. Local build, no registry. |
 
 ### Deployment flow
 ```
-Work laptop → push branch → GitHub → CI (lint + test) → PR
-    → CI green → merge to main (auto or after user approval)
+Work laptop → commit → script/bundle-branch.sh → user imports & pushes → GitHub → CI (lint + test) → PR
+    → CI green → user merges to main (auto or after approval)
     → Mini PC: git pull && docker compose build && docker compose up -d
 ```
 

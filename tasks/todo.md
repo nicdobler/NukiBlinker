@@ -852,3 +852,25 @@ optional staleness warning.
 4. Tests + specs + README + CHANGELOG; CI green; Auto wrap-up.
 
 Open issues remaining: **#219**, **#220** (both depend on step 1 data).
+
+---
+
+## Fix time-bomb tests + bundle delivery rule
+
+**Branch**: `fix/time-bomb-tests` | **PR**: pending (delivered via bundle)
+
+### Checklist
+- [x] `tests/test_event_log.py` — `TestLogEventEventTime`: `event_time` now `now()-5min` (explicit + naive cases); `timedelta` already imported
+- [x] `tests/test_integration_event_pipeline.py::test_nuki_web_response_stored_in_event_log` — single `ring_time = now()-10min` for both `ringactionTimestamp` and Web `date` (validator still rejects as too old; entry still logged with `nuki_web_response`)
+- [x] `script/bundle-branch.sh` (new, bash, macOS+Linux, chmod +x) + `script/bundle-branch.ps1` (ported from xls2csv, push/PR steps added)
+- [x] `.gitignore` — `*.bundle`, `*.bundle.b64.*`
+- [x] `AGENTS.md` — new rule 0a "No GitHub Writes — Bundle Delivery" + consistency edits (rules 3, 4, 5/5a, 10a, guardrails, env table, deployment flow)
+- [x] `CHANGELOG.md` `[Unreleased]` — Fixed (time-bomb tests), Added (bundle script), Changed (bundle delivery)
+- [x] `README.md` — "Delivering changes (bundle)" subsection under Development
+- [x] `tasks/lessons.md` — bundle-delivery + no-hardcoded-dates lessons
+- [x] Bundle generated + import verified in a scratch clone
+
+### Next steps
+1. User imports the bundle on a machine with GitHub access, pushes the branch, opens the PR.
+2. CI green → merge (user).
+3. `@dependabot rebase` on PRs #249 #254 #261 #263 #264 #267, merging **one at a time** (they all touch `poetry.lock`).
