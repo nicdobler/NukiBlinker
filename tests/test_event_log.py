@@ -576,7 +576,7 @@ class TestLogEventEventTime:
     def test_explicit_event_time_is_stored(self):
         """The provided event_time, not now(), is recorded."""
         log = self._log()
-        event_time = datetime(2026, 6, 19, 20, 11, 22, tzinfo=timezone.utc)
+        event_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
         log.log_event(
             payload={"deviceType": 2, "nukiId": 100},
             event_type="ring",
@@ -602,16 +602,17 @@ class TestLogEventEventTime:
     def test_naive_event_time_treated_as_utc(self):
         """A naive event_time is normalised to UTC so comparisons stay correct."""
         log = self._log()
+        event_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(minutes=5)
         log.log_event(
             payload={"deviceType": 2, "nukiId": 100},
             event_type="ring",
             actions=[],
             validation_result=self._vr(),
-            event_time=datetime(2026, 6, 19, 20, 11, 22),  # naive
+            event_time=event_time.replace(tzinfo=None),  # naive
         )
         stored = log.entries[0].timestamp
         assert stored.tzinfo is not None
-        assert stored == datetime(2026, 6, 19, 20, 11, 22, tzinfo=timezone.utc)
+        assert stored == event_time
 
 
 class TestLogEventNukiWebResponse:

@@ -513,6 +513,14 @@ push feat/my-branch  →  GitHub Actions runs lint + test
 Verification happens exclusively in CI. Push the branch, let GitHub Actions run
 `make lint` + `make test`, read failing job logs, fix, and re-push until CI is green.
 
+### Delivering changes (bundle)
+
+Agents never push to GitHub (see `Agents.md` rule 0a). To hand a branch to the
+user for publishing, run `script/bundle-branch.sh` (`script/bundle-branch.ps1`
+on Windows): it creates a verified git bundle of the branch commits, Base64-
+encodes it into `*.bundle.b64.NNN` chunks, and prints the import / `git push` /
+`gh pr create` steps the user runs on a machine with GitHub access.
+
 ### Parallel agents (git worktrees)
 
 To run several agents in parallel without conflicts, give each one its own
