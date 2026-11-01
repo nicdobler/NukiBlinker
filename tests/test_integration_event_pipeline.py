@@ -463,9 +463,15 @@ class TestEventPipelineIntegration:
     @pytest.mark.asyncio
     async def test_nuki_web_response_stored_in_event_log(self, mock_config, mock_clients):
         """#232: a Nuki Web response used to resolve a ring is stored in the event log."""
+        # Same instant for the Bridge timestamp and the Web entry date.
+        # now()-relative: a hardcoded date is purged by the 7-day EventLog
+        # retention and rejected differently as "now" drifts. 10 min is old
+        # enough for the validator to reject the event (> max_delay_seconds)
+        # while the ring still resolves the Web candidate (same instant).
+        ring_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).replace(microsecond=0)
         web_response = [
             {"smartlockId": 12345, "name": "Nico", "trigger": 2, "source": 1,
-             "date": "2026-06-19T20:11:22.000Z"},
+             "date": ring_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")},
         ]
         mock_clients.nuki_web = AsyncMock()
         mock_clients.nuki_web.get_recent_log.return_value = web_response
@@ -475,7 +481,7 @@ class TestEventPipelineIntegration:
             "nukiId": 12345,
             "state": 1,
             "ringactionState": True,
-            "ringactionTimestamp": "2026-06-19T20:11:22+00:00",
+            "ringactionTimestamp": ring_time.isoformat(),
         }
         with pytest.MonkeyPatch().context() as m:
             m.setattr('nukiblinker.night_mode.datetime', _fake_datetime(10, 0))
