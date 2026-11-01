@@ -140,10 +140,11 @@
             <div class="section">
                 <h3>Callback Registration</h3>
                 <div class="pair-box">
-                    <p class="instructions">Register this server as a callback listener on your Nuki Bridge so it receives events (ring, door open, etc.).</p>
+                    <p class="instructions">Register this server as a callback listener on your Nuki Bridge so it receives events (ring, door open, etc.). If events stop arriving after a long downtime, use <strong>Hard Reset Callbacks</strong>.</p>
                     <div class="btn-row">
                         <button class="btn-primary btn-sm" onclick="nukiPair()">Register Callback</button>
                         <button class="btn-secondary btn-sm" onclick="nukiCheckCallbacks()">Check Status</button>
+                        <button class="btn-secondary btn-sm" onclick="nukiResetCallbacks()">Hard Reset Callbacks</button>
                     </div>
                     <div id="nukiPairStatus" class="pair-status"></div>
                 </div>
@@ -769,6 +770,18 @@ async function nukiPair() {
             ? `<span class="badge badge-ok">Paired</span> ID: ${d.callback_id} <small style="color:#64748b">${d.callback_url}</small>`
             : `<span class="badge badge-err">Failed</span> ${d.error}`;
     } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
+}
+async function nukiResetCallbacks() {
+    if (!confirm('Remove all NukiBlinker callbacks from the Bridge and re-register?')) return;
+    const el = document.getElementById('nukiPairStatus');
+    el.innerHTML = '<span style="color:#94a3b8">Resetting callbacks...</span>';
+    try {
+        const d = await (await fetch(`${API}/nuki/callbacks/reset`, { method: 'POST' })).json();
+        el.innerHTML = d.status === 'reset'
+            ? `<span class="badge badge-ok">Reset</span> Removed: ${d.removed.length} · ID: ${d.callback_id} <small style="color:#64748b">${d.callback_url}</small>`
+            : `<span class="badge badge-err">Failed</span> ${d.error}`;
+    } catch (e) { el.innerHTML = '<span class="badge badge-err">Error</span> ' + e.message; }
+    nukiCheckCallbacks();
 }
 async function nukiCheckCallbacks() {
     const el = document.getElementById('nukiPairStatus');

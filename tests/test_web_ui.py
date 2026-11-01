@@ -282,6 +282,60 @@ class TestNukiPairTimeout:
             assert "Nuki Bridge unreachable" in r.json()["error"]
 
 
+class TestNukiCallbackReset:
+    """POST /api/nuki/callbacks/reset — hard reset of NukiBlinker callbacks."""
+
+    def test_400_when_nuki_not_configured(self, client):
+        r = client.post("/api/nuki/callbacks/reset")
+        assert r.status_code == 400
+
+    def test_200_verified_updates_callback_id(self, app, client):
+        app.state.config.nuki.bridge_ip = "192.168.1.100"
+        result = {
+            "removed": [0, 1],
+            "callback_id": 3,
+            "callback_url": "http://192.168.1.50:8080/nuki/callback",
+            "verified": True,
+        }
+        with patch(
+            "nukiblinker.nuki_client.NukiClient.reset_callbacks",
+            new_callable=AsyncMock, return_value=result,
+        ):
+            r = client.post("/api/nuki/callbacks/reset")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "reset"
+        assert body["removed"] == [0, 1]
+        assert body["callback_id"] == 3
+        assert app.state.callback_id == 3
+
+    def test_500_when_not_verified(self, app, client):
+        app.state.config.nuki.bridge_ip = "192.168.1.100"
+        result = {
+            "removed": [],
+            "callback_id": None,
+            "callback_url": "http://192.168.1.50:8080/nuki/callback",
+            "verified": False,
+        }
+        with patch(
+            "nukiblinker.nuki_client.NukiClient.reset_callbacks",
+            new_callable=AsyncMock, return_value=result,
+        ):
+            r = client.post("/api/nuki/callbacks/reset")
+        assert r.status_code == 500
+        assert "not present" in r.json()["error"]
+
+    def test_502_on_bridge_timeout(self, app, client):
+        app.state.config.nuki.bridge_ip = "192.168.1.100"
+        with patch(
+            "nukiblinker.nuki_client.NukiClient.reset_callbacks",
+            new_callable=AsyncMock, side_effect=httpx.ConnectTimeout(""),
+        ):
+            r = client.post("/api/nuki/callbacks/reset")
+        assert r.status_code == 502
+        assert "Nuki Bridge unreachable" in r.json()["error"]
+
+
 class TestStackTraceExposure:
     """CodeQL #16/#17: exception details must not leak to HTTP clients."""
 

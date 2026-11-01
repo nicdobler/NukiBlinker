@@ -249,6 +249,36 @@ def mount_web_ui(app: FastAPI, config_path: str) -> None:
             body, status = _bridge_error(e, "Nuki Bridge")
             return JSONResponse(body, status_code=status)
 
+    @router.post("/nuki/callbacks/reset")
+    async def nuki_reset_callbacks(request: Request) -> JSONResponse:
+        """Remove all NukiBlinker callbacks (incl. stale IPs), re-register, verify."""
+        config = request.app.state.config
+        if not config.nuki.bridge_ip or not config.nuki.api_token:
+            return JSONResponse({"error": "Nuki not configured"}, status_code=400)
+        try:
+            from nukiblinker.nuki_client import NukiClient
+
+            client = NukiClient(
+                config.nuki.bridge_ip, config.nuki.bridge_port, config.nuki.api_token
+            )
+            from nukiblinker.config import get_public_host
+
+            host = get_public_host(config)
+            callback_url = f"http://{host}:{config.server.port}/nuki/callback"
+            result = await client.reset_callbacks(callback_url)
+            request.app.state.callback_id = result["callback_id"]
+            if result["verified"]:
+                return JSONResponse({"status": "reset", **result})
+            return JSONResponse(
+                {"error": "Callback not present on Bridge after reset — check Nuki Bridge",
+                 **result},
+                status_code=500,
+            )
+        except Exception as e:
+            logger.error("Nuki callback hard reset failed: %s", e, exc_info=True)
+            body, status = _bridge_error(e, "Nuki Bridge")
+            return JSONResponse(body, status_code=status)
+
     @router.get("/nuki/web-devices")
     async def nuki_web_devices(request: Request) -> JSONResponse:
         """List smartlocks from the Nuki Web API (#190).

@@ -284,6 +284,11 @@ A simple, single-page web interface for configuring NukiBlinker.
    - API token.
    - **Web API token** (optional, #141): a masked secret field to enter the Nuki **Web API** token used to resolve real user names/triggers for Ring-to-Open and Door-opened events. Stored in `secrets.yaml`; masked (`***`) on read and preserved on save like the other secrets.
    - Device picker — select which Opener and/or Smart Lock to listen to.
+   - **Callback Registration**: "Register Callback" (idempotent) and **"Hard Reset Callbacks"** — a manual recovery
+     button (with a `confirm()` dialog) that removes every NukiBlinker callback on the Bridge — any callback whose
+     URL path is `/nuki/callback`, on any host/port, so stale registrations pointing at old IPs are cleaned up too —
+     re-registers the current URL, and verifies it appears in the Bridge's callback list. Callbacks belonging to
+     other integrations are left untouched. Use it when events stop arriving after a long downtime.
 
 2. **Hue Bridge**
    - IP (auto-discovered if possible; manual fallback).
@@ -363,6 +368,7 @@ Key settings:
 17. **Pause/Resume** — Web UI pause button deregisters callback without stopping the service; resume re-registers it.
 18. **Tests** — Unit tests cover event classification, person identification, all notification channels, event rules, config validation, web UI access control, and shutdown hook.
 19. **Lint** — `make lint` passes with zero errors.
+20. **Callback hard reset** — The Nuki tab "Hard Reset Callbacks" button removes all NukiBlinker callbacks from the Bridge (including stale URLs pointing at old IPs), preserves other integrations' callbacks, re-registers the current URL and verifies it. The response includes the removed callback ids, the new id and a `verified` flag; every step is logged.
 
 ## Non-Goals (Current)
 
@@ -554,6 +560,25 @@ events that triggered no action.
   counts to events that triggered at least one action. Backend support via the
   `actions_only` flag on `EventLog.get_recent_events()` / `get_event_count()`
   and the `?actions_only=1` query parameter on `GET /api/events/log`.
+
+### Nuki callback hard reset (manual recovery)
+
+**Problem**: After the app has been down for a long time, the Nuki Bridge can silently stop
+delivering callbacks even though `/callback/list` still shows our URL. Re-registering does not
+help because registration is idempotent and skips URLs already in the list. Stale callbacks
+pointing at old IPs can also linger (the Bridge allows at most 3 callbacks).
+
+**Solution**: A manual **"Hard Reset Callbacks"** button in the web UI (Nuki → Callback
+Registration), guarded by a `confirm()` dialog. It removes only NukiBlinker callbacks — any
+callback whose URL path is `/nuki/callback`, on any host/port (this covers stale IPs) — then
+re-registers the current callback URL and verifies it appears in the Bridge's callback list.
+Callbacks registered by other integrations are preserved. Startup behaviour is unchanged;
+this is a manual recovery action only.
+
+**Acceptance criteria**:
+- Stale NukiBlinker callback URLs (any host/port) are removed; foreign callbacks are preserved.
+- The API response reports the removed callback ids, the new callback id and a `verified` flag.
+- Every step (removals, re-registration, verification) is logged.
 
 ## Future Considerations
 

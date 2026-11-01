@@ -118,7 +118,7 @@ The web UI provides a tabbed interface covering all configuration:
 | Tab | Features |
 |---|---|
 | **Status** | Pause/resume, test events, server host/port |
-| **Nuki** | Bridge connection, network discovery, callback registration, device filter (opener/lock ID), optional Web API token |
+| **Nuki** | Bridge connection, network discovery, callback registration & hard reset, device filter (opener/lock ID), optional Web API token |
 | **Hue** | Bridge connection, network discovery, guided pairing (button press → pair), light & group selection |
 | **Speakers** | Chromecast names, network discovery, volume slider |
 | **HomeKit** | Enable/disable, setup code, persist directory |
@@ -257,6 +257,7 @@ Name resolution for **Opener** events (ring / ring to open) is done **exclusivel
 | `/api/nuki/pair` | POST | Register callback on Nuki Bridge |
 | `/api/nuki/devices` | GET | List Nuki devices |
 | `/api/nuki/callbacks` | GET | List registered callbacks |
+| `/api/nuki/callbacks/reset` | POST | Hard reset: remove NukiBlinker callbacks (incl. stale IPs), re-register & verify |
 | `/api/hue/status` | GET | Check Hue Bridge connection & API key validity |
 | `/api/hue/pair` | POST | Pair with Hue Bridge (tries existing key first) |
 | `/api/hue/lights` | GET | List Hue lights |
@@ -349,6 +350,10 @@ The container cannot reach the Nuki Bridge. Check:
 - **Docker networking**: the container uses `network_mode: host`, so it shares the host's network stack. If running on WSL2, make sure the WSL2 VM can reach the LAN (see WSL2 section below).
 
 The app starts normally even if callback registration fails — you can re-register later from the web UI (Nuki tab → Register Callback).
+
+### Events stop arriving after a long downtime
+
+Sometimes the Bridge keeps listing NukiBlinker's callback URL but silently stops delivering events after the app has been down for a while. Since callback registration is idempotent, clicking **Register Callback** again changes nothing. Use the **Hard Reset Callbacks** button (Nuki tab → Callback Registration): it removes every NukiBlinker callback on the Bridge — including stale URLs pointing at old IPs — re-registers the current URL and verifies it landed. Callbacks belonging to other integrations are left untouched.
 
 ### Container starts but callback URL is wrong
 
