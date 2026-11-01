@@ -46,3 +46,8 @@
 ## 2026-06-12 - HomeKit service changes on a paired standalone accessory
 - **Mistake**: Added a second ProgrammableSwitchEvent service (StatelessProgrammableSwitch) without ServiceLabelIndex; iOS paired OK, then rejected the attribute DB and silently dropped the accessory. Also assumed iOS would treat a service-list change as an in-place update; it dropped the accessory instead, leaving an orphaned pairing (paired_clients set, no QR shown).
 - **Rule**: When an accessory has 2+ services with ProgrammableSwitchEvent, set ServiceLabelIndex on the switch and mark the main service primary. Before deploying service-list changes to a paired accessory, remove it from the Home app first (protocol unpair), then deploy and re-pair.
+
+## 2026-11-01 — No GitHub writes from agents; no hardcoded dates in tests
+- **Rule**: Agents never send data to GitHub (no `git push`, `gh pr create/merge/comment`, `gh api`, GitHub MCP writes). Deliver changes via git bundle (`script/bundle-branch.sh`) — same pattern as xls2csv. Read-only `gh`/CI queries are fine.
+- **Mistake**: Tests hardcoded `2026-06-19`; once it aged past `EventLog` 7-day retention the insert purged it and `entries[0]` raised `IndexError`, breaking CI on main + all Dependabot PRs.
+- **Rule**: Never hardcode absolute dates in tests that pass through retention/age checks; use `now()`-relative times.
