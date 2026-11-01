@@ -874,3 +874,29 @@ Open issues remaining: **#219**, **#220** (both depend on step 1 data).
 1. User imports the bundle on a machine with GitHub access, pushes the branch, opens the PR.
 2. CI green → merge (user).
 3. `@dependabot rebase` on PRs #249 #254 #261 #263 #264 #267, merging **one at a time** (they all touch `poetry.lock`).
+
+---
+
+## Nuki callback hard reset
+
+**Branch**: feat/nuki-callback-hard-reset | **PR**: pending
+
+### Checklist
+- [x] Spec first: `specs/product-spec.md` (Nuki web-UI section, acceptance criterion #20, Unreleased feature entry) + `specs/tech-spec.md` (`reset_callbacks`/`_add_callback`, class diagram, API table) — committed as `docs(spec)`
+- [x] `nukiblinker/nuki_client.py` — extracted `_add_callback()` from `register_callback`; new `_is_own_callback()` helper (URL path `/nuki/callback`, any host/port) and `reset_callbacks()`
+- [x] `nukiblinker/web_ui.py` — `POST /api/nuki/callbacks/reset` (400 unconfigured / 200 verified / 500 not verified / `_bridge_error` mapping)
+- [x] `nukiblinker/static/index.html` — Hard Reset Callbacks button with `confirm()`, `nukiResetCallbacks()` JS, instructions sentence
+- [x] Tests — `TestIsOwnCallback`, `TestAddCallback`, `TestResetCallbacks` (own-only removal w/ id-shift re-list, verified=False, add failure, bounded loop) + `TestNukiCallbackReset` endpoint tests (400/200/500/502)
+- [x] README — Nuki tab row, API endpoint row, troubleshooting section
+- [x] CHANGELOG `[Unreleased]` → Added
+- [x] `python3 -m py_compile` on changed Python files
+
+### Decisions
+- **Manual button only** — startup behaviour unchanged (`_register_callback_loop` untouched).
+- **Only own callbacks removed** — matched by URL path `/nuki/callback` on any host/port, which also covers stale registrations on old IPs; foreign integrations' callbacks are preserved.
+- **Re-list after every removal** — Bridge callback ids may be positional and shift after a remove; loop bounded at 4 iterations (Bridge max is 3) so a silently-failing remove can't hang.
+- `nukiResetCallbacks()` refreshes the callback list via `nukiCheckCallbacks()` after rendering the result (which overwrites the status element with the fresh list).
+
+### Next steps
+1. User pushes the bundle, CI runs lint + tests.
+2. Verify on the Mini PC: deploy, ring the doorbell → "Callback received" in the log.

@@ -1,10 +1,13 @@
 """Tests for nukiblinker.nuki_client — mock httpx."""
 
+import logging
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from nukiblinker.nuki_client import NukiClient
+from nukiblinker.nuki_client import NukiClient, _is_own_callback
+
+CB_URL = "http://me:8080/nuki/callback"
 
 
 @pytest.fixture
@@ -108,3 +111,121 @@ class TestGetLastLog:
             mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             result = await client.get_last_log(12345)
             assert result is None
+
+
+class TestIsOwnCallback:
+    @pytest.mark.parametrize("url,expected", [
+        (CB_URL, True),
+        ("http://10.0.0.9:8080/nuki/callback", True),
+        ("http://10.0.0.9:8080/nuki/callback/", True),
+        ("http://ha:8123/api/nuki", False),
+        ("http://ha:8123/nuki/callback/extra", False),
+        ("", False),
+    ])
+    def test_matches_only_callback_path(self, url, expected):
+        assert _is_own_callback(url) is expected
+
+
+class TestAddCallback:
+    @pytest.mark.asyncio
+    async def test_adds_callback(self, client):
+        resp = _mock_response({"success": True, "id": 7})
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(
+                return_value=MagicMock(get=AsyncMock(return_value=resp)))
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            assert await client._add_callback(CB_URL) == 7
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_bridge_failure(self, client):
+        resp = _mock_response({"success": False, "message": "list full"})
+        with patch("httpx.AsyncClient") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(
+                return_value=MagicMock(get=AsyncMock(return_value=resp)))
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            assert await client._add_callback(CB_URL) is None
+
+
+class TestResetCallbacks:
+    @pytest.mark.asyncio
+    async def test_removes_only_own_callbacks(self, client):
+        """Stale own-IP callback is removed (re-listing after each removal
+        because Bridge ids may shift); foreign callbacks are preserved."""
+        foreign = {"id": 2, "url": "http://ha:8123/api/nuki"}
+        lists = [
+            [{"id": 0, "url": CB_URL},
+             {"id": 1, "url": "http://10.0.0.9:8080/nuki/callback"}, foreign],
+            # After removing id 0 the old-IP callback shifted to id 0:
+            [{"id": 0, "url": "http://10.0.0.9:8080/nuki/callback"}, foreign],
+            [foreign],
+            [foreign, {"id": 1, "url": CB_URL}],
+        ]
+        with patch.object(client, "list_callbacks",
+                          new_callable=AsyncMock, side_effect=lists), \
+             patch.object(client, "remove_callback",
+                          new_callable=AsyncMock, return_value=True) as mock_rm, \
+             patch.object(client, "_add_callback",
+                          new_callable=AsyncMock, return_value=1) as mock_add:
+            result = await client.reset_callbacks(CB_URL)
+
+        removed_ids = [c.args[0] for c in mock_rm.await_args_list]
+        assert removed_ids == [0, 0]
+        mock_add.assert_awaited_once_with(CB_URL)
+        assert result["verified"] is True
+        assert result["removed"] == [0, 0]
+        assert result["callback_id"] == 1
+
+    @pytest.mark.asyncio
+    async def test_verified_false_when_url_missing(self, client, caplog):
+        """Bridge dropped the URL right after adding → verified False + warning."""
+        lists = [
+            [{"id": 0, "url": CB_URL}],
+            [],
+            [{"id": 5, "url": "http://ha:8123/api/nuki"}],
+        ]
+        with patch.object(client, "list_callbacks",
+                          new_callable=AsyncMock, side_effect=lists), \
+             patch.object(client, "remove_callback",
+                          new_callable=AsyncMock, return_value=True), \
+             patch.object(client, "_add_callback",
+                          new_callable=AsyncMock, return_value=2):
+            with caplog.at_level(logging.WARNING, logger="nuki_client"):
+                result = await client.reset_callbacks(CB_URL)
+
+        assert result["verified"] is False
+        assert result["callback_id"] == 2
+        assert any("not present on Bridge" in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_add_failure_returns_none_id(self, client):
+        """Bridge answers success:false → callback_id None, verified False."""
+        with patch.object(client, "list_callbacks",
+                          new_callable=AsyncMock, return_value=[]), \
+             patch.object(client, "remove_callback",
+                          new_callable=AsyncMock) as mock_rm, \
+             patch.object(client, "_add_callback",
+                          new_callable=AsyncMock, return_value=None):
+            result = await client.reset_callbacks(CB_URL)
+
+        mock_rm.assert_not_awaited()
+        assert result["callback_id"] is None
+        assert result["verified"] is False
+        assert result["removed"] == []
+
+    @pytest.mark.asyncio
+    async def test_removal_loop_is_bounded(self, client, caplog):
+        """If remove silently fails the loop stops at the bound, no hang."""
+        stale = [{"id": 0, "url": "http://10.0.0.9:8080/nuki/callback"}]
+        with patch.object(client, "list_callbacks",
+                          new_callable=AsyncMock, return_value=stale), \
+             patch.object(client, "remove_callback",
+                          new_callable=AsyncMock, return_value=True) as mock_rm, \
+             patch.object(client, "_add_callback",
+                          new_callable=AsyncMock, return_value=None):
+            with caplog.at_level(logging.WARNING, logger="nuki_client"):
+                result = await client.reset_callbacks(CB_URL)
+
+        assert mock_rm.await_count == 4
+        assert result["removed"] == [0, 0, 0, 0]
+        assert result["verified"] is False
+        assert any("still present" in r.getMessage() for r in caplog.records)
