@@ -19,7 +19,7 @@ HAP-python = {version = ">=4.9,<6.0", extras = ["QRCode"]}
 zeroconf = ">=0.136,<0.152"
 
 [tool.poetry.group.dev.dependencies]
-black = "^26.5.1"
+black = "^26.10.1"
 flake8 = "^7.3.0"
 pytest = "^9.0.3"
 pytest-cov = "^7.1.0"
