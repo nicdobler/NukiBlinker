@@ -4,6 +4,10 @@
 
 Agents deliver one committed feature branch at a time through fixed-name thin Git bundles, without GitHub writes. Source and target must be clean. Import must preserve dirty work and divergent branches; malformed or incomplete transfers fail without moving a branch. The user publishes and merges after CI passes. Application behavior is unchanged.
 
+## Runtime upgrade acceptance
+
+NukiBlinker runs a single Python runtime — the one in the Dockerfile. Runtime upgrades are atomic: one PR changes `Dockerfile` and `ci.yml` together, and must pass automated tests plus a build of the proposed production image in GitHub Actions before merging. PR builds never publish images. This adds no application behavior or configuration changes.
+
 ## Vision
 
 A lightweight, always-on service that reacts to Nuki smart lock events — blinking Philips Hue lights, playing chimes and announcements on Google Nest speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.

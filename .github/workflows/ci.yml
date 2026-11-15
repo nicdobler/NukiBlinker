@@ -82,6 +82,21 @@ jobs:
         if: steps.test.outcome == 'failure'
         run: exit 1
 
+  docker-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build PR image without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+
   report:
     needs: [lint, test]
     if: always() && github.event_name == 'pull_request'

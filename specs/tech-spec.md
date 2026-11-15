@@ -973,13 +973,15 @@ The frontend is a single `index.html` with embedded CSS/JS (no build step, no np
 ## CI/CD
 
 - **GitHub Actions** (`.github/workflows/ci.yml`):
-  - On push/PR: lint (flake8) + test (pytest).
+  - On push to main / PR: lint (flake8) + tests (pytest), pinned to the same Python version as the `Dockerfile` (single runtime — no version matrix).
+  - On PR: build the PR Dockerfile without publishing, with read-only repository permissions. This validates production dependency installation before merging runtime upgrades.
+  - Runtime upgrades are atomic: `Dockerfile` and `ci.yml` `python-version` change in the same PR so CI always tests the deployed runtime.
 - **Dependabot** (`.github/dependabot.yml`): auto-updates for pip, GitHub Actions, and Docker.
 - **Local build**: Docker image is built on the Mini PC via `docker compose build`. No registry involved.
 
 ## Testing
 
-All tests run via `make test` on the Mac. Real-device testing via `make runLocal`.
+Automated tests run exclusively in GitHub Actions; do not run tests or Docker builds on the work laptop. Real-device checks are performed in the deployment environment.
 
 | Test file | Covers |
 |---|---|
