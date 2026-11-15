@@ -521,10 +521,32 @@ Verification happens exclusively in CI. Push the branch, let GitHub Actions run
 ### Delivering changes (bundle)
 
 Agents never push to GitHub (see `Agents.md` rule 0a). To hand a branch to the
-user for publishing, run `script/bundle-branch.sh` (`script/bundle-branch.ps1`
-on Windows): it creates a verified git bundle of the branch commits, Base64-
-encodes it into `*.bundle.b64.NNN` chunks, and prints the import / `git push` /
-`gh pr create` steps the user runs on a machine with GitHub access.
+user for publishing, use Bash + Python 3 + Git (macOS/Linux/WSL/Git Bash):
+
+```sh
+bash script/prepare-bundle.sh                 # current feature branch vs main
+bash script/unpack-bundle.sh                 # target: detect incoming branch
+bash script/unpack-bundle.sh feat/x /path/to/transfer
+```
+
+Copy `bundle.b64` or all `bundle.b64.1`, `.2`, ... files between machines.
+The thin bundle requires the base commit on the target. Both trees must be
+clean; imports only create or fast-forward feature branches, never overwrite
+divergent work. Incoming Base64 takes precedence over stale `bundle.bundle`.
+Numbered chunks are ordered numerically and must be contiguous. Keep each
+transfer in a fresh directory; mixed single/numbered inputs are rejected.
+Move previous source outputs aside before exporting again; nothing is deleted
+automatically. After import, the user runs `git push -u origin <branch>` and
+`gh pr create`; agents never publish.
+
+For the first import before these scripts exist on the target, transfer the
+decoded `bundle.bundle`, run `git bundle verify ./bundle.bundle`, then
+`git fetch ./bundle.bundle refs/heads/chore/bundle-transfer` and
+`git switch -c chore/bundle-transfer FETCH_HEAD` (only if this branch is new).
+If it already exists, inspect and fast-forward it instead of resetting it.
+
+Legacy `script/bundle-branch.sh` / `.ps1` retain their historical
+`*.bundle.b64.NNN` format; do not mix it with the fixed-name workflow.
 
 ### Parallel agents (git worktrees)
 

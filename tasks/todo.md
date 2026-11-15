@@ -910,9 +910,12 @@ Open issues remaining: **#219**, **#220** (both depend on step 1 data).
 Approved: port xls2csv prepare/unpack workflow and skill, adding numeric chunk ordering, stale-bundle avoidance, strict verification and clean-tree / divergence guards. No xls2csv changes in this branch; provide a command for a separate session there.
 
 - [x] Inspect xls2csv and commit specs before implementation.
-- [ ] Add prepare/unpack entry points, shared implementation and CI regression tests.
-- [ ] Update delivery instructions, skill and generated-output ignores.
-- [ ] Review and deliver bundle; user publishes and merges after CI green.
+- [x] Add prepare/unpack entry points, shared implementation and CI regression tests.
+- [x] Update delivery instructions, skill and generated-output ignores.
+- [x] Review diff and add regression cases; automated execution is deferred to CI.
+- [ ] User imports delivery, publishes and merges after CI green.
+
+Delivery: fixed-name bundle generated after committing; target bootstrap instructions in README. Checks here: git diff --check and bundle verification only. xls2csv remains unchanged; use a separate session to port these protections.
 - [ ] After merge, rebase ci/python315-readiness and resume #277 validation.
 
 Handoff: no local tests/builds and no GitHub writes. ci/python315-readiness remains intact. Wrap-up mode Approval.

@@ -41,12 +41,14 @@ Agents working on this repo **must never send data to GitHub**. Forbidden:
 Delivery flow:
 
 1. Commit all changes on the feature/fix branch.
-2. Run `script/bundle-branch.sh` (`script/bundle-branch.ps1` on Windows) — it
-   creates a verified thin git bundle of `<base>..<branch>`, Base64-encodes it
-   into `*.bundle.b64.NNN` chunks (git-ignored), and prints instructions.
-3. Hand the user the printed reconstruction + import + publish steps
-   (`git fetch <bundle> <branch>:<branch>`, `git checkout`, `git push -u origin`,
-   `gh pr create`). **The user pushes and opens the PR.**
+2. Run `bash script/prepare-bundle.sh [branch] [base]` (Bash + Python 3 + Git).
+   It produces verified `bundle.bundle` and `bundle.b64` or `bundle.b64.1`, `.2`, ...
+   with fixed names, ignored by Git. Move previous outputs aside before another export.
+3. The user copies Base64 files and runs `bash script/unpack-bundle.sh [branch] [dir]`
+   on the target. Trees must be clean; imports only create or fast-forward feature
+   branches, never reset divergent work. See `.devin/skills/bundle-transfer/SKILL.md`.
+   Legacy bundle-branch scripts retain their old format for compatibility.
+   **The user pushes (`git push -u origin <branch>`) and opens the PR (`gh pr create`).**
 4. Once the user confirms the push, the agent may read CI read-only
    (`gh run view`, `gh pr checks`) and diagnose failures — fixes are delivered
    the same way (new bundle).
