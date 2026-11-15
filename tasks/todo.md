@@ -2,6 +2,25 @@
 
 ---
 
+## #277 — Python 3.15 readiness
+
+**Branch**: ci/python315-readiness | **PR**: (pending)
+
+Approved plan (revised 2026-11-15): user asked to run a single runtime, not a matrix. Atomic runtime upgrade approach — CI tests only the Dockerfile-pinned version; a `docker-build` job builds the PR Dockerfile without publishing; the Python 3.15 bump will be a single PR changing Dockerfile + ci.yml together, superseding dependabot #277. CodeQL default-setup warnings are out of scope.
+
+- [x] Document acceptance criteria and CI design before implementation.
+- [x] Reverted version matrix; CI pinned to Dockerfile version (3.14).
+- [x] Add read-only, non-publishing Docker build for PRs.
+- [x] Rebased onto main after #278 (bundle-transport) merge.
+- [x] Review workflow diff and run git diff --check.
+- [ ] Deliver verified bundle (fixed-name format).
+- [ ] User pushes and opens preparation PR; confirm CI green.
+- [ ] User merges preparation; then atomic 3.15 upgrade PR (Dockerfile + ci.yml); close #277 as superseded.
+
+Handoff: no local tests or builds; no GitHub writes. User publishes and merges. Existing untracked graphify-out/ is left untouched.
+
+---
+
 ## #232 — La web no muestra los eventos recuperados de nuki web nunca
 
 **Branch**: feat/232-la-web-no-muestra-los-eventos-recuperado | **PR**: (pending)
