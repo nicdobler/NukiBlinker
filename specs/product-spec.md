@@ -1,5 +1,9 @@
 # Product Spec — NukiBlinker
 
+## Offline branch delivery
+
+Agents deliver one committed feature branch at a time through fixed-name thin Git bundles, without GitHub writes. Source and target must be clean. Import must preserve dirty work and divergent branches; malformed or incomplete transfers fail without moving a branch. The user publishes and merges after CI passes. Application behavior is unchanged.
+
 ## Vision
 
 A lightweight, always-on service that reacts to Nuki smart lock events — blinking Philips Hue lights, playing chimes and announcements on Google Nest speakers, and sending Apple HomeKit doorbell alerts. Different events trigger different actions.

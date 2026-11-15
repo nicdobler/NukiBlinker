@@ -900,3 +900,19 @@ Open issues remaining: **#219**, **#220** (both depend on step 1 data).
 ### Next steps
 1. User pushes the bundle, CI runs lint + tests.
 2. Verify on the Mini PC: deploy, ring the doorbell → "Callback received" in the log.
+
+---
+
+## Safe fixed-name bundle transport
+
+**Branch**: chore/bundle-transfer | **PR**: pending
+
+Approved: port xls2csv prepare/unpack workflow and skill, adding numeric chunk ordering, stale-bundle avoidance, strict verification and clean-tree / divergence guards. No xls2csv changes in this branch; provide a command for a separate session there.
+
+- [x] Inspect xls2csv and commit specs before implementation.
+- [ ] Add prepare/unpack entry points, shared implementation and CI regression tests.
+- [ ] Update delivery instructions, skill and generated-output ignores.
+- [ ] Review and deliver bundle; user publishes and merges after CI green.
+- [ ] After merge, rebase ci/python315-readiness and resume #277 validation.
+
+Handoff: no local tests/builds and no GitHub writes. ci/python315-readiness remains intact. Wrap-up mode Approval.
