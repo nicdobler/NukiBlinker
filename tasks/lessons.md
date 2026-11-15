@@ -51,3 +51,8 @@
 - **Rule**: Agents never send data to GitHub (no `git push`, `gh pr create/merge/comment`, `gh api`, GitHub MCP writes). Deliver changes via git bundle (`script/bundle-branch.sh`) — same pattern as xls2csv. Read-only `gh`/CI queries are fine.
 - **Mistake**: Tests hardcoded `2026-06-19`; once it aged past `EventLog` 7-day retention the insert purged it and `entries[0]` raised `IndexError`, breaking CI on main + all Dependabot PRs.
 - **Rule**: Never hardcode absolute dates in tests that pass through retention/age checks; use `now()`-relative times.
+
+## 2026-11-15 — Reuse the agreed cross-repository delivery workflow
+- **Rule**: Before delivering bundles, consult the sibling xls2csv workflow and the local bundle-transfer skill. Use fixed-name prepare/unpack commands rather than inventing a new transport format.
+- **Rule**: Keep independent delivery-tooling changes separate from runtime/CI changes. Merge tooling first, then rebase the dependent branch; do not mix unrelated work into one bundle.
+- **Rule**: Do not ask for wrap-up approval during a read-only advisory question; approvals should refer to a concrete plan or action.

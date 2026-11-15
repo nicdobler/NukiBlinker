@@ -962,6 +962,14 @@ flowchart LR
 
 The frontend is a single `index.html` with embedded CSS/JS (no build step, no npm). Communicates with the backend via JSON API calls.
 
+## Offline bundle transport
+
+- `script/prepare-bundle.sh [branch] [base]` uses Python 3 standard library and Git to create `bundle.bundle` and `bundle.b64` or contiguous `bundle.b64.1`, `.2`, ... (76 characters/line, at most 1000 lines/chunk). Existing output must be moved aside before another export; no automatic deletion.
+- `script/unpack-bundle.sh [branch] [dir]` prefers incoming Base64 over an existing decoded bundle, orders numbered chunks numerically, validates contiguous numbering and strict Base64, then verifies Git prerequisites before importing.
+- Both require a clean tree. Export must reference a local feature branch, not main. Import requires one branch head, rejects main, dirty trees and non-fast-forward updates, and checks out through FETCH_HEAD without force-resetting existing branches.
+- Legacy `bundle-branch.sh` / `.ps1` remain available with their historical format; the fixed-name workflow is the recommended Bash path (macOS/Linux/WSL/Git Bash with Python 3).
+- `.devin/skills/bundle-transfer/SKILL.md` documents safe agent operation. Generated bundles and graphify-out/ are ignored. Regression tests run only in GitHub Actions.
+
 ## CI/CD
 
 - **GitHub Actions** (`.github/workflows/ci.yml`):
