@@ -508,7 +508,7 @@ Fixed in v0.2.0. Rebuild the image: `docker compose build && docker compose up -
 
 > **Note**: All testing and linting run in **GitHub Actions CI** only. No testing, linting, Poetry, or Docker on the work laptop — code only.
 
-CI runs flake8 and pytest on a single Python version pinned to the `Dockerfile` (currently 3.14). Pull requests also build their Dockerfile without publishing an image. Runtime upgrades are atomic: `Dockerfile` and `ci.yml` `python-version` change in the same PR, which must pass tests plus the PR image build before merging (e.g. the Python 3.15 upgrade superseding #277).
+CI runs flake8 and pytest on a single Python version pinned to the `Dockerfile` (currently 3.15). Pull requests also build their Dockerfile without publishing an image. Runtime upgrades are atomic: `Dockerfile` and `ci.yml` `python-version` change in the same PR, which must pass tests plus the PR image build before merging (e.g. the Python 3.15 upgrade superseding #277).
 
 ### Branch workflow (CI as the test gate)
 
@@ -591,6 +591,6 @@ then squash-merges in issue order. Linux/WSL2: `script/orchestrate-parallel.sh`.
 
 ### Tech Stack
 
-- **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
+- **Python 3.11+** (Docker image `python:3.15-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
 - **pychromecast** · **gTTS** · **HAP-python** · **zeroconf**
 - **Black** · **flake8** · **pytest** · **pytest-asyncio**

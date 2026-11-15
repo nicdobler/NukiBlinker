@@ -2,6 +2,21 @@
 
 ---
 
+## Python 3.15 upgrade (atomic, supersedes #277)
+
+**Branch**: chore/python-3.15 | **PR**: pending
+
+Per agreed design: single runtime = Dockerfile version; upgrade changes `Dockerfile` and `ci.yml` `python-version` in one PR. PR CI now includes the non-publishing docker-build job added by the merged readiness PR, so the 3.15 image and its tests are validated before merge.
+
+- [x] Dockerfile → `python:3.15-slim`; ci.yml lint+test → 3.15; README + tech-spec image references updated.
+- [ ] User pushes, CI green (lint, test on 3.15, docker-build of 3.15 image), merge.
+- [ ] Close dependabot #277 as superseded.
+- [ ] Mini PC redeploy on 3.15 (git pull + docker compose build + up -d).
+
+No local tests/builds; no GitHub writes.
+
+---
+
 ## #277 — Python 3.15 readiness
 
 **Branch**: ci/python315-readiness | **PR**: (pending)

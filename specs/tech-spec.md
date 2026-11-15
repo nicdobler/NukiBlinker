@@ -238,7 +238,7 @@ sequenceDiagram
 
 ## Runtime
 
-- **Python >= 3.11** (Docker image: `python:3.14-slim`)
+- **Python >= 3.11** (Docker image: `python:3.15-slim`)
 - **Poetry** for dependency management
 - **Docker** for deployment on Mini PC (WSL2), port mapping for LAN access
 
@@ -1009,7 +1009,7 @@ Automated tests run exclusively in GitHub Actions; do not run tests or Docker bu
 ## Docker
 
 ```dockerfile
-FROM python:3.14-slim
+FROM python:3.15-slim
 # Poetry install → copy source → generate chime.wav → EXPOSE 8080 → ENTRYPOINT
 ```
 
