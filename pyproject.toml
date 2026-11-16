@@ -7,7 +7,7 @@ license = "none"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.14"
 fastapi = ">=0.115,<0.163"
 uvicorn = {version = ">=0.34,<0.55", extras = ["standard"]}
 httpx = "^0.28.0"
