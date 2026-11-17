@@ -38,7 +38,7 @@ All project documentation lives in this repository (versioned alongside the code
 
 - **Nuki Opener** and/or **Smart Lock** connected to a **Nuki Bridge**
 - **Philips Hue Bridge** on the same LAN
-- **Docker** (recommended), or **Python >= 3.11** + [Poetry](https://python-poetry.org/)
+- **Docker** (recommended), or **Python >= 3.14** + [Poetry](https://python-poetry.org/)
 - Optional: Google Nest / Chromecast speakers
 
 > **Note**: Apple HomePod / AirPlay audio output was removed in v0.4.x (HomePod RTSP setup timed out unreliably). HomePod owners still get the ring via the HomeKit doorbell notification.
@@ -591,6 +591,6 @@ then squash-merges in issue order. Linux/WSL2: `script/orchestrate-parallel.sh`.
 
 ### Tech Stack
 
-- **Python 3.11+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
+- **Python 3.14+** (Docker image `python:3.14-slim`) · **FastAPI** · **uvicorn** · **httpx** · **pydantic**
 - **pychromecast** · **gTTS** · **HAP-python** · **zeroconf**
 - **Black** · **flake8** · **pytest** · **pytest-asyncio**

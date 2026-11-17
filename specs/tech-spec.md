@@ -238,7 +238,7 @@ sequenceDiagram
 
 ## Runtime
 
-- **Python >= 3.11** (Docker image: `python:3.14-slim`)
+- **Python >= 3.14** (Docker image: `python:3.14-slim`)
 - **Poetry** for dependency management
 - **Docker** for deployment on Mini PC (WSL2), port mapping for LAN access
 
