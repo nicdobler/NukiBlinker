@@ -56,3 +56,9 @@
 - **Rule**: Before delivering bundles, consult the sibling xls2csv workflow and the local bundle-transfer skill. Use fixed-name prepare/unpack commands rather than inventing a new transport format.
 - **Rule**: Keep independent delivery-tooling changes separate from runtime/CI changes. Merge tooling first, then rebase the dependent branch; do not mix unrelated work into one bundle.
 - **Rule**: Do not ask for wrap-up approval during a read-only advisory question; approvals should refer to a concrete plan or action.
+
+## 2026-11-17 — poetry.lock content-hash includes pyproject sources
+- Regenerating the lock with a temporary `[[tool.poetry.source]]` (Artifactory) and then removing the source leaves a stale content-hash → CI `poetry install` fails with "pyproject.toml changed significantly".
+- Fix: strip `[package.source]` blocks from poetry.lock, then recompute content-hash with `poetry.packages.locker.Locker` against the final pyproject (or keep source and accept Artifactory refs).
+- `POETRY_PYPI_MIRROR_URL` does NOT redirect `poetry lock` resolution in Poetry 2.5.1.
+- Always run `poetry check --lock` after any manual pyproject/lock edit.
